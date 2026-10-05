@@ -17,7 +17,7 @@ Five regions run side by side:
 | mic | `paused`, or `live` with `idle`, `starting`, `listening`, `restarting`. The mic starts only in `starting`, and only when not paused, no speech is playing, and a listen is wanted. Pause and resume come only from a trusted click, Ctrl+M or Ctrl+R. |
 | turn | Not listening (grey), speak now (green), heard (amber), background result (amber), agent speaking (blue). |
 | autosend | Armed when his speech ends: sends after 0.7 s, or 1 s if the speech reads unfinished. New speech, mute or switching auto-send off cancels it. |
-| speech | Idle, or playing a queue of clips with up to 3 fetched ahead. A clip that fails is spoken by the browser's own voice instead. When the queue empties, the mic may resume. |
+| speech | Idle, or playing a queue of clips with up to 3 fetched ahead. A clip that fails is spoken by the browser's own voice instead. When the queue empties, the mic may resume. Stop drops the queue at once, because the paused clip never ends and would otherwise block the next speak. |
 | watchdog | Every 2 s during a listen: restart if the mic is not running for 6 s, heard speech gave no words for 8 s, or there was no audio for 15 s. After an error the restart is immediate, then backs off doubling up to 2 s. |
 
 ```mermaid

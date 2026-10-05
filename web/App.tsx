@@ -421,6 +421,8 @@ export function App() {
             onClick={(e) => {
               if (!e.nativeEvent.isTrusted) return;
               audio.current?.pause();
+              listen.current.after = false;
+              send({ type: 'STOP' });
               speechSynthesis.cancel();
               post({ type: 'stopped', part: listen.current.part });
             }}

@@ -42,7 +42,7 @@ export const dataDir =
     ? join(process.env['LOCALAPPDATA'] ?? homedir(), 'cc-gc-stts')
     : join(homedir(), '.local', 'share', 'cc-gc-stts');
 const profileDir = join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
-const PIPER_PORT = 15987;
+const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
 const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
 
 // Swappable side effects, so the tests run with no Chrome, no Piper and no exit.

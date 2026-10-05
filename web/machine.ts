@@ -59,6 +59,7 @@ export type PageEvent =
   | { type: 'ENQUEUE'; clips: string[] }
   | { type: 'CLIP_ENDED' }
   | { type: 'CLIP_FAILED' }
+  | { type: 'STOP' }
   | { type: 'QUEUE_EMPTY' };
 
 export interface PageContext {
@@ -205,6 +206,7 @@ export const pageMachine = setup({
         PAUSE: { guard: 'trusted', target: '.notListening' },
         LISTEN_DONE: '.notListening',
         QUEUE_EMPTY: '.notListening',
+        STOP: '.notListening',
         MIC_STARTED: '.speakNow',
         INTERIM: { guard: 'quiet', target: '.heard' },
         SPEECH_END: { guard: 'quiet', target: '.heard' },
@@ -270,6 +272,8 @@ export const pageMachine = setup({
                 },
               ],
             },
+            // Stop: the paused clip never ends, so the queue is dropped here or the next tts never plays.
+            STOP: { target: 'idle', actions: assign({ queue: [] }) },
             CLIP_FAILED: {
               actions: { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
             },

@@ -1,0 +1,29 @@
+name: ci
+on:
+  pull_request:
+    paths: ['src/**', 'web/**', 'test/**', 'public/**', 'hooks/**', 'package*.json', '*.config.ts', 'tsconfig.json', 'biome.json', 'index.html', 'specs/**', '*.md', '.markdownlint*', '.github/workflows/ci.yml']
+  push:
+    branches: [main]
+    paths: ['src/**', 'web/**', 'test/**', 'public/**', 'hooks/**', 'package*.json', '*.config.ts', 'tsconfig.json', 'biome.json', 'index.html', 'specs/**', '*.md', '.markdownlint*', '.github/workflows/ci.yml']
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node_modules/.bin/biome ci .
+      - run: node_modules/.bin/tsc --noEmit
+      - run: node_modules/.bin/markdownlint-cli2
+      - run: node_modules/.bin/vitest run
+      - run: node_modules/.bin/playwright install chromium --only-shell --with-deps
+      - run: node_modules/.bin/playwright test

@@ -34,6 +34,15 @@ describe('page machine', () => {
     expect(startMic).not.toHaveBeenCalled();
   });
 
+  it('stop empties the speech queue so the next tts plays', () => {
+    const { actor, playClip } = start();
+    actor.send({ type: 'ENQUEUE', clips: ['a', 'b'] });
+    actor.send({ type: 'STOP' });
+    expect(actor.getSnapshot().matches({ speech: 'idle' })).toBe(true);
+    actor.send({ type: 'ENQUEUE', clips: ['c'] });
+    expect(playClip).toHaveBeenLastCalledWith(expect.anything(), { clip: 'c' });
+  });
+
   it('untrusted pause and resume are ignored', () => {
     const { actor } = start();
     actor.send({ type: 'PAUSE', trusted: false });
