@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app, attachPage, deps, exitCodeWhenTaken, resetTurns, slotId, WINDOW_OPEN_MS } from '../../src/daemon.ts';
 import {
   BACKGROUND_RESULT,
+  bargeLine,
   CONVERSATION_ENDED,
   type DaemonMessage,
   LISTEN_CONTINUES,
@@ -126,6 +127,33 @@ describe('daemon', () => {
     speak('');
     expect(await (await speech).text()).toBe('Spoken.');
     expect(sent.some((m) => m.type === 'released')).toBe(false);
+  });
+
+  const typed = (text: string, extra: object = {}) =>
+    page.onMessage(JSON.stringify({ type: 'complete', text, startAt: 0, endAt: 1000, source: 'typed', ...extra }));
+
+  it('a typed complete returns the turn prefix and logs a typed turn', async () => {
+    const r = post('/request', { kind: 'stt' });
+    await tick();
+    typed('typed hello');
+    expect(await (await r).text()).toMatch(/^\[turn 1, heard [\d:]+ to [\d:]+\] typed hello$/);
+    expect(logs).toContain('page typed turn 1');
+  });
+
+  it('a typed message with no listen open is held for the next listen', async () => {
+    typed('sent while no one listened');
+    expect(await (await post('/request', { kind: 'stt' })).text()).toMatch(/\] sent while no one listened$/);
+  });
+
+  it('a barge cuts the tts off and returns the turn with the barge note', async () => {
+    const speech = post('/request', { kind: 'tts', text: 'a long answer' });
+    await tick();
+    typed('wait, also check the logs', { interrupted: { part: 2, sentence: 3 } });
+    speak(''); // the stopped speech's own complete
+    const text = await (await speech).text();
+    expect(text).toMatch(TURN_PREFIX);
+    expect(text).toBe(`${text.split('\n')[0]}\n${bargeLine(2, 3)}`);
+    expect(text).toContain('wait, also check the logs');
   });
 
   it('/barge has the old shape', async () => {

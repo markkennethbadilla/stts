@@ -1,7 +1,19 @@
 // The orb screen (brief section 6): a full-bleed orb tinted by the turn state, wired to
 // web/machine.ts. The machine decides; this file only supplies its side effects.
 import { useMachine } from '@xstate/react';
-import { Bell, CircleAlert, CircleStop, Ear, Mic, MicOff, PhoneOff, Settings2, Volume2 } from 'lucide-react';
+import {
+  Bell,
+  CircleAlert,
+  CircleStop,
+  Ear,
+  Keyboard,
+  Mic,
+  MicOff,
+  PhoneOff,
+  SendHorizontal,
+  Settings2,
+  Volume2,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
@@ -16,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
+import { Textarea } from './components/ui/textarea.tsx';
 import { holdMs, LANG_ERR, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
@@ -110,6 +123,8 @@ export function App() {
   const [earcons, setEarcons] = useSetting('earcons', '1');
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
+  const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
+  const [draft, setDraft] = useState('');
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [localVoices, setLocalVoices] = useState<string[]>([]);
 
@@ -133,6 +148,29 @@ export function App() {
           post({ type: 'complete', text, startAt: heard.current.startAt, endAt: Date.now() });
           heard.current.final = '';
           send({ type: 'LISTEN_DONE' });
+        },
+        deliver: (_, { text, source, interrupted }) => {
+          clearTimeout(listen.current.idleTimer);
+          ls.push('history_prompts', text);
+          setSaid(text);
+          setInterim('');
+          setTurnNo((n) => n + 1);
+          heard.current.final = '';
+          // The cut-off tts already returns this turn: its end must not open a listen.
+          if (interrupted) listen.current.after = false;
+          const now = Date.now();
+          post({
+            type: 'complete',
+            text,
+            startAt: now,
+            endAt: now,
+            source,
+            ...(interrupted ? { interrupted } : {}),
+          });
+        },
+        stopAudio: () => {
+          audio.current?.pause();
+          speechSynthesis.cancel();
         },
         playClip: (_, { clip }) => void playClip(clip),
         prefetchClips: () => {},
@@ -246,12 +284,19 @@ export function App() {
     r.onspeechend = () => send({ type: 'SPEECH_END', text: heard.current.final });
     r.onresult = (e) => {
       let live = '';
+      let final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i];
         const t = res?.[0]?.transcript ?? '';
-        if (res?.isFinal) heard.current.final = `${heard.current.final} ${t}`.trim();
+        if (res?.isFinal) final = `${final} ${t}`.trim();
         else live += t;
       }
+      // Final words while the agent speaks cut it off (a barge).
+      if (final && actor.getSnapshot().matches({ speech: 'playing' })) {
+        send({ type: 'BARGE', text: final, part: listen.current.part });
+        return;
+      }
+      if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       setInterim(`${heard.current.final} ${live}`.trim());
       send({ type: 'RESULT', text: heard.current.final });
     };
@@ -381,6 +426,23 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // History browsing fills the box in keyboard mode, so an old prompt can be sent again.
+  useEffect(() => {
+    if (browse?.side === 'prompts' && inputMode === 'keyboard') setDraft(ls.list('history_prompts')[browse.i] ?? '');
+  }, [browse, inputMode]);
+
+  const typeDraft = (text: string): void => {
+    setDraft(text);
+    actor.send({ type: 'SET_TYPING', on: text.trim() !== '' });
+  };
+  const sendDraft = (): void => {
+    const text = draft.trim();
+    if (!text) return;
+    actor.send({ type: 'TYPED', text, part: listen.current.part });
+    setBrowse(null);
+    typeDraft('');
+  };
+
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
   const micFailed = state.matches({ mic: { live: 'failed' } });
   const StatusIcon = micFailed
@@ -443,6 +505,14 @@ export function App() {
           style={{ color: micFailed ? '#ef4444' : TINT[turn][0] }}
         />
         <div className="ml-auto flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={inputMode === 'keyboard' ? 'Switch to mic input' : 'Switch to keyboard input'}
+            onClick={() => setInputMode(inputMode === 'keyboard' ? 'mic' : 'keyboard')}
+          >
+            {inputMode === 'keyboard' ? <Mic /> : <Keyboard />}
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -567,6 +637,34 @@ export function App() {
           <p className="text-2xl font-medium text-neutral-200">{shown}</p>
         )}
       </section>
+
+      {inputMode === 'keyboard' && (
+        <form
+          className="absolute inset-x-6 bottom-4 flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendDraft();
+          }}
+        >
+          <Textarea
+            aria-label="Message"
+            placeholder="Type a message, Enter to send, Shift+Enter for a new line"
+            className="max-h-40 bg-neutral-900/80"
+            autoFocus
+            value={draft}
+            onChange={(e) => typeDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                sendDraft();
+              }
+            }}
+          />
+          <Button type="submit" size="icon" aria-label="Send" disabled={!draft.trim()}>
+            <SendHorizontal />
+          </Button>
+        </form>
+      )}
     </main>
   );
 }

@@ -52,7 +52,15 @@ export const TURN_NOTE =
   'a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. ' +
   'Do not announce "listening" or "got it" yourself.';
 
-export const NOTES = ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
+export const BARGE_NOTE =
+  ' If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, ' +
+  'followed by a line saying where it cut you off. Treat that message as an addition or a steer: answer it, then continue the ' +
+  'task you were cut off from, unless it explicitly says stop, abort, halt or never mind.';
+
+export const bargeLine = (part: number, sentence: number): string =>
+  `(interrupted your speech at part ${part} sentence ${sentence}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind)`;
+
+export const NOTES = BARGE_NOTE + ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
 
 export const STT_DESCRIPTION = `Show the speech-to-text dialog and return the transcribed text the user spoke.${NOTES}`;
 
@@ -62,8 +70,7 @@ export const TTS_DESCRIPTION =
   'markdown, not an HTML page) instead of copying it into text: the server reads and speaks it, so ' +
   'you do not spend output on it. Markdown files are read without their markup. Long content is ' +
   'read in parts; if the call returns before the end, it says which part to pass next. The Stop ' +
-  'button stops the reading and it says where. No spoken word is a command, and talking over ' +
-  'your voice does not stop it: it finishes, and his words come back on the next listen. With ' +
+  'button stops the reading and it says where. With ' +
   'listen=true it then opens speech-to-text at once and returns what the user said next, saving ' +
   'a round trip per turn. Open fast: send a short first piece (3 to 6 words) without listen, then ' +
   `the rest in one call with listen. At most two pieces per reply.${NOTES}`;
@@ -182,7 +189,16 @@ export type RequestBody = z.infer<typeof RequestBody>;
 // WebSocket, page to daemon.
 export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
-  z.object({ type: z.literal('complete'), text: z.string(), startAt: z.number(), endAt: z.number() }),
+  z.object({
+    type: z.literal('complete'),
+    text: z.string(),
+    startAt: z.number(),
+    endAt: z.number(),
+    // Absent means heard, so an old page still validates. Typed is the keyboard box.
+    source: z.enum(['typed', 'heard']).optional(),
+    // Set when the message cut the agent's speech off (a barge): where it stopped.
+    interrupted: z.object({ part: z.number().int().min(1), sentence: z.number().int().min(1) }).optional(),
+  }),
   z.object({ type: z.literal('cancel') }),
   z.object({ type: z.literal('close') }),
   z.object({ type: z.literal('ended') }),

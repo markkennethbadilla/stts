@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import type { APIRequestContext } from '@playwright/test';
 import { dataRoot, testPort } from '../../playwright.config.ts';
-import { BACKGROUND_RESULT, readNotes, STOPPED, SUPERSEDED } from '../../src/protocol.ts';
+import { BACKGROUND_RESULT, bargeLine, readNotes, STOPPED, SUPERSEDED } from '../../src/protocol.ts';
 import { daemonLog, expect, test } from './fixtures.ts';
 
 const ask = (request: APIRequestContext, data: object) =>
@@ -115,6 +115,48 @@ test('a file is read in parts and resumed', async ({ voice, request }) => {
     const rest = await ask(request, { kind: 'tts', file, part: 2 });
     expect(await rest.text()).toBe(readNotes.end(n));
     expect(clips).toBeGreaterThanOrEqual(n);
+  } finally {
+    piper.close();
+  }
+});
+
+const keyboardMode = async (voice: import('@playwright/test').Page) => {
+  await voice.getByLabel('Switch to keyboard input').focus();
+  await voice.keyboard.press('Enter');
+  await expect(voice.getByLabel('Message')).toBeVisible();
+};
+
+test('a typed message is returned by stt as a turn', async ({ voice, request }) => {
+  await keyboardMode(voice);
+  const reply = ask(request, { kind: 'stt' });
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await voice.getByLabel('Message').fill('typed from the keyboard');
+  await voice.getByLabel('Message').press('Enter');
+  const text = await (await reply).text();
+  expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] typed from the keyboard$/);
+  await expect(voice.getByLabel('Message')).toHaveValue('');
+  expect(daemonLog()).toMatch(/page typed turn \d+/);
+});
+
+test('typing during speech cuts it off and the tts returns the turn with the barge note', async ({
+  voice,
+  request,
+}) => {
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    await keyboardMode(voice);
+    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await voice.getByLabel('Message').fill('also check the logs');
+    await voice.getByLabel('Message').press('Enter');
+    const text = await (await speech).text();
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] also check the logs\n/);
+    expect(text).toContain(bargeLine(1, 1));
   } finally {
     piper.close();
   }

@@ -61,7 +61,15 @@ export type PageEvent =
   | { type: 'CLIP_ENDED' }
   | { type: 'CLIP_FAILED' }
   | { type: 'STOP' }
-  | { type: 'QUEUE_EMPTY' };
+  | { type: 'QUEUE_EMPTY' }
+  // A message typed into the box and sent; part is the agent's current read-aloud part.
+  | { type: 'TYPED'; text: string; part: number }
+  // Final heard words while the agent is speaking: they cut the speech off.
+  | { type: 'BARGE'; text: string; part: number }
+  | { type: 'SET_TYPING'; on: boolean };
+
+export type Interrupted = { part: number; sentence: number };
+export type Delivery = { text: string; source: 'typed' | 'heard'; interrupted: Interrupted | null };
 
 export interface PageContext {
   autosend: boolean;
@@ -79,7 +87,18 @@ export interface PageContext {
   restarts: number;
   // language-not-supported errors seen; the second one gives up instead of looping.
   langFails: number;
+  // Text in the keyboard box: auto-send of heard speech waits while he types.
+  typing: boolean;
+  // 1-based index of the clip (sentence) now playing.
+  sentence: number;
+  // Where the last barge cut the agent's speech off.
+  interrupted: Interrupted | null;
 }
+
+const cut = ({ context, event }: { context: PageContext; event: PageEvent }): Interrupted => ({
+  part: 'part' in event ? event.part : 1,
+  sentence: context.sentence,
+});
 
 const live = not(stateIn({ mic: 'paused' }));
 const quiet = stateIn({ speech: 'idle' });
@@ -94,6 +113,10 @@ export const pageMachine = setup({
     prefetchClips: (_: unknown, _p: { clips: string[] }) => {},
     playClip: (_: unknown, _p: { clip: string }) => {},
     speakFallback: (_: unknown, _p: { clip: string }) => {},
+    // Sends a typed message or a barge to the daemon as a turn.
+    deliver: (_: unknown, _p: Delivery) => {},
+    // Silences the playing clip at once (the Stop button's path).
+    stopAudio: () => {},
     // The daemon logs these as "page <line>".
     log: (_: unknown, _p: { line: string }) => {},
   },
@@ -104,7 +127,7 @@ export const pageMachine = setup({
     // A second language-not-supported error: cloud recognition was tried too, so stop.
     langGiveUp: ({ context, event }) =>
       event.type === 'MIC_ERROR' && event.error === LANG_ERR && context.langFails >= 1,
-    autosendOn: ({ context }) => context.autosend,
+    autosendOn: ({ context }) => context.autosend && !context.typing,
     quiet,
   },
   delays: {
@@ -128,8 +151,12 @@ export const pageMachine = setup({
     heardAt: 0,
     restarts: 0,
     langFails: 0,
+    typing: false,
+    sentence: 1,
+    interrupted: null,
   },
   on: {
+    SET_TYPING: { actions: assign({ typing: ({ event }) => event.on }) },
     SET_AUTOSEND: { actions: assign({ autosend: ({ event }) => event.on }) },
     SET_HOLD: { actions: assign({ holdMs: ({ event }) => event.ms }) },
     // A listen request is remembered even while paused; only a trusted resume acts on it.
@@ -177,6 +204,7 @@ export const pageMachine = setup({
                 SPEECH_START: { actions: assign({ speechAt: now, heardAt: now }) },
                 RESULT: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
                 LISTEN_DONE: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
+                TYPED: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
                 ENQUEUE: { target: 'idle', actions: 'stopMic' },
               },
             },
@@ -225,6 +253,8 @@ export const pageMachine = setup({
         SPEECH_END: { guard: 'quiet', target: '.heard' },
         RESULT: { guard: 'quiet', target: '.heard' },
         NOTIFY: '.background',
+        TYPED: '.heard',
+        BARGE: { guard: not('quiet'), target: '.heard' },
         ENQUEUE: '.agentSpeaking',
       },
     },
@@ -254,6 +284,7 @@ export const pageMachine = setup({
             PAUSE: { guard: 'trusted', target: 'off' },
             SPEECH_START: 'off',
             INTERIM: 'off',
+            TYPED: 'off',
             SET_AUTOSEND: { guard: ({ event }) => !event.on, target: 'off' },
           },
         },
@@ -264,7 +295,16 @@ export const pageMachine = setup({
       states: {
         idle: {
           on: {
-            ENQUEUE: { target: 'playing', actions: assign({ queue: ({ event }) => [...event.clips] }) },
+            ENQUEUE: {
+              target: 'playing',
+              actions: assign({ queue: ({ event }) => [...event.clips], sentence: 1 }),
+            },
+            TYPED: {
+              actions: [
+                assign({ interrupted: null }),
+                { type: 'deliver', params: ({ event }) => ({ text: event.text, source: 'typed', interrupted: null }) },
+              ],
+            },
           },
         },
         playing: {
@@ -287,6 +327,40 @@ export const pageMachine = setup({
             },
             // Stop: the paused clip never ends, so the queue is dropped here or the next tts never plays.
             STOP: { target: 'idle', actions: assign({ queue: [] }) },
+            // A barge: the message is delivered first, then the speech stops, so the daemon sees
+            // the turn before the stopped speech's own complete.
+            TYPED: {
+              target: 'idle',
+              actions: [
+                assign({ interrupted: cut }),
+                {
+                  type: 'deliver',
+                  params: ({ context, event }) => ({
+                    text: event.text,
+                    source: 'typed',
+                    interrupted: cut({ context, event }),
+                  }),
+                },
+                'stopAudio',
+                assign({ queue: [] }),
+              ],
+            },
+            BARGE: {
+              target: 'idle',
+              actions: [
+                assign({ interrupted: cut }),
+                {
+                  type: 'deliver',
+                  params: ({ context, event }) => ({
+                    text: event.text,
+                    source: 'heard',
+                    interrupted: cut({ context, event }),
+                  }),
+                },
+                'stopAudio',
+                assign({ queue: [] }),
+              ],
+            },
             CLIP_FAILED: {
               actions: { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
             },
@@ -299,7 +373,10 @@ export const pageMachine = setup({
               {
                 target: 'playing',
                 reenter: true,
-                actions: assign({ queue: ({ context }) => context.queue.slice(1) }),
+                actions: assign({
+                  queue: ({ context }) => context.queue.slice(1),
+                  sentence: ({ context }) => context.sentence + 1,
+                }),
               },
             ],
           },

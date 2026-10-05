@@ -8,10 +8,14 @@ function start() {
   const playClip = vi.fn();
   const prefetchClips = vi.fn();
   const speakFallback = vi.fn();
+  const deliver = vi.fn();
+  const stopAudio = vi.fn();
   const actor = createActor(
-    pageMachine.provide({ actions: { startMic, sendTurn, playClip, prefetchClips, speakFallback } }),
+    pageMachine.provide({
+      actions: { startMic, sendTurn, playClip, prefetchClips, speakFallback, deliver, stopAudio },
+    }),
   ).start();
-  return { actor, startMic, sendTurn, playClip, prefetchClips, speakFallback };
+  return { actor, startMic, sendTurn, playClip, prefetchClips, speakFallback, deliver, stopAudio };
 }
 
 beforeEach(() => {
@@ -31,6 +35,44 @@ describe('page machine', () => {
     actor.send({ type: 'QUEUE_EMPTY' });
     vi.advanceTimersByTime(60000);
     expect(actor.getSnapshot().matches({ mic: 'paused' })).toBe(true);
+    expect(startMic).not.toHaveBeenCalled();
+  });
+
+  it('typed while paused still produces a turn and never starts the mic', () => {
+    const { actor, startMic, deliver } = start();
+    actor.send({ type: 'PAUSE', trusted: true });
+    actor.send({ type: 'TYPED', text: 'hi', part: 1 });
+    vi.advanceTimersByTime(60000);
+    expect(deliver).toHaveBeenCalledWith(expect.anything(), { text: 'hi', source: 'typed', interrupted: null });
+    expect(actor.getSnapshot().matches({ mic: 'paused' })).toBe(true);
+    expect(startMic).not.toHaveBeenCalled();
+  });
+
+  it('typing suspends auto-send of heard speech', () => {
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'SET_TYPING', on: true });
+    actor.send({ type: 'SPEECH_END', text: 'hello' });
+    vi.advanceTimersByTime(5000);
+    expect(sendTurn).not.toHaveBeenCalled();
+  });
+
+  it('BARGE stops speech, records where, and keeps the mic rule', () => {
+    const { actor, startMic, deliver, stopAudio } = start();
+    actor.send({ type: 'PAUSE', trusted: true });
+    actor.send({ type: 'ENQUEUE', clips: ['a', 'b', 'c'] });
+    actor.send({ type: 'CLIP_ENDED' });
+    actor.send({ type: 'BARGE', text: 'wait', part: 2 });
+    const s = actor.getSnapshot();
+    expect(s.matches({ speech: 'idle' })).toBe(true);
+    expect(s.context.queue).toEqual([]);
+    expect(s.context.interrupted).toEqual({ part: 2, sentence: 2 });
+    expect(stopAudio).toHaveBeenCalled();
+    expect(deliver).toHaveBeenCalledWith(expect.anything(), {
+      text: 'wait',
+      source: 'heard',
+      interrupted: { part: 2, sentence: 2 },
+    });
+    expect(s.matches({ mic: 'paused' })).toBe(true);
     expect(startMic).not.toHaveBeenCalled();
   });
 

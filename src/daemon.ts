@@ -17,6 +17,7 @@ import { z } from 'zod';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
+  bargeLine,
   CONVERSATION_ENDED,
   type DaemonMessage,
   DEFAULT_PORT,
@@ -30,9 +31,10 @@ import {
   SENTINELS,
   STOPPED,
   SUPERSEDED,
+  TURN_PREFIX,
 } from './protocol.ts';
 import { toParts } from './sentences.ts';
-import { ackGate, turnsMachine } from './turns.ts';
+import { ackGate, type Heard, turnsMachine } from './turns.ts';
 
 export const port = Number(process.env['STTS_PORT'] ?? DEFAULT_PORT);
 const budgetMs = () => Number(process.env['STTS_REQUEST_TIMEOUT_MS'] ?? REQUEST_TIMEOUT_MS);
@@ -100,6 +102,9 @@ let windowOpening = false;
 let windowTimer: ReturnType<typeof setTimeout> | undefined;
 /** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
 export const WINDOW_OPEN_MS = 15000;
+let held: Heard | null = null; // a typed message sent while no listen was open, for the next listen
+let barge: string | null = null; // the cut-off line for a turn that interrupted the agent's speech
+let typedNext = false; // the next finished turn was typed, for the "page typed turn N" log line
 
 // Turn ids, dedupe, join and the ack gate live in the turns machine.
 let turns = createActor(turnsMachine, { input: {} }).start();
@@ -109,7 +114,11 @@ function watchTurns(): void {
     const c = s.context;
     if (c.id <= reported) return;
     reported = c.id;
-    if (slot && isListen(slot.body) && c.reply) settle(200, c.reply);
+    if (typedNext) deps.log(`page typed turn ${c.id}`);
+    typedNext = false;
+    const line = barge;
+    barge = null;
+    if (slot && (isListen(slot.body) || line) && c.reply) settle(200, line ? `${c.reply}\n${line}` : c.reply);
     else {
       // The listen went away while joining: keep the words for the next one.
       carry = `${carry} ${c.last?.text ?? ''}`.trim();
@@ -126,6 +135,9 @@ export function resetTurns(): void {
   reported = 0;
   carry = '';
   keepCarry = false;
+  held = null;
+  barge = null;
+  typedNext = false;
   watchTurns();
 }
 
@@ -184,8 +196,22 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
     );
     slot = { id, body, timer, done: resolve };
   });
-  send();
+  if (held && isListen(body)) {
+    const h = held;
+    held = null;
+    hear(h, true);
+  }
+  if (slot?.id === id) send();
   return result;
+}
+
+// Words for the turns machine. A turn that finishes at once settles the slot inside this call.
+function hear(h: Heard, typed: boolean): void {
+  const text = `${carry} ${h.text}`.trim();
+  carry = '';
+  keepCarry = false;
+  typedNext = typed;
+  turns.send({ type: 'heard', text, startAt: h.startAt, endAt: h.endAt });
 }
 
 // The page side of /ws. Returns the frame handler; the caller wires close to detach().
@@ -215,20 +241,34 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'settings':
         return;
       case 'complete': {
-        if (!slot) {
-          if (keepCarry) carry = `${carry} ${m.text}`.trim();
-          return; // spec 042: speech with no open listen is dropped
+        const said = m.text.trim();
+        const typed = m.source === 'typed';
+        const h = { text: m.text, startAt: m.startAt, endAt: m.endAt };
+        // A barge: his message cut the agent's speech off. The tts call returns it as the next turn.
+        if (slot && m.interrupted && said) {
+          barge = bargeLine(m.interrupted.part, m.interrupted.sentence);
+          hear(h, typed);
+          return;
         }
-        if (!isListen(slot.body)) {
+        if (!slot || !isListen(slot.body)) {
+          // Typed with no listen open: held for the next listen, never dropped.
+          if (typed && said) {
+            held = h;
+            deps.log('page typed held for the next listen');
+            return;
+          }
+          if (!slot) {
+            if (keepCarry) carry = `${carry} ${m.text}`.trim();
+            return; // spec 042: speech with no open listen is dropped
+          }
+          // The stopped speech's own complete while a barge turn is still joining: not the end of the tts.
+          if (barge) return;
           settle(200, readNotes.spoken);
           return;
         }
         // An empty complete is the page finishing a tts this listen superseded: not a turn.
-        if (!m.text.trim()) return;
-        const text = `${carry} ${m.text}`.trim();
-        carry = '';
-        keepCarry = false;
-        turns.send({ type: 'heard', text, startAt: m.startAt, endAt: m.endAt });
+        if (!said) return;
+        hear(h, typed);
         // Joining, or dropped as a duplicate or stale: the listen stays open.
         if (slot) send();
         return;
@@ -355,7 +395,8 @@ app.post('/request', async (c) => {
       ...(body.volume === undefined ? {} : { volume: body.volume }),
     };
     const r = await occupy(id, partBody, left());
-    if (r.status !== 200 || r.text === CONVERSATION_ENDED) return out(r);
+    // A barge turn ends the reading: the agent answers it, then carries on from the cut-off part.
+    if (r.status !== 200 || r.text === CONVERSATION_ENDED || TURN_PREFIX.test(r.text)) return out(r);
     if (r.text.startsWith(STOPPED)) return c.text(`${r.text} ${readNotes.stopped(i + 1, n, where)}`);
   }
   if (i < n) return c.text(readNotes.outOfTime(first + 1, i, n, where));

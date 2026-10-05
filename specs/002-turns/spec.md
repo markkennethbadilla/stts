@@ -26,6 +26,8 @@ stateDiagram-v2
 - **Join:** if the speech reads unfinished (spec 001), the machine waits `STTS_JOIN_SEC` seconds (default 3) for more, up to 3 joins, then returns all of it as one turn.
 - **Ack gate:** after a turn is returned it is unanswered. A tts call answers it. An stt call while it is unanswered gets status 409 with `turn N is unanswered. Answer it now with tts (listen=true), or, if it needs no spoken answer, call stt with ack=N.` An stt with `ack=N` passes and marks it answered.
 - No-speech, listen-continues and background-result replies are not turns and change nothing.
+- **Typed turns.** A message typed into the voice window is a turn exactly like heard speech: same prefix, ids, dedupe, join and ack gate. Typed with no listen open, it is held and returned by the next stt or tts listen.
+- **Barge-in turns.** A turn that cut the agent's speech off is returned by the cut-off tts call itself, with the barge line after it (spec 003). It is unanswered like any turn. `BARGE_NOTE` in both tool descriptions tells the agent to treat it as an addition or steer and to continue the cut-off task unless it says stop, abort, halt or never mind (house rule 47).
 - If the listen went away while a turn was joining, its words are kept and put in front of the next listen's speech.
 
 ## What it reads and writes
