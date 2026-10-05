@@ -34,7 +34,8 @@ export async function ping(): Promise<'ours' | 'stale' | 'busy' | 'down'> {
   } catch {
     return 'down';
   }
-  if (res.headers.get('X-Stts-Dir') === ourDir) return 'ours';
+  // The installed plugin's daemon serves every client, older ones included (live update, spec 013).
+  if (res.headers.get('X-Stts-Dir') === ourDir || res.headers.get('X-Stts-Latest') === '1') return 'ours';
   try {
     const barge = await fetch(`${daemonUrl()}/barge`, { signal: AbortSignal.timeout(2000) });
     if (((await barge.json()) as { open?: boolean }).open) return 'busy';

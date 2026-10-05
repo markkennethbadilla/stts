@@ -1,10 +1,10 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 import { type ChildProcess, spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -89,7 +89,73 @@ export const deps = {
     deps.log(`daemon exit pid ${process.pid} code ${code}`);
     process.exit(code);
   },
+  // Live update (spec 013): Claude Code's own plugin updater pulls a new version into its cache.
+  update(): Promise<void> {
+    return new Promise((done) => {
+      const run = (args: string[], next: () => void): void => {
+        const p = spawn('claude', args, { stdio: 'ignore', windowsHide: true, shell: true });
+        const t = setTimeout(() => p.kill(), 120_000);
+        p.on('error', () => {});
+        p.on('close', () => {
+          clearTimeout(t);
+          next();
+        });
+      };
+      run(['plugin', 'marketplace', 'update', 'stts-marketplace'], () =>
+        run(['plugin', 'update', 'stts@stts-marketplace'], done),
+      );
+    });
+  },
+  // Hands the port and the open window to the newer install, then exits.
+  handoff(to: string): void {
+    deps.log(`live update: handing off to ${to}`);
+    spawn(process.execPath, [join(to, 'daemon.js')], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, STTS_ADOPT: '1' },
+    }).unref();
+    deps.exit(0);
+  },
 };
+
+const same = (a: string, b: string): boolean => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+const INSTALLS = (): string =>
+  process.env['STTS_INSTALLS'] ?? join(homedir(), '.claude', 'plugins', 'installed_plugins.json');
+
+/** The dist folder of the installed stts plugin, or '' when there is none. */
+export function installedDir(): string {
+  try {
+    const j = JSON.parse(readFileSync(INSTALLS(), 'utf8')) as {
+      plugins?: Record<string, { installPath?: string }[]>;
+    };
+    const path = Object.entries(j.plugins ?? {}).find(([k]) => k.startsWith('stts@'))?.[1]?.[0]?.installPath;
+    const d = path ? join(path, 'dist') : '';
+    return d && existsSync(join(d, 'daemon.js')) ? d : '';
+  } catch {
+    return '';
+  }
+}
+
+/** True when this daemon is the installed plugin: it never yields to an older client's shutdown. */
+export const isLatest = (): boolean => {
+  const d = installedDir();
+  return d !== '' && same(d, here);
+};
+
+/**
+ * Between turns, move to a newer install. Safe when nothing is held or only a listen with no
+ * words yet: the client resends the listen to the new daemon, and the page reconnects.
+ */
+export async function liveUpdate(): Promise<boolean> {
+  const safe = (): boolean => (!slot || isListen(slot.body)) && !carry && !held;
+  if (!safe()) return false;
+  if (process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
+  const to = installedDir();
+  if (!to || same(to, here) || !safe()) return false;
+  deps.handoff(to);
+  return true;
+}
 
 type Reply = { status: 200 | 504; text: string };
 type Slot = { id: number; body: RequestBody; timer: ReturnType<typeof setTimeout>; done: (r: Reply) => void };
@@ -101,6 +167,12 @@ let keepCarry = false; // speech after a timeout release belongs to the next lis
 let page: ((m: DaemonMessage) => void) | null = null;
 let windowOpening = false;
 let windowTimer: ReturnType<typeof setTimeout> | undefined;
+// An adopted daemon (a live update) starts with the window still open on its way back.
+const adopted = process.env['STTS_ADOPT'] === '1';
+const PAGE_GRACE_MS = 8000;
+let pageGoneAt = Date.now();
+let graceTimer: ReturnType<typeof setTimeout> | undefined;
+let goneTimer: ReturnType<typeof setTimeout> | undefined;
 /** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
 export const WINDOW_OPEN_MS = 15000;
 let held: Heard | null = null; // a typed message sent while no listen was open, for the next listen
@@ -160,7 +232,12 @@ function release(reason: 'superseded' | 'timeout' | 'background'): void {
 function send(): void {
   if (!slot) return;
   if (page) page({ type: 'request', id: slot.id, body: slot.body });
-  else if (!windowOpening) {
+  else if (adopted && Date.now() - pageGoneAt < PAGE_GRACE_MS) {
+    // The window is reloading or reconnecting after a live update: its "ready" resends the
+    // slot. Opening a second window here was the old behaviour.
+    clearTimeout(graceTimer);
+    graceTimer = setTimeout(send, PAGE_GRACE_MS);
+  } else if (!windowOpening) {
     windowOpening = true;
     clearTimeout(windowTimer);
     windowTimer = setTimeout(() => {
@@ -223,8 +300,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
   page = sendToPage;
   windowOpening = false;
   clearTimeout(windowTimer);
+  clearTimeout(goneTimer);
   const detach = (): void => {
-    if (page === sendToPage) page = null;
+    if (page !== sendToPage) return;
+    page = null;
+    pageGoneAt = Date.now();
+    // An adopted daemon holds no Chrome handle: the window closing shows as the page not coming back.
+    if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 15_000);
   };
   const onMessage = (raw: string): void => {
     const m = parseMessage(PageMessage, raw);
@@ -318,11 +400,14 @@ const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 app.use('*', async (c, next) => {
   await next();
   c.header('X-Stts-Dir', here);
+  if (isLatest()) c.header('X-Stts-Latest', '1');
 });
 
 app.get('/api/ping', (c) => c.text('ok'));
 
 app.post('/api/shutdown', (c) => {
+  // An older client after a live update would retire the newer daemon; it uses this one instead.
+  if (isLatest()) return c.text('newest install', 409);
   setTimeout(() => deps.exit(0), 50);
   return c.text('ok');
 });
@@ -516,10 +601,30 @@ export function start(p: number = port): void {
     deps.log(`daemon start pid ${process.pid}`),
   );
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
+  // Adopted with no window coming back (closed during the hand-off): exit like a closed window.
+  if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 20_000);
+  let tries = 0;
   server.on('error', (e: NodeJS.ErrnoException) => {
     if (e.code !== 'EADDRINUSE') throw e;
+    // Adopting: the old daemon is still exiting, so wait for the port (up to 10 s).
+    if (adopted && tries++ < 50) {
+      setTimeout(() => server.listen(p, '127.0.0.1'), 200);
+      return;
+    }
     void exitCodeWhenTaken(p).then((code) => process.exit(code));
   });
+  if (process.env['STTS_LIVE_UPDATE'] !== '0') {
+    let busy = false;
+    setInterval(() => {
+      if (busy) return;
+      busy = true;
+      void liveUpdate().finally(() => {
+        busy = false;
+      });
+    }, LIVE_UPDATE_MS).unref();
+  }
 }
+
+const LIVE_UPDATE_MS = Number(process.env['STTS_LIVE_UPDATE_MS'] ?? 60_000);
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start();

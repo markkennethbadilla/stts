@@ -26,6 +26,7 @@ export default defineConfig({
       STTS_PORT: String(testPort),
       STTS_PIPER_PORT: String(testPort + 1),
       STTS_PIPER_HOME: join(dataRoot, 'no-piper'),
+      STTS_LIVE_UPDATE: '0',
       LOCALAPPDATA: dataRoot,
       HOME: dataRoot,
     },

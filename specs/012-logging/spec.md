@@ -23,6 +23,8 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `piper clip failed VOICE MSms "first 30 chars"` | a clip failed |
 | `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
 | `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
+| `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |
+| `page live update: reloading for the new version` | the window reloads onto the new code |
 | `page mic start` | mic opened |
 | `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |
 | `page turn sent MSms after the last words` | auto-send fired: the end-of-speech delay |

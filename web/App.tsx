@@ -123,8 +123,8 @@ export function App() {
   // Every listen opens here. Words left from before it (heard with no listen open, or the
   // agent's own tail) are dropped: a stale final made the idle timer skip nospeech and the
   // listen hang until the daemon budget, and a stale startAt dated turns minutes early.
-  const armIdle = (sec: number): void => {
-    heard.current = { final: '', startAt: 0 };
+  const armIdle = (sec: number, keepWords = false): void => {
+    if (!keepWords) heard.current = { final: '', startAt: 0 };
     if (sec > 0) {
       listen.current.idleTimer = window.setTimeout(() => {
         if (!heard.current.final) post({ type: 'nospeech' });
@@ -390,10 +390,51 @@ export function App() {
   // The daemon link.
   // biome-ignore lint/correctness/useExhaustiveDependencies: post and log only read the ws ref; reconnecting on every render would drop the link.
   useEffect(() => {
-    const sock = new WebSocket(`ws://${location.host}/ws`);
-    ws.current = sock;
-    sock.onopen = () => sock.send(JSON.stringify({ type: 'ready' }));
-    sock.onmessage = (e) => {
+    // Live update (spec 013): the daemon restarts on a newer install between turns. The page
+    // reconnects; when the daemon's folder changed it reloads for the new code once it is quiet
+    // (no speech playing, no words heard), and the daemon resends the open listen on "ready".
+    let dead = false;
+    let dir = '';
+    let resumed = false;
+    const daemonDir = async (): Promise<string | null> => {
+      const r = await fetch('/api/ping', { cache: 'no-store' }).catch(() => null);
+      return r?.ok ? (r.headers.get('X-Stts-Dir') ?? '') : null;
+    };
+    const quiet = (): boolean => actor.getSnapshot().matches({ speech: 'idle' }) && !heard.current.final;
+    const reloadWhenQuiet = (): void => {
+      if (dead) return;
+      if (quiet()) location.reload();
+      else setTimeout(reloadWhenQuiet, 500);
+    };
+    const reconnect = async (): Promise<void> => {
+      if (dead) return;
+      const d = await daemonDir();
+      if (d === null) {
+        setTimeout(() => void reconnect(), 500);
+        return;
+      }
+      resumed = true;
+      connect();
+      if (dir && d !== dir) {
+        log('live update: reloading for the new version');
+        reloadWhenQuiet();
+      }
+    };
+    void daemonDir().then((d) => {
+      dir = d ?? '';
+    });
+    const connect = (): void => {
+      const sock = new WebSocket(`ws://${location.host}/ws`);
+      ws.current = sock;
+      sock.onopen = () => sock.send(JSON.stringify({ type: 'ready' }));
+      sock.onmessage = onMessage;
+      sock.onclose = () => {
+        if (dead) return;
+        log('ws closed');
+        setTimeout(() => void reconnect(), 300);
+      };
+    };
+    const onMessage = (e: MessageEvent): void => {
       const m = parseMessage(DaemonMessage, String(e.data));
       if (!m) return;
       clearTimeout(listen.current.idleTimer);
@@ -406,9 +447,12 @@ export function App() {
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
         actor.send({ type: 'REQUEST', kind: 'listen' });
-        armIdle(b.idleSec ?? 200);
+        // The same listen resent after a reconnect keeps the words already heard.
+        armIdle(b.idleSec ?? 200, resumed);
+        resumed = false;
         return;
       }
+      resumed = false;
       // Short clips: Piper renders a whole clip before it plays, so a 1000-char first clip
       // held the first word 2-5 s (log, 2026-10-05). The rest synthesise ahead while it plays.
       const clips = toParts(b.text ?? '', CLIP_CHARS);
@@ -420,8 +464,11 @@ export function App() {
       listen.current.idleSec = b.idleSec ?? 200;
       actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
     };
-    sock.onclose = () => log('ws closed');
-    return () => sock.close();
+    connect();
+    return () => {
+      dead = true;
+      ws.current?.close();
+    };
   }, [actor, raise]);
 
   // Speech queue drained: a plain tts is done; a tts with listen opens the mic next.
