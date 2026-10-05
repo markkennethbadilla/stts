@@ -79,7 +79,7 @@ export type PageEvent =
   // listen: the tts opens a listen after it, so the mic running during the speech stays on.
   | { type: 'ENQUEUE'; clips: string[]; listen?: boolean }
   | { type: 'CLIP_ENDED' }
-  | { type: 'CLIP_FAILED' }
+  | { type: 'CLIP_FAILED'; reason: string }
   | { type: 'STOP' }
   | { type: 'QUEUE_EMPTY' }
   // A message typed into the box and sent; part is the agent's current read-aloud part.
@@ -400,7 +400,10 @@ export const pageMachine = setup({
               ],
             },
             CLIP_FAILED: {
-              actions: { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
+              actions: [
+                { type: 'log', params: ({ event }) => ({ line: `voice fallback ${event.reason}` }) },
+                { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
+              ],
             },
             CLIP_ENDED: [
               {

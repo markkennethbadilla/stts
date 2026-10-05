@@ -16,7 +16,7 @@ He talks hands-free and glances at the window. Colour and sound tell him the sta
 - **Keyboard mode:** a Keyboard / Mic toggle in the header sets the primary input, saved in `__stts__input_mode`. In keyboard mode a shadcn Textarea sits at the bottom: Enter or the Send button sends, Shift+Enter is a new line, Alt+Up and Alt+Down fill it from his prompt history. Typing while the agent speaks cuts the speech off (barge-in, spec 005).
 - **Settings popover:** voice, rate, auto-send, hold, mic picker, earcons and their volume, raise-on-request (off by default). Saved in `localStorage` under the old `__stts__*` keys so earlier settings carry over.
 - **Listening:** Web Speech recognition with `processLocally`, started on an echo-cancelled mic track. The listen-open chime plays first, so it is never recorded.
-- **Speaking:** text is cut into sentences (spec 004) and each clip is fetched from `/voice/clip` (Piper, default voice `en_GB-jenny_dioco-medium`). If a clip fails, the browser's own voice speaks it.
+- **Speaking:** text is cut into sentences (spec 004) and each clip is fetched from `/voice/clip` (Piper, default voice `en_GB-jenny_dioco-medium`). The settings popover lists the Piper voices from `/voice/list` first, then the Windows voices. A saved voice that is not an installed Piper voice (an old Windows pick) still speaks with the Piper default. Only when the clip request itself fails does the browser's own voice speak it, and the page logs `voice fallback REASON` first, so a fallback is never silent.
 - **Earcons:** Kenney Interface Sounds (CC0) in `public/earcon/`: `listen-open`, `turn-captured`, `background-result`, one per state change.
 - The 1600x600 strip and a 390 wide phone layout come from Tailwind container queries.
 

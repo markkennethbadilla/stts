@@ -167,7 +167,7 @@ describe('page machine', () => {
     expect(prefetchClips).toHaveBeenLastCalledWith(expect.anything(), { clips: ['b', 'c', 'd'] });
     actor.send({ type: 'RESULT', text: 'echo' });
     expect(actor.getSnapshot().matches({ turn: 'agentSpeaking' })).toBe(true);
-    actor.send({ type: 'CLIP_FAILED' });
+    actor.send({ type: 'CLIP_FAILED', reason: 'clip 502 x' });
     expect(speakFallback).toHaveBeenCalledWith(expect.anything(), { clip: 'a' });
     for (let i = 0; i < 4; i++) actor.send({ type: 'CLIP_ENDED' });
     expect(startMic).toHaveBeenCalledTimes(1);

@@ -2,7 +2,7 @@
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 import { type ChildProcess, spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -441,9 +441,23 @@ function startPiper(voice: string): void {
   piper.on('error', (e) => deps.log(`piper start failed ${String(e)}`));
 }
 
+// The Piper voices installed: every .onnx in the voices folder, by name, sorted.
+app.get('/voice/list', async (c) => {
+  const files = await readdir(join(PIPER_HOME, 'voices')).catch(() => [] as string[]);
+  return c.json(
+    files
+      .filter((f) => f.endsWith('.onnx'))
+      .map((f) => f.slice(0, -5))
+      .sort(),
+  );
+});
+
 app.post('/voice/clip', async (c) => {
   const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.text(parsed.error.message, 400);
+  if (!parsed.success) {
+    deps.log('piper clip refused: bad body or voice name');
+    return c.text(parsed.error.message, 400);
+  }
   const { text, voice, rate } = parsed.data;
   const t0 = Date.now();
   let r = await piperClip(text, voice, rate ?? 1);

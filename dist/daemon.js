@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
@@ -17327,9 +17327,16 @@ function startPiper(voice) {
 	});
 	piper.on("error", (e) => deps.log(`piper start failed ${String(e)}`));
 }
+app.get("/voice/list", async (c) => {
+	const files = await readdir(join(PIPER_HOME, "voices")).catch(() => []);
+	return c.json(files.filter((f) => f.endsWith(".onnx")).map((f) => f.slice(0, -5)).sort());
+});
 app.post("/voice/clip", async (c) => {
 	const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
-	if (!parsed.success) return c.text(parsed.error.message, 400);
+	if (!parsed.success) {
+		deps.log("piper clip refused: bad body or voice name");
+		return c.text(parsed.error.message, 400);
+	}
 	const { text, voice, rate } = parsed.data;
 	const t0 = Date.now();
 	let r = await piperClip(text, voice, rate ?? 1);

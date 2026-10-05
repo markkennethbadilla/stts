@@ -136,6 +136,9 @@ export function App() {
   const [draft, setDraft] = useState('');
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [localVoices, setLocalVoices] = useState<string[]>([]);
+  const [piperVoices, setPiperVoices] = useState<string[]>([DEFAULT_PIPER]);
+  // A saved voice that is not an installed Piper voice (an old Windows pick) still speaks with Piper.
+  const clipVoice = piperVoices.includes(voice) ? voice : DEFAULT_PIPER;
 
   const post = (m: PageMessage): void => {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m));
@@ -203,10 +206,10 @@ export function App() {
     const r = await fetch('/voice/clip', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: clip, voice, rate: Number(rate) }),
+      body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
     }).catch(() => null);
     if (!r?.ok) {
-      send({ type: 'CLIP_FAILED' });
+      send({ type: 'CLIP_FAILED', reason: r ? `clip ${r.status} ${clipVoice}` : 'clip unreachable' });
       return;
     }
     const a = new Audio(URL.createObjectURL(await r.blob()));
@@ -215,7 +218,7 @@ export function App() {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
       send({ type: 'CLIP_ENDED' });
     };
-    a.play().catch(() => send({ type: 'CLIP_FAILED' }));
+    a.play().catch((e: unknown) => send({ type: 'CLIP_FAILED', reason: `play ${String(e)}` }));
   }
 
   async function playEarcon(name: string): Promise<void> {
@@ -420,6 +423,10 @@ export function App() {
           .map((v) => v.name),
       );
     fill();
+    fetch('/voice/list')
+      .then((r) => r.json() as Promise<string[]>)
+      .then((l) => l.length && setPiperVoices(l))
+      .catch(() => {});
     speechSynthesis.addEventListener('voiceschanged', fill);
     return () => speechSynthesis.removeEventListener('voiceschanged', fill);
   }, []);
@@ -566,7 +573,7 @@ export function App() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[DEFAULT_PIPER, ...localVoices].map((n) => (
+                    {[...piperVoices, ...localVoices].map((n) => (
                       <SelectItem key={n} value={n}>
                         {n}
                       </SelectItem>

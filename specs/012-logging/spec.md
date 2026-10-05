@@ -21,6 +21,8 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `piper start failed ...` | Piper could not start |
 | `piper clip ok VOICE BYTESB MSms "first 30 chars"` | a clip was made |
 | `piper clip failed VOICE MSms "first 30 chars"` | a clip failed |
+| `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
+| `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
 | `page mic start` | mic opened |
 | `page mic restart #N: reason` | watchdog or error restart |
 | `page mic error ERROR` | speech recognition error |
