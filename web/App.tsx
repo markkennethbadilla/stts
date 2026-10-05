@@ -70,7 +70,7 @@ type Recognition = {
   stop: () => void;
   onstart: (() => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
   onspeechstart: (() => void) | null;
   onspeechend: (() => void) | null;
   onaudiostart: (() => void) | null;
@@ -113,11 +113,10 @@ export function App() {
     pageMachine.provide({
       actions: {
         startMic: () => void startMic(),
-        stopMic: () => {
-          clearTimeout(listen.current.idleTimer);
-          rec.current?.stop();
-        },
+        // A mic restart must not cancel the listen's idle timer, so stopMic leaves it alone.
+        stopMic: () => rec.current?.stop(),
         sendTurn: (_, { text }) => {
+          clearTimeout(listen.current.idleTimer);
           ls.push('history_prompts', text);
           setSaid(text);
           setInterim('');
@@ -128,6 +127,7 @@ export function App() {
         },
         playClip: (_, { clip }) => void playClip(clip),
         prefetchClips: () => {},
+        log: (_, { line }) => log(line),
         speakFallback: (_, { clip }) => {
           const u = new SpeechSynthesisUtterance(clip);
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
@@ -195,12 +195,12 @@ export function App() {
     r.continuous = true;
     r.interimResults = true;
     r.processLocally = true;
-    r.onstart = () => {
-      log('mic start');
-      send({ type: 'MIC_STARTED' });
-    };
+    r.onstart = () => send({ type: 'MIC_STARTED' });
     r.onend = () => send({ type: 'MIC_ENDED' });
-    r.onerror = () => send({ type: 'MIC_ERROR' });
+    r.onerror = (e) => {
+      log(`mic error ${e.error ?? 'unknown'}`);
+      send({ type: 'MIC_ERROR' });
+    };
     r.onaudiostart = () => send({ type: 'AUDIO' });
     r.onspeechstart = () => {
       heard.current.startAt ||= Date.now();
@@ -237,6 +237,7 @@ export function App() {
     sock.onmessage = (e) => {
       const m = parseMessage(DaemonMessage, String(e.data));
       if (!m) return;
+      clearTimeout(listen.current.idleTimer);
       if (m.type === 'released') {
         actor.send({ type: m.reason === 'background' ? 'NOTIFY' : 'LISTEN_DONE', text: '' });
         return;
@@ -267,18 +268,22 @@ export function App() {
   }, [actor, raise]);
 
   // Speech queue drained: a plain tts is done; a tts with listen opens the mic next.
+  // The edge from playing to idle, read off the machine: a closure over the spoken count
+  // went stale and never answered the tts (live test, 2026-10-05).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; one subscription per actor.
   useEffect(() => {
+    let wasPlaying = false;
     const s2 = actor.subscribe((s) => {
-      if (s.matches({ speech: 'idle' }) && spoken.of > 0 && spoken.done >= spoken.of) {
+      const playing = s.matches({ speech: 'playing' });
+      if (wasPlaying && !playing) {
         setSpoken({ done: 0, of: 0 });
         if (listen.current.after) actor.send({ type: 'REQUEST', kind: 'listen' });
         else post({ type: 'complete', text: '', startAt: 0, endAt: 0 });
       }
+      wasPlaying = playing;
     });
-    return () => {
-      s2.unsubscribe();
-    };
-  });
+    return () => s2.unsubscribe();
+  }, [actor]);
 
   // Earcon once per state change (the listen-open chime plays in startMic).
   const lastTurn = useRef<Turn>(turn);

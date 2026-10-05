@@ -28,6 +28,13 @@ export function nextBackoff(prev: number | null): number {
   return Math.min(MAX_BACKOFF_MS, Math.max(250, prev * 2));
 }
 
+/** Why the mic is restarting, for the "mic restart #N: reason" log line. */
+export function restartReason(event: { type: string }, c: PageContext): string {
+  if (event.type === 'MIC_ERROR') return 'mic error';
+  if (event.type === 'WATCHDOG') return 'watchdog';
+  return watchdogVerdict({ ...c, now: Date.now() }) ?? 'watchdog';
+}
+
 export type PageEvent =
   | { type: 'PAUSE'; trusted: boolean }
   | { type: 'RESUME'; trusted: boolean }
@@ -60,6 +67,7 @@ export interface PageContext {
   speechAt: number;
   resultAt: number;
   heardAt: number;
+  restarts: number;
 }
 
 const live = not(stateIn({ mic: 'paused' }));
@@ -75,6 +83,8 @@ export const pageMachine = setup({
     prefetchClips: (_: unknown, _p: { clips: string[] }) => {},
     playClip: (_: unknown, _p: { clip: string }) => {},
     speakFallback: (_: unknown, _p: { clip: string }) => {},
+    // The daemon logs these as "page <line>".
+    log: (_: unknown, _p: { line: string }) => {},
   },
   guards: {
     trusted: ({ event }) => 'trusted' in event && event.trusted,
@@ -101,6 +111,7 @@ export const pageMachine = setup({
     speechAt: 0,
     resultAt: 0,
     heardAt: 0,
+    restarts: 0,
   },
   on: {
     SET_AUTOSEND: { actions: assign({ autosend: ({ event }) => event.on }) },
@@ -127,7 +138,10 @@ export const pageMachine = setup({
               // The only place the mic starts; every path here passes canStart (!paused).
               entry: ['startMic', assign({ running: false, endedAt: now, heardAt: now })],
               on: {
-                MIC_STARTED: { target: 'listening', actions: assign({ running: true }) },
+                MIC_STARTED: {
+                  target: 'listening',
+                  actions: [assign({ running: true }), { type: 'log', params: { line: 'mic start' } }],
+                },
                 MIC_ERROR: 'restarting',
               },
             },
@@ -150,7 +164,19 @@ export const pageMachine = setup({
               },
             },
             restarting: {
-              entry: ['stopMic', assign({ backoff: ({ context }) => nextBackoff(context.backoff) })],
+              entry: [
+                'stopMic',
+                assign({
+                  backoff: ({ context }) => nextBackoff(context.backoff),
+                  restarts: ({ context }) => context.restarts + 1,
+                }),
+                {
+                  type: 'log',
+                  params: ({ context, event }) => ({
+                    line: `mic restart #${context.restarts}: ${restartReason(event, context)}`,
+                  }),
+                },
+              ],
               after: { backoff: [{ guard: 'canStart', target: 'starting' }, { target: 'idle' }] },
             },
           },

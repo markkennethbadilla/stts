@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { app, attachPage, deps, exitCodeWhenTaken, slotId } from '../../src/daemon.ts';
+import { app, attachPage, deps, exitCodeWhenTaken, resetTurns, slotId } from '../../src/daemon.ts';
 import {
   BACKGROUND_RESULT,
   CONVERSATION_ENDED,
@@ -27,6 +27,7 @@ beforeEach(() => {
   sent = [];
   logs.length = 0;
   exits.length = 0;
+  resetTurns();
   page = attachPage((m) => void sent.push(m));
 });
 afterEach(() => {

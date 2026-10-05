@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tsdown",
+    "build": "tsdown && vite build",
     "check": "biome ci . && tsc --noEmit && vitest run",
     "test": "vitest run",
     "e2e": "playwright test"

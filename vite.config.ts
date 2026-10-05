@@ -6,5 +6,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./web', import.meta.url)) } },
+  // public/earcon goes to dist/earcon through tsdown, not into dist/web.
+  publicDir: false,
   build: { outDir: 'dist/web' },
 });

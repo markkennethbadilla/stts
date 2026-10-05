@@ -89,7 +89,7 @@ describe('client', () => {
 
   it('surfaces a non-200 reply with its text', async () => {
     routes = { 'GET /api/ping': ping(c.ourDir), 'POST /request': () => new Response('superseded', { status: 504 }) };
-    await expect(c.request(body)).rejects.toThrow('stts daemon returned 504: superseded');
+    await expect(c.request(body)).rejects.toThrow(/^superseded$/);
   });
 
   it('daemonGone only matches the three codes', () => {

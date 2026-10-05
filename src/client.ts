@@ -67,10 +67,12 @@ async function post(body: RequestBody): Promise<string> {
     signal: AbortSignal.timeout(budgetMs() + 5000),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`stts daemon returned ${res.status}: ${text}`);
+  if (!res.ok) throw new Error(text);
   return text;
 }
 
+// Contract: 200 is the reply text; any other status throws its body text, which the MCP
+// server turns into the tool error.
 // On ECONNRESET, ECONNREFUSED or EPIPE the daemon is respawned and the request sent once more.
 export async function request(body: RequestBody): Promise<string> {
   await ensureDaemon();

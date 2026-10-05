@@ -2,6 +2,7 @@
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 import { type ChildProcess, spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,8 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { launch } from 'chrome-launcher';
 import { Hono } from 'hono';
+import removeMarkdown from 'remove-markdown';
+import { createActor } from 'xstate';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -23,10 +26,12 @@ import {
   REQUEST_TIMEOUT_MS,
   RequestBody,
   readNotes,
+  SENTINELS,
   STOPPED,
   SUPERSEDED,
-  turnReply,
 } from './protocol.ts';
+import { toParts } from './sentences.ts';
+import { ackGate, turnsMachine } from './turns.ts';
 
 export const port = Number(process.env['STTS_PORT'] ?? DEFAULT_PORT);
 const budgetMs = () => Number(process.env['STTS_REQUEST_TIMEOUT_MS'] ?? REQUEST_TIMEOUT_MS);
@@ -37,6 +42,7 @@ export const dataDir =
     : join(homedir(), '.local', 'share', 'cc-gc-stts');
 const profileDir = join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
 const PIPER_PORT = 15987;
+const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
 
 // Swappable side effects, so the tests run with no Chrome, no Piper and no exit.
 export const deps = {
@@ -45,8 +51,28 @@ export const deps = {
     appendFileSync(join(dataDir, 'daemon.log'), `${new Date().toISOString()} ${line}\n`);
   },
   async openWindow(): Promise<void> {
+    mkdirSync(profileDir, { recursive: true }); // chrome-launcher writes chrome.pid into it
     const chrome = await launch({
-      chromeFlags: [`--app=http://127.0.0.1:${port}/`, '--window-size=1600,600'],
+      // The old install's flags (spec 039): chrome-launcher's defaults (muted audio among them) are off.
+      // A fixed debugging port: with port 0, chrome-launcher reads the port from chrome-err.log,
+      // which this kept profile appends to, so it found a stale port from an earlier run.
+      port: port + 100,
+      startingUrl: 'about:blank',
+      ignoreDefaultFlags: true,
+      chromeFlags: [
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-infobars',
+        '--test-type',
+        '--disable-blink-features=AutomationControlled',
+        `--app=http://127.0.0.1:${port}/`,
+        '--window-size=1600,600',
+        '--autoplay-policy=no-user-gesture-required',
+        '--use-fake-ui-for-media-stream',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+      ],
       userDataDir: profileDir,
     });
     chrome.process.on('exit', () => deps.exit(0));
@@ -58,21 +84,43 @@ export const deps = {
   },
 };
 
-type Slot = {
-  id: number;
-  body: RequestBody;
-  ac: AbortController;
-  timer: ReturnType<typeof setTimeout>;
-  done: (status: 200 | 504, text: string) => void;
-};
+type Reply = { status: 200 | 504; text: string };
+type Slot = { id: number; body: RequestBody; timer: ReturnType<typeof setTimeout>; done: (r: Reply) => void };
 
 let slot: Slot | null = null;
-let nextId = 0;
-let turn = 0;
+let seq = 0; // request generation, not a turn id: turn ids come from turnsMachine
 let carry = '';
 let keepCarry = false; // speech after a timeout release belongs to the next listen
 let page: ((m: DaemonMessage) => void) | null = null;
 let windowOpening = false;
+
+// Turn ids, dedupe, join and the ack gate live in the turns machine.
+let turns = createActor(turnsMachine, { input: {} }).start();
+let reported = 0;
+function watchTurns(): void {
+  turns.subscribe((s) => {
+    const c = s.context;
+    if (c.id <= reported) return;
+    reported = c.id;
+    if (slot && isListen(slot.body) && c.reply) settle(200, c.reply);
+    else {
+      // The listen went away while joining: keep the words for the next one.
+      carry = `${carry} ${c.last?.text ?? ''}`.trim();
+      turns.send({ type: 'answered' });
+    }
+  });
+}
+watchTurns();
+
+/** Tests only: a fresh turns machine and no carry. */
+export function resetTurns(): void {
+  turns.stop();
+  turns = createActor(turnsMachine, { input: {} }).start();
+  reported = 0;
+  carry = '';
+  keepCarry = false;
+  watchTurns();
+}
 
 export const slotId = (): number | null => slot?.id ?? null;
 const isListen = (b: RequestBody): boolean => b.kind === 'stt' || b.listen === true;
@@ -82,7 +130,7 @@ function settle(status: 200 | 504, text: string): void {
   if (!s) return;
   slot = null;
   clearTimeout(s.timer);
-  s.done(status, text);
+  s.done({ status, text });
 }
 
 function release(reason: 'superseded' | 'timeout' | 'background'): void {
@@ -99,6 +147,28 @@ function send(): void {
       deps.log(`chrome launch failed ${String(e)}`);
     });
   }
+}
+
+// One page round trip in the slot, bounded by ms.
+function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
+  if (isListen(body)) keepCarry = false;
+  const result = new Promise<Reply>((resolve) => {
+    const timer = setTimeout(
+      () => {
+        if (slot?.id !== id) return;
+        if (isListen(body)) {
+          release('timeout');
+          keepCarry = true;
+          turns.send({ type: 'continues' });
+          settle(200, LISTEN_CONTINUES);
+        } else settle(200, readNotes.spoken);
+      },
+      Math.max(0, ms),
+    );
+    slot = { id, body, timer, done: resolve };
+  });
+  send();
+  return result;
 }
 
 // The page side of /ws. Returns the frame handler; the caller wires close to detach().
@@ -138,11 +208,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         const text = `${carry} ${m.text}`.trim();
         carry = '';
         keepCarry = false;
-        turn += 1;
-        settle(200, turnReply(turn, text, m.startAt, m.endAt));
+        turns.send({ type: 'heard', text, startAt: m.startAt, endAt: m.endAt });
+        // Joining, or dropped as a duplicate or stale: the listen stays open.
+        if (slot) send();
         return;
       }
       case 'nospeech':
+        turns.send({ type: 'nospeech' });
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
@@ -157,6 +229,26 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
     }
   };
   return { onMessage, detach };
+}
+
+// Read-aloud content by reference. Markdown is stripped; plain text is left as it is,
+// because remove-markdown would eat a line that starts with "1." or "-". HTML is refused.
+export async function loadText(file?: string, url?: string): Promise<string> {
+  if (file) {
+    const raw = await readFile(file, 'utf-8');
+    return /\.(md|markdown|mdx)$/i.test(file) ? removeMarkdown(raw) : raw;
+  }
+  if (!url) throw new Error('pass text, file or url');
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`fetching ${url} returned ${res.status}`);
+  const type = res.headers.get('content-type') ?? '';
+  if (/html/i.test(type)) {
+    throw new Error(
+      `${url} is an HTML page, which would be read out as markup. Save its text to a file and pass file instead.`,
+    );
+  }
+  const raw = await res.text();
+  return /markdown/i.test(type) || /\.(md|markdown)(\?|#|$)/i.test(url) ? removeMarkdown(raw) : raw;
 }
 
 export const app = new Hono();
@@ -179,6 +271,7 @@ app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 app.post('/notify', (c) => {
   if (slot && isListen(slot.body)) {
     release('background');
+    turns.send({ type: 'background' });
     settle(200, BACKGROUND_RESULT);
   }
   return c.text('ok');
@@ -190,51 +283,107 @@ app.post('/request', async (c) => {
   const body = parsed.data;
   if (body.who === 'agent' && body.close) body.close = false; // spec 026: only the session closes
 
+  const t = turns.getSnapshot().context;
+  if (body.kind === 'stt') {
+    const refused = ackGate(t, body.ack);
+    if (refused) return c.text(refused, 409);
+  }
+  if (body.kind === 'tts' || body.ack === t.id) turns.send({ type: 'answered' });
+
+  const byRef = body.kind === 'tts' && body.text === undefined;
+  let parts: string[] = [];
+  if (byRef) {
+    try {
+      parts = toParts(await loadText(body.file, body.url));
+    } catch (e) {
+      return c.text(e instanceof Error ? e.message : String(e), 400);
+    }
+    if (!parts.length) return c.text('there is nothing to read in it', 400);
+    if ((body.part ?? 1) > parts.length) {
+      return c.text(`part ${body.part} is past the end: it has ${parts.length} parts`, 400);
+    }
+  }
+
   if (slot) {
     release('superseded');
-    slot.ac.abort();
     settle(504, SUPERSEDED);
   }
-  if (isListen(body)) keepCarry = false;
+  const id = ++seq;
+  const t0 = Date.now();
+  const left = (): number => budgetMs() - (Date.now() - t0);
+  const out = (r: Reply) => c.text(r.text, r.status);
 
-  const id = ++nextId;
-  const ac = new AbortController();
-  const result = new Promise<{ status: 200 | 504; text: string }>((resolve) => {
-    const timer = setTimeout(() => {
-      if (slot?.id !== id) return;
-      if (isListen(body)) {
-        release('timeout');
-        keepCarry = true;
-        settle(200, LISTEN_CONTINUES);
-      } else settle(200, readNotes.spoken);
-    }, budgetMs());
-    slot = { id, body, ac, timer, done: (status, text) => resolve({ status, text }) };
-  });
-  send();
-  const { status, text } = await result;
-  return c.text(text, status);
+  if (!byRef) return out(await occupy(id, body, budgetMs()));
+
+  // Read-aloud: part by part, no new part after half the budget, then the listen.
+  const n = parts.length;
+  const where = body.file ? 'the same file' : 'the same url';
+  const first = (body.part ?? 1) - 1;
+  let i = first;
+  for (; i < n; i++) {
+    if (i > first && Date.now() - t0 > budgetMs() / 2) break;
+    if (seq !== id) return c.text(SUPERSEDED, 504);
+    const last = i === n - 1;
+    const partBody: RequestBody = {
+      kind: 'tts',
+      who: body.who,
+      text: parts[i] ?? '',
+      part: i + 1,
+      listen: false,
+      close: body.close === true && body.listen !== true && last,
+      ...(body.rate === undefined ? {} : { rate: body.rate }),
+      ...(body.volume === undefined ? {} : { volume: body.volume }),
+    };
+    const r = await occupy(id, partBody, left());
+    if (r.status !== 200 || r.text === CONVERSATION_ENDED) return out(r);
+    if (r.text.startsWith(STOPPED)) return c.text(`${r.text} ${readNotes.stopped(i + 1, n, where)}`);
+  }
+  if (i < n) return c.text(readNotes.outOfTime(first + 1, i, n, where));
+  const note = readNotes.end(n);
+  if (body.listen !== true) return c.text(note);
+  if (seq !== id) return c.text(SUPERSEDED, 504);
+  const heard = await occupy(
+    id,
+    { kind: 'stt', who: body.who, ...(body.idleSec === undefined ? {} : { idleSec: body.idleSec }) },
+    left(),
+  );
+  if (heard.status !== 200 || (SENTINELS as readonly string[]).includes(heard.text)) return out(heard);
+  return c.text(`${heard.text}\n\n${note}`);
 });
 
-// Piper: one child process, started on the first clip, proxied so the page needs one origin.
+// Piper: its own HTTP server, started on the first clip if nothing answers on its port,
+// proxied so the page needs one origin. The page calls POST /voice/clip {text, voice, rate}.
 let piper: ChildProcess | null = null;
-app.post('/voice/clip', async (c) => {
-  const { text, voice, rate } = (await c.req.json()) as { text: string; voice: string; rate?: number };
-  piper ??= spawn(
-    'python',
-    ['-m', 'piper.http_server', '--host', '127.0.0.1', '--port', String(PIPER_PORT), '-m', voice],
-    {
-      cwd: join(dataDir, 'piper', 'voices'),
-      stdio: 'ignore',
-      windowsHide: true,
-    },
-  );
-  const t0 = Date.now();
-  const r = await fetch(`http://127.0.0.1:${PIPER_PORT}/`, {
+const piperClip = (text: string, voice: string, rate: number) =>
+  fetch(`http://127.0.0.1:${PIPER_PORT}/synthesize`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, voice, length_scale: 1 / (rate ?? 1) }),
+    body: JSON.stringify({ text, voice, length_scale: 1 / rate }),
     signal: AbortSignal.timeout(20_000),
   }).catch(() => null);
+
+function startPiper(voice: string): void {
+  const voices = join(PIPER_HOME, 'voices');
+  const py = join(PIPER_HOME, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  const args = ['-m', 'piper.http_server', '--host', '127.0.0.1', '--port', String(PIPER_PORT)];
+  piper = spawn(py, [...args, '-m', join(voices, `${voice}.onnx`), '--data-dir', voices, '--sentence-silence', '0.2'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  piper.on('error', (e) => deps.log(`piper start failed ${String(e)}`));
+}
+
+app.post('/voice/clip', async (c) => {
+  const { text, voice, rate } = (await c.req.json()) as { text: string; voice: string; rate?: number };
+  const t0 = Date.now();
+  let r = await piperClip(text, voice, rate ?? 1);
+  if (!r && !piper) {
+    startPiper(voice);
+    for (let i = 0; i < 30 && !r; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      r = await piperClip(text, voice, rate ?? 1);
+    }
+  }
   const wav = r?.ok ? await r.arrayBuffer() : null;
   // ponytail: logs the first 30 chars, as the old line did; never the full text.
   const head = JSON.stringify(text.slice(0, 30));

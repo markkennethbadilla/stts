@@ -50,3 +50,17 @@ describe('mcp tools', () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+describe('STTS_WHO', () => {
+  it('agent marks every call who=agent; unset is session', async () => {
+    vi.resetModules();
+    process.env['STTS_WHO'] = 'agent';
+    const { server: s2 } = await import('../../src/mcp.ts');
+    delete process.env['STTS_WHO'];
+    const c2 = new Client({ name: 't2', version: '0' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([s2.connect(a), c2.connect(b)]);
+    await c2.callTool({ name: 'tts', arguments: { text: 'bye', close: true } });
+    expect(request).toHaveBeenLastCalledWith({ kind: 'tts', who: 'agent', text: 'bye', close: true });
+  });
+});

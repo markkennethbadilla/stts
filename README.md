@@ -13,3 +13,16 @@ For development: `npm ci`, then `npm run check` (biome, tsc, vitest) and `npm ru
 ## Licences
 
 MIT, see `LICENSE`. The `@modelcontextprotocol/sdk` 1.32.1 `LICENSE` file in `node_modules` reads "MIT License, Copyright (c) 2024 Anthropic, PBC", so it is MIT despite GitHub's NOASSERTION label.
+
+## Routes
+
+The daemon listens on `127.0.0.1:${STTS_PORT:-15986}`:
+
+- `GET /` the page, `GET /earcon/:name.ogg` the earcons
+- `GET /api/ping` returns `ok` plus the `X-Stts-Dir` header; `POST /api/shutdown`
+- `POST /request` returns plain text: 200 is the tool reply, any other status (409 unanswered turn, 504 superseded, 400 bad input) is the tool error text
+- `GET /barge` returns `{text:"", open}`; `POST /notify` ends an open listen with the background result
+- `POST /voice/clip` `{text, voice, rate}` returns Piper's `audio/wav`; the page speaks through it so it needs one origin
+- WebSocket `/ws` carries the page messages defined in `src/protocol.ts`
+
+`STTS_WHO=agent` (set by the MCP gateway entry) marks calls from helper agents, whose `close` is ignored. The plugin's `.mcp.json` sets nothing, which means `session`. `npm run build` writes `dist/mcp.js`, `dist/daemon.js`, `dist/web/` and `dist/earcon/`.
