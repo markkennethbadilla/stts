@@ -16728,7 +16728,11 @@ const SENTINELS = [
 const ENDED_NOTE = ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the window has already shut down, so do not speak, do not call stt or tts again, and stop.`;
 const NO_SPEECH_NOTE = ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window is still open and listening. If a background result has finished, relay it with tts (listen=true); otherwise call stt again without speaking. It never means the conversation ended. If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). Anything he was saying is kept for that listen.`;
 const CONTINUES_NOTE = ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually because he is still talking. Nothing he said is lost: call stt again at once, without speaking, and it returns everything he said.`;
-const NOTES = ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + " Never sleep or block on another tool to wait for him: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment he stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation. Every heard turn starts with [turn N, heard HH:MM:SS to HH:MM:SS]. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and drops speech said while you were working or speaking, so what you get is current and complete. Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
+const NO_SLEEP_NOTE = ` Never sleep or block on another tool to wait for him: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment he stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.`;
+const TURN_NOTE = " Every heard turn starts with [turn N, heard HH:MM:SS to HH:MM:SS]. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and drops speech said while you were working or speaking, so what you get is current and complete. Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
+const BARGE_NOTE = " If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, followed by a line saying where it cut you off. Treat that message as an addition or a steer: answer it, then continue the task you were cut off from, unless it explicitly says stop, abort, halt or never mind.";
+const bargeLine = (part, sentence) => `(interrupted your speech at part ${part} sentence ${sentence}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind)`;
+const NOTES = BARGE_NOTE + ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
 `${NOTES}`;
 `${NOTES}`;
 const UNFINISHED_END = new Set("and or but so because cause like um uh er erm hmm the a an to of with for from in on at by into about if that which who whose when while where what how as than then also just maybe my your our their his her its is are was were be i we you he she they it's i'm thinking wondering saying guess mean know said".split(" "));
@@ -16738,6 +16742,7 @@ function readsUnfinished(text) {
 }
 const hhmmss = (ms) => new Date(ms).toTimeString().slice(0, 8);
 const turnReply = (id, text, startAt, endAt) => `[turn ${id}, heard ${hhmmss(startAt)} to ${hhmmss(endAt)}] ${text}`;
+const TURN_PREFIX = /^\[turn (\d+), heard (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d)\] /;
 const unansweredError = (n) => `turn ${n} is unanswered. Answer it now with tts (listen=true), or, if it needs no spoken answer, call stt with ack=${n}.`;
 const SUPERSEDED = "superseded";
 const readNotes = {
@@ -16778,7 +16783,12 @@ const PageMessage = discriminatedUnion("type", [
 		type: literal("complete"),
 		text: string(),
 		startAt: number(),
-		endAt: number()
+		endAt: number(),
+		source: _enum(["typed", "heard"]).optional(),
+		interrupted: object({
+			part: number().int().min(1),
+			sentence: number().int().min(1)
+		}).optional()
 	}),
 	object({ type: literal("cancel") }),
 	object({ type: literal("close") }),
@@ -16991,6 +17001,9 @@ let windowOpening = false;
 let windowTimer;
 /** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
 const WINDOW_OPEN_MS = 15e3;
+let held = null;
+let barge = null;
+let typedNext = false;
 let turns = createActor(turnsMachine, { input: {} }).start();
 let reported = 0;
 function watchTurns() {
@@ -16998,7 +17011,11 @@ function watchTurns() {
 		const c = s.context;
 		if (c.id <= reported) return;
 		reported = c.id;
-		if (slot && isListen(slot.body) && c.reply) settle(200, c.reply);
+		if (typedNext) deps.log(`page typed turn ${c.id}`);
+		typedNext = false;
+		const line = barge;
+		barge = null;
+		if (slot && (isListen(slot.body) || line) && c.reply) settle(200, line ? `${c.reply}\n${line}` : c.reply);
 		else {
 			carry = `${carry} ${c.last?.text ?? ""}`.trim();
 			turns.send({ type: "answered" });
@@ -17013,6 +17030,9 @@ function resetTurns() {
 	reported = 0;
 	carry = "";
 	keepCarry = false;
+	held = null;
+	barge = null;
+	typedNext = false;
 	watchTurns();
 }
 const slotId = () => slot?.id ?? null;
@@ -17073,8 +17093,25 @@ function occupy(id, body, ms) {
 			done: resolve
 		};
 	});
-	send();
+	if (held && isListen(body)) {
+		const h = held;
+		held = null;
+		hear(h, true);
+	}
+	if (slot?.id === id) send();
 	return result;
+}
+function hear(h, typed) {
+	const text = `${carry} ${h.text}`.trim();
+	carry = "";
+	keepCarry = false;
+	typedNext = typed;
+	turns.send({
+		type: "heard",
+		text,
+		startAt: h.startAt,
+		endAt: h.endAt
+	});
 }
 function attachPage(sendToPage) {
 	page = sendToPage;
@@ -17098,24 +17135,34 @@ function attachPage(sendToPage) {
 				return;
 			case "settings": return;
 			case "complete": {
-				if (!slot) {
-					if (keepCarry) carry = `${carry} ${m.text}`.trim();
+				const said = m.text.trim();
+				const typed = m.source === "typed";
+				const h = {
+					text: m.text,
+					startAt: m.startAt,
+					endAt: m.endAt
+				};
+				if (slot && m.interrupted && said) {
+					barge = bargeLine(m.interrupted.part, m.interrupted.sentence);
+					hear(h, typed);
 					return;
 				}
-				if (!isListen(slot.body)) {
+				if (!slot || !isListen(slot.body)) {
+					if (typed && said) {
+						held = h;
+						deps.log("page typed held for the next listen");
+						return;
+					}
+					if (!slot) {
+						if (keepCarry) carry = `${carry} ${m.text}`.trim();
+						return;
+					}
+					if (barge) return;
 					settle(200, readNotes.spoken);
 					return;
 				}
-				if (!m.text.trim()) return;
-				const text = `${carry} ${m.text}`.trim();
-				carry = "";
-				keepCarry = false;
-				turns.send({
-					type: "heard",
-					text,
-					startAt: m.startAt,
-					endAt: m.endAt
-				});
+				if (!said) return;
+				hear(h, typed);
 				if (slot) send();
 				return;
 			}
@@ -17224,7 +17271,7 @@ app.post("/request", async (c) => {
 			...body.rate === void 0 ? {} : { rate: body.rate },
 			...body.volume === void 0 ? {} : { volume: body.volume }
 		}, left());
-		if (r.status !== 200 || r.text === "__STTS_CONVERSATION_ENDED__") return out(r);
+		if (r.status !== 200 || r.text === "__STTS_CONVERSATION_ENDED__" || TURN_PREFIX.test(r.text)) return out(r);
 		if (r.text.startsWith("__STTS_STOPPED__")) return c.text(`${r.text} ${readNotes.stopped(i + 1, n, where)}`);
 	}
 	if (i < n) return c.text(readNotes.outOfTime(first + 1, i, n, where));
