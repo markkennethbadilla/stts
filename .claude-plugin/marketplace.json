@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "stts",
-      "source": { "source": "github", "repo": "markkennethbadilla/stts" },
+      "source": "./",
       "description": "Talk to the model by voice: speech to text in, the reply spoken back, in a loop."
     }
   ]
