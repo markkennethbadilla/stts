@@ -41,6 +41,9 @@ export const test = base.extend<{ voice: Page }>({
             this.onaudiostart?.();
           }, 0);
         }
+        abort(): void {
+          setTimeout(() => this.onend?.(), 0);
+        }
         stop(): void {
           setTimeout(() => this.onend?.(), 0);
         }

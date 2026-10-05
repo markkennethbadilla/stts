@@ -5,6 +5,12 @@ import { and, assign, not, or, raise, setup, stateIn } from 'xstate';
 import { readsUnfinished } from '../src/protocol';
 
 export const CLIPS_AHEAD = 3;
+/**
+ * Extra hold when the words are still interim. Chrome's cloud recogniser can keep every result
+ * interim through a 12 s pause, so only finals arming made every cloud turn wait for the 60 s
+ * session end (real Chrome test, 2026-10-06). Interim words unchanged for hold + this are a turn.
+ */
+export const INTERIM_EXTRA_MS = 800;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
 export const LANG_ERR = 'language-not-supported';
@@ -145,6 +151,8 @@ export interface PageContext {
   interrupted: Interrupted | null;
   // The mic start in progress is an automatic restart (no chime).
   auto: boolean;
+  // The armed transcript is still interim (no final yet): the hold is longer.
+  interimHold: boolean;
 }
 
 const cut = ({ context, event }: { context: PageContext; event: PageEvent }): Interrupted => ({
@@ -192,7 +200,7 @@ export const pageMachine = setup({
   },
   delays: {
     backoff: ({ context }) => context.backoff ?? 0,
-    autosend: ({ context }) => holdMs(context),
+    autosend: ({ context }) => holdMs(context) + (context.interimHold ? INTERIM_EXTRA_MS : 0),
   },
 }).createMachine({
   id: 'page',
@@ -215,6 +223,7 @@ export const pageMachine = setup({
     sentence: 1,
     interrupted: null,
     auto: false,
+    interimHold: false,
   },
   on: {
     SET_TYPING: { actions: assign({ typing: ({ event }) => event.on }) },
@@ -250,6 +259,11 @@ export const pageMachine = setup({
                   actions: [assign({ running: true }), { type: 'log', params: { line: 'mic start' } }],
                 },
                 MIC_ERROR: [{ guard: 'langGiveUp', target: 'failed' }, { target: 'restarting' }],
+              },
+              // A start that never reports back (no onstart, no error) restarts instead of hanging with the
+              // mic off: the light stayed grey after every reply (log 2026-10-06 21:54 to 21:57 UTC).
+              after: {
+                5000: { target: 'restarting', actions: { type: 'log', params: { line: 'mic start timed out' } } },
               },
             },
             listening: {
@@ -346,7 +360,12 @@ export const pageMachine = setup({
             SPEECH_END: {
               guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
-              actions: assign({ transcript: ({ event }) => event.text }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
+            },
+            INTERIM: {
+              guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
+              target: 'armed',
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: true }),
             },
             // A final result is the recogniser's own end of utterance. Chrome's speechend in
             // continuous mode fires only when the session ends (the 15 s watchdog restart), so
@@ -354,7 +373,7 @@ export const pageMachine = setup({
             RESULT: {
               guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
-              actions: assign({ transcript: ({ event }) => event.text }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
             },
           },
         },
@@ -370,8 +389,14 @@ export const pageMachine = setup({
           },
           on: {
             PAUSE: { guard: 'trusted', target: 'off' },
-            SPEECH_START: 'off',
-            INTERIM: 'off',
+            // No SPEECH_START here: a new session starting after an error would drop a turn whose words
+            // were already heard. New words restart the hold through INTERIM and RESULT instead.
+            // New words restart the hold: a turn is words that stopped changing.
+            INTERIM: {
+              target: 'armed',
+              reenter: true,
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: true }),
+            },
             // The listen closed or the agent started speaking: a late speechend must not send again.
             LISTEN_DONE: 'off',
             ENQUEUE: 'off',
@@ -379,7 +404,7 @@ export const pageMachine = setup({
             RESULT: {
               target: 'armed',
               reenter: true,
-              actions: assign({ transcript: ({ event }) => event.text }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
             },
             TYPED: 'off',
             SET_AUTOSEND: { guard: ({ event }) => !event.on, target: 'off' },

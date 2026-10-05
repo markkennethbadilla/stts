@@ -56,6 +56,7 @@ for (const [name, width, height, theme = 'dark'] of [
         setTimeout(() => this.onstart?.(), 50);
       }
       stop() {}
+      abort() {}
     }
     (globalThis as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeRec;
   });

@@ -30,6 +30,7 @@ import {
   RequestBody,
   readNotes,
   SENTINELS,
+  SPEECH_LOST,
   STOPPED,
   SUPERSEDED,
   TURN_PREFIX,
@@ -147,7 +148,8 @@ export const isLatest = (): boolean => {
  * Between turns, move to a newer install. Safe when nothing is held or only a listen with no
  * words yet: the client resends the listen to the new daemon, and the page reconnects.
  */
-const safe = (): boolean => (!slot || isListen(slot.body)) && !carry && !held;
+// Only on a plain listen: the client resends a cut request whole, so a cut tts would play again.
+const safe = (): boolean => (!slot || slot.body.kind === 'stt') && !carry && !held;
 
 export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   if (!safe()) return false;
@@ -159,7 +161,14 @@ export async function liveUpdate(skipUpdate = false): Promise<boolean> {
 }
 
 type Reply = { status: 200 | 504; text: string };
-type Slot = { id: number; body: RequestBody; timer: ReturnType<typeof setTimeout>; done: (r: Reply) => void };
+type Slot = {
+  id: number;
+  body: RequestBody;
+  timer: ReturnType<typeof setTimeout>;
+  done: (r: Reply) => void;
+  // The page already got this request (its speech may already have played).
+  sent?: boolean;
+};
 
 let slot: Slot | null = null;
 let seq = 0; // request generation, not a turn id: turn ids come from turnsMachine
@@ -232,8 +241,26 @@ function release(reason: 'superseded' | 'timeout' | 'background'): void {
 
 function send(): void {
   if (!slot) return;
-  if (page) page({ type: 'request', id: slot.id, body: slot.body });
-  else if (adopted && Date.now() - pageGoneAt < PAGE_GRACE_MS) {
+  if (page) {
+    // Never replay: a tts the page already got is not spoken again after a reload or reconnect
+    // (Mark 2026-10-06 heard an earlier reply twice). A tts with listen resends only its listen;
+    // a plain tts is done.
+    if (slot.sent && slot.body.kind === 'tts') {
+      if (!isListen(slot.body)) {
+        settle(200, readNotes.spoken);
+        return;
+      }
+      const b = slot.body;
+      page({
+        type: 'request',
+        id: slot.id,
+        body: { kind: 'stt', who: b.who, ...(b.idleSec === undefined ? {} : { idleSec: b.idleSec }) },
+      });
+      return;
+    }
+    slot.sent = true;
+    page({ type: 'request', id: slot.id, body: slot.body });
+  } else if (adopted && Date.now() - pageGoneAt < PAGE_GRACE_MS) {
     // The window is reloading or reconnecting after a live update: its "ready" resends the
     // slot. Opening a second window here was the old behaviour.
     clearTimeout(graceTimer);
@@ -321,7 +348,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         return;
       // Unmute: the page lost track of an open listen; resend only a listen, never a tts (a replay).
       case 'relisten':
-        if (slot && isListen(slot.body) && slot.body.kind === 'stt') send();
+        if (slot && isListen(slot.body)) send();
         return;
       case 'log':
         deps.log(`page ${m.line}`);
@@ -345,9 +372,15 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
             deps.log('page typed held for the next listen');
             return;
           }
+          // Speech with no listen open (after a Stop, a restart or a hand-off) is kept for the next
+          // listen, never dropped (rule 43; Mark 2026-10-06: a stt returned only STOPPED and his words were gone).
           if (!slot) {
             if (keepCarry) carry = `${carry} ${m.text}`.trim();
-            return; // spec 042: speech with no open listen is dropped
+            else if (said) {
+              held = held ? { ...held, text: `${held.text} ${said}`, endAt: m.endAt } : h;
+              deps.log('page heard held for the next listen');
+            }
+            return;
           }
           // The stopped speech's own complete while a barge turn is still joining: not the end of the tts.
           if (barge) return;
@@ -361,6 +394,11 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         if (slot) send();
         return;
       }
+      // The page heard speech it could not turn into words: the open listen says so.
+      case 'lost':
+        deps.log('page speech lost');
+        if (slot && isListen(slot.body) && !carry) settle(200, SPEECH_LOST);
+        return;
       case 'nospeech':
         turns.send({ type: 'nospeech' });
         settle(200, NO_SPEECH);

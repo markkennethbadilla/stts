@@ -13,6 +13,7 @@ import {
   PhoneOff,
   SendHorizontal,
   Settings2,
+  SkipForward,
   Volume2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -90,6 +91,7 @@ type Recognition = {
   processLocally?: boolean;
   start: (track?: MediaStreamTrack) => void;
   stop: () => void;
+  abort: () => void;
   onstart: (() => void) | null;
   onend: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
@@ -110,6 +112,16 @@ export function App() {
   // On-device recognition: null until SpeechRecognition.available() has answered once.
   const local = useRef<boolean | null>(null);
   const heard = useRef({ final: '', startAt: 0 });
+  // The current session's interim words, not yet final.
+  const liveWords = useRef('');
+  // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
+  // error cut utterances off in the real Chrome test (2026-10-06), and the next session starts empty.
+  const keepLive = (): void => {
+    if (!liveWords.current) return;
+    heard.current.final = `${heard.current.final} ${liveWords.current}`.trim();
+    liveWords.current = '';
+    actor.send({ type: 'RESULT', text: heard.current.final });
+  };
   // The clip whose echo was last logged: "page echo discarded" once per clip.
   const echoLogged = useRef('');
   // Every sentence started, with its start time: the echo guard compares against the last 10 s.
@@ -124,7 +136,10 @@ export function App() {
   // agent's own tail) are dropped: a stale final made the idle timer skip nospeech and the
   // listen hang until the daemon budget, and a stale startAt dated turns minutes early.
   const armIdle = (sec: number, keepWords = false): void => {
-    if (!keepWords) heard.current = { final: '', startAt: 0 };
+    if (!keepWords) {
+      heard.current = { final: '', startAt: 0 };
+      liveWords.current = '';
+    }
     if (sec > 0) {
       listen.current.idleTimer = window.setTimeout(() => {
         if (!heard.current.final) post({ type: 'nospeech' });
@@ -132,7 +147,6 @@ export function App() {
     }
   };
   const audio = useRef<HTMLAudioElement | null>(null);
-  const micStream = useRef<MediaStream | null>(null);
   // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
   const clipCache = useRef(new Map<string, Promise<Blob | string>>());
   const [interim, setInterim] = useState('');
@@ -175,13 +189,13 @@ export function App() {
       actions: {
         startMic: () => void startMic(),
         // A mic restart must not cancel the listen's idle timer, so stopMic leaves it alone.
-        // The capture stream stops with it: every start opened a new one and none was ever closed.
         stopMic: () => {
-          rec.current?.stop();
+          keepLive();
+          // abort, not stop: a stop waits for a final the service may never send, and Chrome runs one
+          // session at a time, so every later start hung (real Chrome test, 2026-10-06).
+          rec.current?.abort();
           // Its late end, error and speechend now belong to no one: a stopped recogniser moves nothing.
           rec.current = null;
-          for (const t of micStream.current?.getTracks() ?? []) t.stop();
-          micStream.current = null;
         },
         sendTurn: ({ context }, { text }) => {
           clearTimeout(listen.current.idleTimer);
@@ -193,6 +207,7 @@ export function App() {
           setTurnNo((n) => n + 1);
           post({ type: 'complete', text, startAt: heard.current.startAt, endAt: Date.now() });
           heard.current.final = '';
+          liveWords.current = '';
           send({ type: 'LISTEN_DONE' });
         },
         deliver: (_, { text, source, interrupted }) => {
@@ -202,6 +217,7 @@ export function App() {
           setInterim('');
           setTurnNo((n) => n + 1);
           heard.current.final = '';
+          liveWords.current = '';
           // The cut-off tts already returns this turn: its end must not open a listen.
           if (interrupted) listen.current.after = false;
           const now = Date.now();
@@ -223,7 +239,17 @@ export function App() {
         prefetchClips: (_, { clips }) => {
           for (const c of clips) fetchClip(c);
         },
-        log: (_, { line }) => log(line),
+        log: (_, { line }) => {
+          log(line);
+          // A recogniser that heard speech but gave no words: tell the listen his words were lost.
+          // On-device recognition that hears speech but returns no words: use the cloud from the next
+          // start (real Chrome test 2026-10-06: on-device gave no words, cloud heard every turn).
+          // ponytail: stays on the cloud until a reload; retry on-device if Mark wants it local-first.
+          if (line.includes('speech heard but no words')) {
+            local.current = false;
+            post({ type: 'lost' });
+          }
+        },
         speakFallback: (_, { clip }) => {
           const u = new SpeechSynthesisUtterance(clip);
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
@@ -307,6 +333,10 @@ export function App() {
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
     // Not over the agent's speech: the mic opening there is silent.
+    // This runs as the entry action, mid-transition: the snapshot still shows the old state until the
+    // next tick. Read it after one await, or an automatic restart (no chime, no await) saw itself as
+    // not starting and never opened the mic: the grey light after every reply (real Chrome test 2026-10-06).
+    await Promise.resolve();
     const snap = actor.getSnapshot();
     if (!snap.matches({ speech: 'playing' }) && !snap.context.auto) await playEarcon('listen-open');
     // Paused, or the listen ended, during the chime: the mic must not start.
@@ -340,14 +370,18 @@ export function App() {
     r.continuous = true;
     r.interimResults = true;
     r.processLocally = local.current;
-    micStream.current = stream;
     // A stopped recogniser still fires its end and error late; only the current one may move
     // the machine, or a dead one's end marks the new mic as stopped.
     const mine = (): boolean => rec.current === r;
     r.onstart = () => mine() && send({ type: 'MIC_STARTED' });
-    r.onend = () => mine() && send({ type: 'MIC_ENDED' });
+    r.onend = () => {
+      if (!mine()) return;
+      keepLive();
+      send({ type: 'MIC_ENDED' });
+    };
     r.onerror = (e) => {
       if (!mine()) return;
+      keepLive();
       log(`mic error ${e.error ?? 'unknown'}`);
       // On-device refused the language: the next start uses cloud recognition.
       if (e.error === LANG_ERR) local.current = false;
@@ -391,9 +425,11 @@ export function App() {
         if (!live) return;
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
+      liveWords.current = live;
       setInterim(`${heard.current.final} ${live}`.trim());
-      // Words still forming cancel an armed autosend; a settled final arms it.
-      send({ type: live ? 'INTERIM' : 'RESULT', text: heard.current.final });
+      // Words still forming restart the hold with everything heard so far; a final settles it.
+      if (live) send({ type: 'INTERIM', text: `${heard.current.final} ${live}`.trim() });
+      else send({ type: 'RESULT', text: heard.current.final });
     };
     rec.current = r;
     const track = stream?.getAudioTracks()[0];
@@ -565,10 +601,23 @@ export function App() {
     return () => speechSynthesis.removeEventListener('voiceschanged', fill);
   }, []);
 
-  // Ctrl+M / Ctrl+R toggle the mic; Alt+Up/Down walk the history.
+  // Skip: the speech stops at once and the turn moves on as if it had finished (a tts with listen
+  // opens the listen; a plain tts returns). Unlike Stop, it does not end a read-aloud or the listen.
+  const skip = (): void => {
+    if (!actor.getSnapshot().matches({ speech: 'playing' })) return;
+    audio.current?.pause();
+    speechSynthesis.cancel();
+    send({ type: 'STOP' });
+    log('skipped by Mark');
+  };
+
+  // Ctrl+M / Ctrl+R toggle the mic; Alt+Up/Down walk the history; Esc skips the speech.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && (e.key === 'm' || e.key === 'r')) {
+      if (e.key === 'Escape' && actor.getSnapshot().matches({ speech: 'playing' })) {
+        e.preventDefault();
+        skip();
+      } else if (e.ctrlKey && (e.key === 'm' || e.key === 'r')) {
         e.preventDefault();
         actor.send({ type: paused ? 'RESUME' : 'PAUSE', trusted: e.isTrusted });
         log(paused ? 'resumed by Mark' : 'paused by Mark');
@@ -663,6 +712,9 @@ export function App() {
             }}
           >
             <CircleStop />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Skip to listening (Esc)" onClick={skip}>
+            <SkipForward />
           </Button>
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Settings" />}>

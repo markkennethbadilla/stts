@@ -17,7 +17,15 @@ export const NO_SPEECH = '__STTS_NO_SPEECH__';
 export const LISTEN_CONTINUES = '__STTS_LISTEN_CONTINUES__';
 export const STOPPED = '__STTS_STOPPED__';
 export const BACKGROUND_RESULT = '__STTS_BACKGROUND_RESULT__';
-export const SENTINELS = [CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT] as const;
+export const SPEECH_LOST = '__STTS_SPEECH_LOST__';
+export const SENTINELS = [
+  CONVERSATION_ENDED,
+  NO_SPEECH,
+  LISTEN_CONTINUES,
+  STOPPED,
+  BACKGROUND_RESULT,
+  SPEECH_LOST,
+] as const;
 
 // Tool-description notes. The text is the contract agents read; keep it word for word.
 export const ENDED_NOTE =
@@ -29,7 +37,8 @@ export const NO_SPEECH_NOTE =
   'is still open and listening. If a background result has finished, relay it with tts (listen=true); ' +
   'otherwise call stt again without speaking. It never means the conversation ended.' +
   ` If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). ` +
-  'Anything he was saying is kept for that listen.';
+  'Anything he was saying is kept for that listen.' +
+  ` If the reply is exactly ${SPEECH_LOST}, he spoke but the words could not be made out: tell him in a few words and listen again.`;
 
 export const CONTINUES_NOTE =
   ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually ` +
@@ -46,8 +55,8 @@ export const TURN_NOTE =
   ' Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: ' +
   'your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer ' +
   '(not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: ' +
-  'the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and drops speech said ' +
-  'while you were working or speaking, so what you get is current and complete. ' +
+  'the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said ' +
+  'while no listen was open for the next listen, so nothing he says is lost. ' +
   'Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), ' +
   'a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. ' +
   'Do not announce "listening" or "got it" yourself.';
@@ -205,6 +214,7 @@ export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('close') }),
   z.object({ type: z.literal('ended') }),
   z.object({ type: z.literal('nospeech') }),
+  z.object({ type: z.literal('lost') }),
   z.object({ type: z.literal('stopped'), part: z.number().int().min(1) }),
   z.object({ type: z.literal('log'), line: z.string() }),
   z.object({ type: z.literal('settings'), settings: z.record(z.string(), z.unknown()) }),

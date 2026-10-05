@@ -133,17 +133,27 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 
-  it('autosend arms on a final result, not only speechend; interim words cancel it', () => {
+  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 0.8 s', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'INTERIM', text: '' });
     vi.advanceTimersByTime(5000);
     expect(sendTurn).not.toHaveBeenCalled();
+    // Cloud recognition: interim words only, never final (real Chrome, 2026-10-06).
+    actor.send({ type: 'INTERIM', text: 'can you' });
+    vi.advanceTimersByTime(1000);
+    actor.send({ type: 'INTERIM', text: 'can you hear me' });
+    vi.advanceTimersByTime(1499);
+    expect(sendTurn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'can you hear me' });
+    sendTurn.mockClear();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'RESULT', text: 'hello' });
     vi.advanceTimersByTime(500);
-    actor.send({ type: 'INTERIM', text: 'hello' });
-    vi.advanceTimersByTime(5000);
+    actor.send({ type: 'INTERIM', text: 'hello and' });
+    vi.advanceTimersByTime(1000);
     expect(sendTurn).not.toHaveBeenCalled();
     actor.send({ type: 'RESULT', text: 'hello there' });
     vi.advanceTimersByTime(400);

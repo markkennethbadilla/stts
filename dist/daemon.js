@@ -16719,18 +16719,20 @@ const NO_SPEECH = "__STTS_NO_SPEECH__";
 const LISTEN_CONTINUES = "__STTS_LISTEN_CONTINUES__";
 const STOPPED = "__STTS_STOPPED__";
 const BACKGROUND_RESULT = "__STTS_BACKGROUND_RESULT__";
+const SPEECH_LOST = "__STTS_SPEECH_LOST__";
 const SENTINELS = [
 	CONVERSATION_ENDED,
 	NO_SPEECH,
 	LISTEN_CONTINUES,
 	STOPPED,
-	BACKGROUND_RESULT
+	BACKGROUND_RESULT,
+	SPEECH_LOST
 ];
 const ENDED_NOTE = ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the window has already shut down, so do not speak, do not call stt or tts again, and stop.`;
-const NO_SPEECH_NOTE = ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window is still open and listening. If a background result has finished, relay it with tts (listen=true); otherwise call stt again without speaking. It never means the conversation ended. If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). Anything he was saying is kept for that listen.`;
+const NO_SPEECH_NOTE = ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window is still open and listening. If a background result has finished, relay it with tts (listen=true); otherwise call stt again without speaking. It never means the conversation ended. If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). Anything he was saying is kept for that listen. If the reply is exactly ${SPEECH_LOST}, he spoke but the words could not be made out: tell him in a few words and listen again.`;
 const CONTINUES_NOTE = ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually because he is still talking. Nothing he said is lost: call stt again at once, without speaking, and it returns everything he said.`;
 const NO_SLEEP_NOTE = ` Never sleep or block on another tool to wait for him: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment he stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.`;
-const TURN_NOTE = " Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and drops speech said while you were working or speaking, so what you get is current and complete. Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
+const TURN_NOTE = " Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said while no listen was open for the next listen, so nothing he says is lost. Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
 const BARGE_NOTE = " If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, followed by a line saying where it cut you off. Treat that message as an addition or a steer: answer it, then continue the task you were cut off from, unless it explicitly says stop, abort, halt or never mind.";
 const bargeLine = (part, sentence) => `(interrupted your speech at part ${part} sentence ${sentence}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind)`;
 const NOTES = BARGE_NOTE + ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
@@ -16796,6 +16798,7 @@ const PageMessage = discriminatedUnion("type", [
 	object({ type: literal("close") }),
 	object({ type: literal("ended") }),
 	object({ type: literal("nospeech") }),
+	object({ type: literal("lost") }),
 	object({
 		type: literal("stopped"),
 		part: number().int().min(1)
@@ -17058,7 +17061,7 @@ const isLatest = () => {
 * Between turns, move to a newer install. Safe when nothing is held or only a listen with no
 * words yet: the client resends the listen to the new daemon, and the page reconnects.
 */
-const safe = () => (!slot || isListen(slot.body)) && !carry && !held;
+const safe = () => (!slot || slot.body.kind === "stt") && !carry && !held;
 async function liveUpdate(skipUpdate = false) {
 	if (!safe()) return false;
 	if (!skipUpdate && process.env["STTS_LIVE_UPDATE"] !== "check") await deps.update();
@@ -17135,12 +17138,31 @@ function release(reason) {
 }
 function send() {
 	if (!slot) return;
-	if (page) page({
-		type: "request",
-		id: slot.id,
-		body: slot.body
-	});
-	else if (adopted && Date.now() - pageGoneAt < PAGE_GRACE_MS) {
+	if (page) {
+		if (slot.sent && slot.body.kind === "tts") {
+			if (!isListen(slot.body)) {
+				settle(200, readNotes.spoken);
+				return;
+			}
+			const b = slot.body;
+			page({
+				type: "request",
+				id: slot.id,
+				body: {
+					kind: "stt",
+					who: b.who,
+					...b.idleSec === void 0 ? {} : { idleSec: b.idleSec }
+				}
+			});
+			return;
+		}
+		slot.sent = true;
+		page({
+			type: "request",
+			id: slot.id,
+			body: slot.body
+		});
+	} else if (adopted && Date.now() - pageGoneAt < PAGE_GRACE_MS) {
 		clearTimeout(graceTimer);
 		graceTimer = setTimeout(send, PAGE_GRACE_MS);
 	} else if (!windowOpening) {
@@ -17219,7 +17241,7 @@ function attachPage(sendToPage) {
 				send();
 				return;
 			case "relisten":
-				if (slot && isListen(slot.body) && slot.body.kind === "stt") send();
+				if (slot && isListen(slot.body)) send();
 				return;
 			case "log":
 				deps.log(`page ${m.line}`);
@@ -17246,6 +17268,14 @@ function attachPage(sendToPage) {
 					}
 					if (!slot) {
 						if (keepCarry) carry = `${carry} ${m.text}`.trim();
+						else if (said) {
+							held = held ? {
+								...held,
+								text: `${held.text} ${said}`,
+								endAt: m.endAt
+							} : h;
+							deps.log("page heard held for the next listen");
+						}
 						return;
 					}
 					if (barge) return;
@@ -17257,6 +17287,10 @@ function attachPage(sendToPage) {
 				if (slot) send();
 				return;
 			}
+			case "lost":
+				deps.log("page speech lost");
+				if (slot && isListen(slot.body) && !carry) settle(200, SPEECH_LOST);
+				return;
 			case "nospeech":
 				turns.send({ type: "nospeech" });
 				settle(200, NO_SPEECH);

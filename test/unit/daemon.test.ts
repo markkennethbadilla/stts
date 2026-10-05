@@ -82,6 +82,32 @@ describe('daemon', () => {
     expect(r.headers.get('X-Stts-Dir')).toBeTruthy();
   });
 
+  it('never replays: a tts with listen resends only its listen (join, reconnect, unmute)', async () => {
+    const r = post('/request', { kind: 'tts', text: 'Hi, I am here.', listen: true });
+    await tick();
+    expect(sent.filter((m) => m.type === 'request')).toHaveLength(1);
+    // An unfinished sentence keeps the listen open and the slot is resent: listen only.
+    speak('I want to go to the');
+    page.onMessage(JSON.stringify({ type: 'ready' }));
+    page.onMessage(JSON.stringify({ type: 'relisten' }));
+    const again = sent.filter((m) => m.type === 'request').slice(1);
+    expect(again.length).toBeGreaterThan(0);
+    for (const m of again) expect(m.type === 'request' && m.body.kind).toBe('stt');
+    speak('shop now please');
+    expect(await (await r).text()).toMatch(TURN_PREFIX);
+  });
+
+  it('speech with no listen open is held for the next listen; lost speech is reported', async () => {
+    speak('said after a stop');
+    expect(logs).toContain('page heard held for the next listen');
+    const r = post('/request', { kind: 'stt' });
+    expect(await (await r).text()).toMatch(/said after a stop$/);
+    const l = post('/request', { kind: 'stt', ack: 1 });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'lost' }));
+    expect(await (await l).text()).toBe('__STTS_SPEECH_LOST__');
+  });
+
   it('a newer request supersedes the old one with 504 and released', async () => {
     const first = post('/request', { kind: 'stt' });
     await tick();

@@ -43,7 +43,16 @@ function Button({
   size = 'default',
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  return <ButtonPrimitive data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+  // Every icon button shows its label as a tooltip on hover (the native title).
+  const title = props.title ?? (typeof props['aria-label'] === 'string' ? props['aria-label'] : undefined);
+  return (
+    <ButtonPrimitive
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...(title ? { title } : {})}
+      {...props}
+    />
+  );
 }
 
 export { Button, buttonVariants };

@@ -26,6 +26,10 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |
 | `page live update: reloading for the new version` | the window reloads onto the new code |
 | `page mic start` | mic opened |
+| `page mic start timed out` | a recogniser start reported nothing within 5 s and was restarted |
+| `page speech lost` | speech was heard but gave no words; the open listen returned `__STTS_SPEECH_LOST__` |
+| `page heard held for the next listen` | speech with no listen open, kept for the next one |
+| `page skipped by Mark` | Skip or Esc stopped the speech |
 | `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |
 | `page turn sent MSms after the last words` | auto-send fired: the end-of-speech delay |
 | `page light TURN` | the status light changed (notListening, speakNow, heard, background, agentSpeaking) |
