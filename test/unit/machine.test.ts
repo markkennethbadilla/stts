@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
-import { bargeVerdict, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
+import { bargeVerdict, isEcho, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
 
 function start() {
   const startMic = vi.fn();
@@ -219,10 +219,32 @@ describe('page machine', () => {
   });
 
   it('bargeVerdict: short, echo, barge', () => {
-    expect(bargeVerdict('stop it', 'The build is green.')).toBe('short');
-    expect(bargeVerdict('the build is green', 'The build is green.')).toBe('echo');
-    expect(bargeVerdict('build is green now', 'The build is green.')).toBe('barge');
-    expect(bargeVerdict('wait use the other repo', 'The build is green.')).toBe('barge');
+    const said = ['The build is green.'];
+    expect(bargeVerdict('stop it', said, 2000)).toBe('short');
+    expect(bargeVerdict('the build is green', said, 2000)).toBe('echo');
+    expect(bargeVerdict('wait use the other repo', said, 2000)).toBe('barge');
+    // A final under 600 ms into the clip is echo, whatever it says.
+    expect(bargeVerdict('wait use the other repo', said, 400)).toBe('echo');
+  });
+
+  it('isEcho: mis-heard playback is echo, real barge-ins pass', () => {
+    const said = [
+      'Cutover complete.',
+      'The deploy finished on the server.',
+      'Restarting the gateway now, give it a minute.',
+      'All twelve tests are passing.',
+    ];
+    // The live failure, 2026-10-05.
+    expect(isEcho('Gun over complete', said)).toBe(true);
+    expect(isEcho('the deep loy finish on this server', said)).toBe(true);
+    expect(isEcho('restarting the gate way', said)).toBe(true);
+    expect(isEcho('give it a minute', said)).toBe(true);
+    expect(isEcho('all 12 test or passing', said)).toBe(true);
+    expect(isEcho('cut over complete', said)).toBe(true);
+    for (const barge of ['stop talking', 'wait I have a question', 'no not that one']) {
+      expect(isEcho(barge, said)).toBe(false);
+      expect(bargeVerdict(barge, said, 2000)).toBe(barge === 'stop talking' ? 'short' : 'barge');
+    }
   });
 
   it('the watchdog checks every 2 s and restarts after 15 s of nothing', () => {

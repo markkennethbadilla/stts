@@ -29,7 +29,7 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { bargeVerdict, holdMs, LANG_ERR, pageMachine } from './machine.ts';
+import { bargeVerdict, holdMs, isEcho, LANG_ERR, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -110,6 +110,13 @@ export function App() {
   const heard = useRef({ final: '', startAt: 0 });
   // The clip whose echo was last logged: "page echo discarded" once per clip.
   const echoLogged = useRef('');
+  // Every sentence started, with its start time: the echo guard compares against the last 10 s.
+  const spokenLog = useRef<{ text: string; at: number }[]>([]);
+  const recentSpoken = (): string[] => {
+    const now = Date.now();
+    spokenLog.current = spokenLog.current.filter((x) => now - x.at < 10000);
+    return spokenLog.current.map((x) => x.text);
+  };
   const listen = useRef({ part: 1, after: false, idleTimer: 0, idleSec: 200 });
   const armIdle = (sec: number): void => {
     if (sec > 0) {
@@ -193,6 +200,7 @@ export function App() {
           if (v) u.voice = v;
           u.rate = Number(rate);
           u.onend = () => send({ type: 'CLIP_ENDED' });
+          spokenLog.current.push({ text: clip, at: Date.now() });
           speechSynthesis.speak(u);
         },
       },
@@ -218,6 +226,7 @@ export function App() {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
       send({ type: 'CLIP_ENDED' });
     };
+    spokenLog.current.push({ text: clip, at: Date.now() });
     a.play().catch((e: unknown) => send({ type: 'CLIP_FAILED', reason: `play ${String(e)}` }));
   }
 
@@ -311,13 +320,20 @@ export function App() {
       if (snap.matches({ speech: 'playing' })) {
         if (!final) return;
         const clip = snap.context.queue[0] ?? '';
-        const v = bargeVerdict(final, clip);
+        const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
+        const v = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
         if (v === 'barge') send({ type: 'BARGE', text: final, part: listen.current.part });
         else if (v === 'echo' && echoLogged.current !== clip) {
           echoLogged.current = clip;
           log('echo discarded');
         }
         return;
+      }
+      // A final landing just after speech ended is still the tail of its echo.
+      if (final && isEcho(final, recentSpoken())) {
+        log('echo discarded');
+        final = '';
+        if (!live) return;
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       setInterim(`${heard.current.final} ${live}`.trim());

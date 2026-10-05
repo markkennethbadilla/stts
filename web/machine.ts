@@ -1,5 +1,6 @@
 // The page machine (brief section 6): mic, turn, autosend, speech and watchdog rules.
 // Side effects are named actions; the page supplies them with pageMachine.provide().
+import { distance } from 'fastest-levenshtein';
 import { and, assign, not, or, raise, setup, stateIn } from 'xstate';
 import { readsUnfinished } from '../src/protocol';
 
@@ -37,19 +38,47 @@ export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   return c.holdMs ?? (readsUnfinished(c.transcript) ? 1000 : 700);
 }
 
-const norm = (t: string): string[] => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+const words = (t: string): string[] =>
+  t
+    .toLowerCase()
+    .replace(/'/g, '')
+    .match(/[a-z0-9]+/g) ?? [];
+
+const sharesEnd = (a: string[], b: string[]): boolean =>
+  a.length >= 2 &&
+  b.length >= 2 &&
+  (a.slice(0, 2).join(' ') === b.slice(0, 2).join(' ') || a.slice(-2).join(' ') === b.slice(-2).join(' '));
 
 /**
- * A final heard while the agent speaks: 'barge' cuts the speech off, 'short' (under 3 words)
- * and 'echo' (80% of its words are in the sentence now playing) are discarded.
- * ponytail: word-overlap echo check; misses an echo the recogniser garbles past 20% and drops a
- * real barge that repeats the sentence. Upgrade: compare against the played audio, not its text.
+ * Is a heard final the agent's own voice? Checked against every sentence spoken in the last 10 s,
+ * normalised (lowercase, no punctuation): echo when the Levenshtein similarity is at least 0.5, or
+ * when it is under 60% of the sentence's length and shares its first or last two words.
+ * ponytail: text distance against what was said; an echo garbled past half still slips through
+ * and a barge that repeats the sentence is dropped. Upgrade: compare against the played audio.
  */
-export function bargeVerdict(final: string, clip: string): 'barge' | 'short' | 'echo' {
-  const words = norm(final);
-  if (words.length < 3) return 'short';
-  const said = new Set(norm(clip));
-  return words.filter((w) => said.has(w)).length / words.length >= 0.8 ? 'echo' : 'barge';
+export function isEcho(final: string, spoken: readonly string[]): boolean {
+  const hw = words(final);
+  const h = hw.join(' ');
+  if (!h) return false;
+  return spoken.some((clip) => {
+    const sw = words(clip);
+    const s = sw.join(' ');
+    if (!s) return false;
+    if (1 - distance(h, s) / Math.max(h.length, s.length) >= 0.5) return true;
+    return h.length < 0.6 * s.length && sharesEnd(hw, sw);
+  });
+}
+
+/** A final this soon after its clip started is the clip's own echo, never a barge. */
+export const BARGE_MIN_MS = 600;
+
+/**
+ * A final heard while the agent speaks: 'barge' cuts the speech off; 'short' (under 3 words) and
+ * 'echo' (isEcho, or under BARGE_MIN_MS into the clip) are discarded.
+ */
+export function bargeVerdict(final: string, spoken: readonly string[], msIntoClip: number): 'barge' | 'short' | 'echo' {
+  if (words(final).length < 3) return 'short';
+  return isEcho(final, spoken) || msIntoClip < BARGE_MIN_MS ? 'echo' : 'barge';
 }
 
 /** Why the mic is restarting, for the "mic restart #N: reason" log line. */
