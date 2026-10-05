@@ -124,11 +124,12 @@ export function App() {
   };
   // The clip whose echo was last logged: "page echo discarded" once per clip.
   const echoLogged = useRef('');
-  // Every sentence started, with its start time: the echo guard compares against the last 10 s.
+  // Every sentence started, with its start time: the echo guard compares against the last 30 s
+  // (a long sentence starts well before its echo tail ends).
   const spokenLog = useRef<{ text: string; at: number }[]>([]);
   const recentSpoken = (): string[] => {
     const now = Date.now();
-    spokenLog.current = spokenLog.current.filter((x) => now - x.at < 10000);
+    spokenLog.current = spokenLog.current.filter((x) => now - x.at < 30000);
     return spokenLog.current.map((x) => x.text);
   };
   const listen = useRef({ part: 1, after: false, idleTimer: 0, idleSec: 200 });
@@ -413,6 +414,14 @@ export function App() {
         log('echo discarded');
         final = '';
         if (!live) return;
+      }
+      // Interim words now send a turn too, so they get the same check: the agent's own reply came
+      // back as turn 7 at 07:19 (log 2026-10-05 23:19:04 UTC, sent 1512 ms after, from interim words).
+      if (live && isEcho(live, recentSpoken())) {
+        if (echoLogged.current !== live) log('echo discarded');
+        echoLogged.current = live;
+        liveWords.current = '';
+        return;
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       liveWords.current = live;

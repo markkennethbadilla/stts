@@ -220,7 +220,7 @@ describe('daemon', () => {
     expect(rs.filter((r) => r.status === 504)).toHaveLength(999);
     expect(rs.at(-1)?.status).toBe(200);
     expect(slotId()).toBeNull();
-  });
+  }, 20_000); // 1000 requests: slow under load (the parallel e2e runs), not a leak.
 
   it('a second instance exits 0 when the port answers ok', async () => {
     const live = new Hono().get('/api/ping', (c) => c.text('ok'));

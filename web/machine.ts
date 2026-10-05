@@ -56,7 +56,7 @@ const sharesEnd = (a: string[], b: string[]): boolean =>
   (a.slice(0, 2).join(' ') === b.slice(0, 2).join(' ') || a.slice(-2).join(' ') === b.slice(-2).join(' '));
 
 /**
- * Is a heard final the agent's own voice? Checked against every sentence spoken in the last 10 s,
+ * Is heard speech the agent's own voice? Checked against every sentence spoken in the last 30 s,
  * normalised (lowercase, no punctuation): echo when the Levenshtein similarity is at least 0.5, or
  * when it is under 60% of the sentence's length and shares its first or last two words.
  * ponytail: text distance against what was said; an echo garbled past half still slips through
