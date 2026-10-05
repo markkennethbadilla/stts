@@ -29,6 +29,4 @@ Reads the mic and the daemon's WebSocket messages. Writes `localStorage` setting
 
 `npm run dev` serves the page with Vite. `test/screenshots/shoot.ts` produces the screenshots in `test/screenshots/` at 1600x600 and 390 wide; check them for layout and for no console errors. `test/unit/page-log.test.ts` checks the page's log lines.
 
-## Icon
-
 The window icon is a glowing blue orb (the agent-speaking colours from `web/App.tsx`) with the lucide `audio-waveform` glyph (ISC licence) on a full-bleed dark square. Source is `public/favicon.svg`; `favicon.ico`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` and `manifest.webmanifest` were generated from it once with the `favicons` npm package 7.3.1 (not a dependency). `index.html` links them, and the Chrome `--app` window takes its taskbar icon from them. To change the icon, edit the SVG and rerun `favicons` 7.3.1 on it.
