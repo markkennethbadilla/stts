@@ -1,5 +1,3 @@
-// @ts-nocheck -- registry copy (shadcn add); kept verbatim so a re-add stays a clean diff.
-
 import { useTexture } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
