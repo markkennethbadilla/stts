@@ -82,11 +82,16 @@ function wav(): Buffer {
 
 test('a file is read in parts and resumed', async ({ voice, request }) => {
   let clips = 0;
+  // Hold every clip after the first until Stop is pressed, so a fast runner cannot finish part 1 first.
+  const held: (() => void)[] = [];
+  let hold = true;
   const piper = createServer((req, res) => {
     req.resume();
     req.on('end', () => {
       clips++;
-      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+      if (hold && clips > 1) held.push(send);
+      else send();
     });
   });
   piper.listen(testPort + 1, '127.0.0.1');
@@ -101,6 +106,8 @@ test('a file is read in parts and resumed', async ({ voice, request }) => {
     // Focus and Enter: a trusted click with no actionability wait on animation frames, which page.clock holds.
     await voice.getByLabel('Stop').focus();
     await voice.keyboard.press('Enter');
+    hold = false;
+    for (const send of held.splice(0)) send();
     const stopped = await (await first).text();
     expect(stopped).toMatch(new RegExp(`^${STOPPED} 1 `));
     const n = Number(/of (\d+)/.exec(stopped)?.[1]);
