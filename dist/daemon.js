@@ -17499,6 +17499,10 @@ function startPiper(voice) {
 		windowsHide: true
 	});
 	piper.on("error", (e) => deps.log(`piper start failed ${String(e)}`));
+	const p = piper;
+	p.on("exit", () => {
+		if (piper === p) piper = null;
+	});
 }
 app.get("/voice/list", async (c) => {
 	const files = await readdir(join(PIPER_HOME, "voices")).catch(() => []);
@@ -17549,6 +17553,10 @@ app.get("/earcon/:name", serveStatic({
 	root: join(here, "earcon"),
 	rewriteRequestPath: (p) => p.slice(8)
 }));
+app.get("/", async (c, next) => {
+	await next();
+	c.header("Cache-Control", "no-cache");
+});
 app.get("/*", serveStatic({ root: join(here, "web") }));
 async function exitCodeWhenTaken(p) {
 	const r = await fetch(`http://127.0.0.1:${p}/api/ping`, { signal: AbortSignal.timeout(2e3) }).catch(() => null);

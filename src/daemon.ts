@@ -620,6 +620,13 @@ function startPiper(voice: string): void {
     windowsHide: true,
   });
   piper.on('error', (e) => deps.log(`piper start failed ${String(e)}`));
+  // A Piper that exits (its port still held by the old daemon's Piper during a live update) is
+  // forgotten, so the next clip starts a fresh one: a dead handle failed every clip for 17 s and
+  // the browser voice spoke instead (log 2026-10-05 23:49 UTC).
+  const p = piper;
+  p.on('exit', () => {
+    if (piper === p) piper = null;
+  });
 }
 
 // The Piper voices installed: every .onnx in the voices folder, by name, sorted.
@@ -685,6 +692,12 @@ app.get(
 );
 
 app.get('/earcon/:name', serveStatic({ root: join(here, 'earcon'), rewriteRequestPath: (p) => p.slice(8) }));
+// The page itself is never cached (its assets are content-hashed): a reopened window showed an
+// old layout from a cached index.html (2026-10-06).
+app.get('/', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-cache');
+});
 app.get('/*', serveStatic({ root: join(here, 'web') }));
 
 // Binding the port is the single-instance lock. On EADDRINUSE: a live daemon answers ok -> 0.

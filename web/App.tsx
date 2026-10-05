@@ -114,6 +114,8 @@ export function App() {
   const heard = useRef({ final: '', startAt: 0 });
   // The current session's interim words, not yet final.
   const liveWords = useRef('');
+  // The browser's own voice is speaking (Piper failed).
+  const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
   // error cut utterances off in the real Chrome test (2026-10-06), and the next session starts empty.
   const keepLive = (): void => {
@@ -246,7 +248,11 @@ export function App() {
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
           if (v) u.voice = v;
           u.rate = Number(rate);
-          u.onend = () => send({ type: 'CLIP_ENDED' });
+          fallbackVoice.current = true;
+          u.onend = () => {
+            fallbackVoice.current = false;
+            send({ type: 'CLIP_ENDED' });
+          };
           spokenLog.current.push({ text: clip, at: Date.now() });
           speechSynthesis.speak(u);
         },
@@ -398,6 +404,9 @@ export function App() {
       // While the agent speaks only a final of 3+ words that is not its own echo cuts it off.
       const snap = actor.getSnapshot();
       if (snap.matches({ speech: 'playing' })) {
+        // The browser voice plays outside the page's audio, so echo cancellation cannot remove it:
+        // its own words cut it off (2026-10-05 23:49 UTC). No spoken barge while it plays.
+        if (fallbackVoice.current) return;
         if (!final) return;
         const clip = snap.context.queue[0] ?? '';
         const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
