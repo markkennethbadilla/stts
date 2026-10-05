@@ -32,7 +32,7 @@ export function nextBackoff(prev: number | null): number {
   return Math.min(MAX_BACKOFF_MS, Math.max(250, prev * 2));
 }
 
-/** Why the mic is restarting, for the "mic restart #N: reason" log line. */
+/** Silence before autosend: the set hold, else 1 s when the transcript reads unfinished, 700 ms otherwise. */
 export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   return c.holdMs ?? (readsUnfinished(c.transcript) ? 1000 : 700);
 }
@@ -52,6 +52,7 @@ export function bargeVerdict(final: string, clip: string): 'barge' | 'short' | '
   return words.filter((w) => said.has(w)).length / words.length >= 0.8 ? 'echo' : 'barge';
 }
 
+/** Why the mic is restarting, for the "mic restart #N: reason" log line. */
 export function restartReason(event: { type: string }, c: PageContext): string {
   if (event.type === 'MIC_ERROR') return 'mic error';
   if (event.type === 'WATCHDOG') return 'watchdog';

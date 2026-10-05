@@ -1,6 +1,7 @@
 // Typed fetch to the daemon: ping first, retire a daemon from another install, one retry.
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT, REQUEST_TIMEOUT_MS, type RequestBody } from './protocol.ts';
 
@@ -40,8 +41,6 @@ export async function ping(): Promise<'ours' | 'stale' | 'busy' | 'down'> {
   } catch {}
   return 'stale';
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Make sure a daemon answers. A stale one with a window open keeps serving until it ends.
 export async function ensureDaemon(): Promise<void> {

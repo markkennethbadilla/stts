@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { setTimeout as setTimeout$1 } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "http";
 import { Http2ServerRequest, constants } from "http2";
@@ -17335,7 +17336,7 @@ app.post("/voice/clip", async (c) => {
 	if (!r && !piper) {
 		startPiper(voice);
 		for (let i = 0; i < 30 && !r; i++) {
-			await new Promise((ok) => setTimeout(ok, 500));
+			await setTimeout$1(500);
 			r = await piperClip(text, voice, rate ?? 1);
 		}
 	}

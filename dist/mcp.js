@@ -2,6 +2,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import process$1 from "node:process";
 import { spawn } from "node:child_process";
 import { dirname } from "node:path";
+import { setTimeout as setTimeout$1 } from "node:timers/promises";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -21707,7 +21708,6 @@ async function ping() {
 	} catch {}
 	return "stale";
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function ensureDaemon() {
 	const s = await ping();
 	if (s === "ours" || s === "busy") return;
@@ -21717,7 +21717,7 @@ async function ensureDaemon() {
 	}).catch(() => {});
 	spawnDaemon();
 	for (let i = 0; i < 50; i++) {
-		await sleep(100);
+		await setTimeout$1(100);
 		const now = await ping();
 		if (now === "ours" || now === "busy") return;
 	}

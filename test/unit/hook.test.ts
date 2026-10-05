@@ -25,7 +25,7 @@ test('plugin manifest has the fields Claude Code needs and no version', () => {
   expect(p.version).toBeUndefined();
   const m = JSON.parse(readFileSync('.claude-plugin/marketplace.json', 'utf8'));
   expect(m.name).toBe('stts-marketplace');
-  expect(m.plugins[0].source).toEqual({ source: 'github', repo: 'markkennethbadilla/stts' });
+  expect(m.plugins[0].source).toBe('./');
   const h = JSON.parse(readFileSync('hooks/hooks.json', 'utf8'));
   expect(h.hooks.SubagentStop[0].hooks[0].command).toContain('notify-listen.mjs');
 });
