@@ -14,7 +14,7 @@ Five regions run side by side:
 
 | Region | States and rules |
 | --- | --- |
-| mic | `paused`, or `live` with `idle`, `starting`, `listening`, `restarting`. The mic starts only in `starting`, and only when not paused, no speech is playing, and a listen is wanted. Pause and resume come only from a trusted click, Ctrl+M or Ctrl+R. |
+| mic | `paused`, or `live` with `idle`, `starting`, `listening`, `restarting`, `failed`. The mic starts only in `starting`, and only when not paused, no speech is playing, and a listen is wanted. Pause and resume come only from a trusted click, Ctrl+M or Ctrl+R. |
 | turn | Not listening (grey), speak now (green), heard (amber), background result (amber), agent speaking (blue). |
 | autosend | Armed when his speech ends: sends after 0.7 s, or 1 s if the speech reads unfinished. New speech, mute or switching auto-send off cancels it. |
 | speech | Idle, or playing a queue of clips with up to 3 fetched ahead. A clip that fails is spoken by the browser's own voice instead. When the queue empties, the mic may resume. Stop drops the queue at once, because the paused clip never ends and would otherwise block the next speak. |
@@ -33,9 +33,12 @@ stateDiagram-v2
       listening --> idle: turn sent or agent speaks
       restarting --> starting: after backoff, if allowed
       restarting --> idle: otherwise
+      listening --> failed: second language-not-supported
     }
   }
 ```
+
+Before the first start the page asks `SpeechRecognition.available({langs: ['en-US'], processLocally: true})`. `available` uses on-device recognition; `downloadable` starts `SpeechRecognition.install()` and uses cloud recognition until it lands; anything else uses cloud recognition. A `language-not-supported` error switches to cloud and restarts once; a second one moves the mic to `failed`: the status icon turns red, the page logs `mic failed language-not-supported` once, and nothing restarts until a mute and unmute.
 
 A listen request that arrives while muted is remembered but does not start the mic. The window title reads `stts (muted)` while muted. The page logs `mic start`, `mic restart #N: reason`, `paused by Mark` and `resumed by Mark` (spec 012).
 

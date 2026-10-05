@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { app, attachPage, deps, exitCodeWhenTaken, resetTurns, slotId } from '../../src/daemon.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { app, attachPage, deps, exitCodeWhenTaken, resetTurns, slotId, WINDOW_OPEN_MS } from '../../src/daemon.ts';
 import {
   BACKGROUND_RESULT,
   CONVERSATION_ENDED,
@@ -38,6 +38,43 @@ afterEach(() => {
 const speak = (text: string) => page.onMessage(JSON.stringify({ type: 'complete', text, startAt: 0, endAt: 1000 }));
 
 describe('daemon', () => {
+  it('a window that never connects times out after 15 s and the next send relaunches', async () => {
+    page.detach();
+    vi.useFakeTimers();
+    let opens = 0;
+    deps.openWindow = async () => void opens++;
+    try {
+      void post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(opens).toBe(1);
+      await vi.advanceTimersByTimeAsync(WINDOW_OPEN_MS);
+      expect(logs).toContain('window open timed out');
+      void post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(opens).toBe(2);
+    } finally {
+      deps.openWindow = async () => {};
+      vi.useRealTimers();
+    }
+  });
+
+  it('a launcher that throws, even synchronously, logs once and never throws out of send', async () => {
+    page.detach();
+    deps.openWindow = () => {
+      throw new TypeError("Cannot read properties of undefined (reading 'on')");
+    };
+    try {
+      void post('/request', { kind: 'stt' });
+      await tick();
+      await tick();
+      expect(logs.filter((l) => l.startsWith('chrome launch failed'))).toEqual([
+        "chrome launch failed Cannot read properties of undefined (reading 'on')",
+      ]);
+    } finally {
+      deps.openWindow = async () => {};
+    }
+  });
+
   it('ping answers ok with X-Stts-Dir', async () => {
     const r = await app.request('/api/ping');
     expect(await r.text()).toBe('ok');

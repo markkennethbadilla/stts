@@ -41,7 +41,8 @@ export const dataDir =
   process.platform === 'win32'
     ? join(process.env['LOCALAPPDATA'] ?? homedir(), 'cc-gc-stts')
     : join(homedir(), '.local', 'share', 'cc-gc-stts');
-const profileDir = join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
+const profileDir =
+  process.env['STTS_PROFILE_DIR'] ?? join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
 const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
 const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
 
@@ -76,6 +77,8 @@ export const deps = {
       ],
       userDataDir: profileDir,
     });
+    // chrome-launcher can hand back no process (Chrome handed off to a running instance).
+    if (!chrome?.process) throw new Error('no chrome process');
     chrome.process.on('exit', () => deps.exit(0));
   },
   exit(code: number): void {
@@ -94,6 +97,9 @@ let carry = '';
 let keepCarry = false; // speech after a timeout release belongs to the next listen
 let page: ((m: DaemonMessage) => void) | null = null;
 let windowOpening = false;
+let windowTimer: ReturnType<typeof setTimeout> | undefined;
+/** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
+export const WINDOW_OPEN_MS = 15000;
 
 // Turn ids, dedupe, join and the ack gate live in the turns machine.
 let turns = createActor(turnsMachine, { input: {} }).start();
@@ -143,10 +149,20 @@ function send(): void {
   if (page) page({ type: 'request', id: slot.id, body: slot.body });
   else if (!windowOpening) {
     windowOpening = true;
-    deps.openWindow().catch((e: unknown) => {
+    clearTimeout(windowTimer);
+    windowTimer = setTimeout(() => {
+      if (!windowOpening) return;
       windowOpening = false;
-      deps.log(`chrome launch failed ${String(e)}`);
-    });
+      deps.log('window open timed out');
+    }, WINDOW_OPEN_MS);
+    // Promise.resolve().then: a synchronous throw lands in the same catch, never out of send.
+    Promise.resolve()
+      .then(() => deps.openWindow())
+      .catch((e: unknown) => {
+        windowOpening = false;
+        clearTimeout(windowTimer);
+        deps.log(`chrome launch failed ${e instanceof Error ? e.message : String(e)}`);
+      });
   }
 }
 
@@ -179,6 +195,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
 } {
   page = sendToPage;
   windowOpening = false;
+  clearTimeout(windowTimer);
   const detach = (): void => {
     if (page === sendToPage) page = null;
   };

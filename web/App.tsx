@@ -1,7 +1,7 @@
 // The orb screen (brief section 6): a full-bleed orb tinted by the turn state, wired to
 // web/machine.ts. The machine decides; this file only supplies its side effects.
 import { useMachine } from '@xstate/react';
-import { Bell, CircleStop, Ear, Mic, MicOff, PhoneOff, Settings2, Volume2 } from 'lucide-react';
+import { Bell, CircleAlert, CircleStop, Ear, Mic, MicOff, PhoneOff, Settings2, Volume2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
-import { holdMs, pageMachine } from './machine.ts';
+import { holdMs, LANG_ERR, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -62,6 +62,13 @@ function useSetting(key: string, initial: string): [string, (v: string) => void]
   ];
 }
 
+const LOCAL_EN = { langs: ['en-US'], processLocally: true };
+
+type RecognitionStatics = {
+  available?: (o: typeof LOCAL_EN) => Promise<string>;
+  install?: (o: { langs: string[] }) => Promise<boolean>;
+};
+
 type Recognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -85,6 +92,8 @@ type Recognition = {
 export function App() {
   const ws = useRef<WebSocket | null>(null);
   const rec = useRef<Recognition | null>(null);
+  // On-device recognition: null until SpeechRecognition.available() has answered once.
+  const local = useRef<boolean | null>(null);
   const heard = useRef({ final: '', startAt: 0 });
   const listen = useRef({ part: 1, after: false, idleTimer: 0 });
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -172,6 +181,23 @@ export function App() {
     });
   }
 
+  /** On-device en-US when Chrome has it; downloadable starts the install and uses the cloud meanwhile. */
+  async function pickLocal(SR: RecognitionStatics): Promise<boolean> {
+    if (!SR.available) return true;
+    const st = await SR.available(LOCAL_EN).catch(() => 'unavailable');
+    log(`mic on-device ${st}`);
+    if (st === 'available') return true;
+    if (st === 'downloadable' && SR.install) {
+      SR.install(LOCAL_EN)
+        .then((ok) => {
+          log(`mic on-device install ${ok}`);
+          if (ok) local.current = true;
+        })
+        .catch((e: unknown) => log(`mic on-device install failed ${String(e)}`));
+    }
+    return false;
+  }
+
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
     await playEarcon('listen-open');
@@ -191,6 +217,8 @@ export function App() {
       send({ type: 'MIC_ERROR' });
       return;
     }
+    local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
+    if (!stillStarting()) return;
     const stream = await navigator.mediaDevices
       .getUserMedia({ audio: { echoCancellation: true, ...(mic === 'default' ? {} : { deviceId: mic }) } })
       .catch(() => null);
@@ -201,12 +229,14 @@ export function App() {
     const r = new Ctor();
     r.continuous = true;
     r.interimResults = true;
-    r.processLocally = true;
+    r.processLocally = local.current;
     r.onstart = () => send({ type: 'MIC_STARTED' });
     r.onend = () => send({ type: 'MIC_ENDED' });
     r.onerror = (e) => {
       log(`mic error ${e.error ?? 'unknown'}`);
-      send({ type: 'MIC_ERROR' });
+      // On-device refused the language: the next start uses cloud recognition.
+      if (e.error === LANG_ERR) local.current = false;
+      send({ type: 'MIC_ERROR', ...(e.error ? { error: e.error } : {}) });
     };
     r.onaudiostart = () => send({ type: 'AUDIO' });
     r.onspeechstart = () => {
@@ -352,15 +382,18 @@ export function App() {
   });
 
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
-  const StatusIcon = paused
-    ? MicOff
-    : turn === 'agentSpeaking'
-      ? Volume2
-      : turn === 'background'
-        ? Bell
-        : turn === 'heard'
-          ? Ear
-          : Mic;
+  const micFailed = state.matches({ mic: { live: 'failed' } });
+  const StatusIcon = micFailed
+    ? CircleAlert
+    : paused
+      ? MicOff
+      : turn === 'agentSpeaking'
+        ? Volume2
+        : turn === 'background'
+          ? Bell
+          : turn === 'heard'
+            ? Ear
+            : Mic;
   const holdSec = holdMs(state.context) / 1000;
 
   return (
@@ -404,7 +437,11 @@ export function App() {
         >
           {turnNo}
         </span>
-        <StatusIcon aria-label={paused ? 'muted' : turn} className="size-6" style={{ color: TINT[turn][0] }} />
+        <StatusIcon
+          aria-label={micFailed ? 'mic error' : paused ? 'muted' : turn}
+          className="size-6"
+          style={{ color: micFailed ? '#ef4444' : TINT[turn][0] }}
+        />
         <div className="ml-auto flex gap-2">
           <Button
             variant="ghost"

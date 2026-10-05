@@ -6,6 +6,7 @@ import { readsUnfinished } from '../src/protocol';
 export const CLIPS_AHEAD = 3;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
+export const LANG_ERR = 'language-not-supported';
 
 /** Pure watchdog check: a reason to restart the mic, or null (6, 8, 15 s rules). */
 export function watchdogVerdict(s: {
@@ -45,7 +46,7 @@ export type PageEvent =
   | { type: 'REQUEST'; kind: 'listen' | 'speak' }
   | { type: 'MIC_STARTED' }
   | { type: 'MIC_ENDED' }
-  | { type: 'MIC_ERROR' }
+  | { type: 'MIC_ERROR'; error?: string }
   | { type: 'WATCHDOG' }
   | { type: 'AUDIO' }
   | { type: 'SPEECH_START' }
@@ -76,6 +77,8 @@ export interface PageContext {
   resultAt: number;
   heardAt: number;
   restarts: number;
+  // language-not-supported errors seen; the second one gives up instead of looping.
+  langFails: number;
 }
 
 const live = not(stateIn({ mic: 'paused' }));
@@ -98,6 +101,9 @@ export const pageMachine = setup({
     trusted: ({ event }) => 'trusted' in event && event.trusted,
     canStart: and([live, quiet, ({ context }) => context.wantListen]),
     watchdogTrips: ({ context }) => watchdogVerdict({ ...context, now: now() }) !== null,
+    // A second language-not-supported error: cloud recognition was tried too, so stop.
+    langGiveUp: ({ context, event }) =>
+      event.type === 'MIC_ERROR' && event.error === LANG_ERR && context.langFails >= 1,
     autosendOn: ({ context }) => context.autosend,
     quiet,
   },
@@ -121,6 +127,7 @@ export const pageMachine = setup({
     resultAt: 0,
     heardAt: 0,
     restarts: 0,
+    langFails: 0,
   },
   on: {
     SET_AUTOSEND: { actions: assign({ autosend: ({ event }) => event.on }) },
@@ -152,7 +159,7 @@ export const pageMachine = setup({
                   target: 'listening',
                   actions: [assign({ running: true }), { type: 'log', params: { line: 'mic start' } }],
                 },
-                MIC_ERROR: 'restarting',
+                MIC_ERROR: [{ guard: 'langGiveUp', target: 'failed' }, { target: 'restarting' }],
               },
             },
             listening: {
@@ -163,7 +170,7 @@ export const pageMachine = setup({
                 ],
               },
               on: {
-                MIC_ERROR: 'restarting',
+                MIC_ERROR: [{ guard: 'langGiveUp', target: 'failed' }, { target: 'restarting' }],
                 WATCHDOG: 'restarting',
                 MIC_ENDED: { actions: assign({ running: false, endedAt: now }) },
                 AUDIO: { actions: assign({ heardAt: now }) },
@@ -179,6 +186,8 @@ export const pageMachine = setup({
                 assign({
                   backoff: ({ context }) => nextBackoff(context.backoff),
                   restarts: ({ context }) => context.restarts + 1,
+                  langFails: ({ context, event }) =>
+                    context.langFails + (event.type === 'MIC_ERROR' && event.error === LANG_ERR ? 1 : 0),
                 }),
                 {
                   type: 'log',
@@ -188,6 +197,10 @@ export const pageMachine = setup({
                 },
               ],
               after: { backoff: [{ guard: 'canStart', target: 'starting' }, { target: 'idle' }] },
+            },
+            // No recogniser for the language, locally or in the cloud: the mic stays off until a mute and unmute.
+            failed: {
+              entry: ['stopMic', { type: 'log', params: { line: `mic failed ${LANG_ERR}` } }],
             },
           },
         },

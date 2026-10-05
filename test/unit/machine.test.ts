@@ -159,6 +159,23 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(12);
   });
 
+  it('language-not-supported restarts once, then fails with one log line and no loop', () => {
+    const log = vi.fn();
+    const startMic = vi.fn();
+    const actor = createActor(pageMachine.provide({ actions: { startMic, log } })).start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_ERROR', error: 'language-not-supported' });
+    vi.advanceTimersByTime(0);
+    expect(startMic).toHaveBeenCalledTimes(2);
+    actor.send({ type: 'MIC_ERROR', error: 'language-not-supported' });
+    vi.advanceTimersByTime(60000);
+    expect(startMic).toHaveBeenCalledTimes(2);
+    expect(actor.getSnapshot().matches({ mic: { live: 'failed' } })).toBe(true);
+    const lines = log.mock.calls.map((c) => (c[1] as { line: string }).line);
+    expect(lines.filter((l) => l.startsWith('mic restart'))).toHaveLength(1);
+    expect(lines.filter((l) => l === 'mic failed language-not-supported')).toHaveLength(1);
+  });
+
   it('watchdogVerdict and nextBackoff edges', () => {
     const base = { now: 20000, running: true, endedAt: 0, speechAt: 0, resultAt: 0, heardAt: 19000 };
     expect(watchdogVerdict(base)).toBeNull();
