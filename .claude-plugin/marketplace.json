@@ -1,0 +1,11 @@
+{
+  "name": "stts-marketplace",
+  "owner": { "name": "Mark Kenneth Badilla" },
+  "plugins": [
+    {
+      "name": "stts",
+      "source": { "source": "github", "repo": "markkennethbadilla/stts" },
+      "description": "Talk to the model by voice: speech to text in, the reply spoken back, in a loop."
+    }
+  ]
+}

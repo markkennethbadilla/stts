@@ -1,0 +1,7 @@
+{
+  "name": "stts",
+  "description": "Talk to the model by voice: speech to text in, the reply spoken back, in a loop.",
+  "author": { "name": "Mark Kenneth Badilla" },
+  "repository": "https://github.com/markkennethbadilla/stts",
+  "license": "MIT"
+}
