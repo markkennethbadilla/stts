@@ -6,7 +6,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./web', import.meta.url)) } },
-  // public/earcon goes to dist/earcon through tsdown, not into dist/web.
+  // public/ is copied by tsdown (earcons to dist/earcon, icons to dist/web).
   publicDir: false,
-  build: { outDir: 'dist/web' },
+  // tsdown cleans dist first and copies the icons in; Vite must not wipe them.
+  build: { outDir: 'dist/web', emptyOutDir: false },
 });
