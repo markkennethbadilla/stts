@@ -552,6 +552,7 @@ export function App() {
     lastTurn.current = turn;
     // The light's every change in the log, so a wrong colour can be traced to its event.
     log(`light ${turn}`);
+    if (turn === 'speakNow') post({ type: 'listening' });
     const name = EARCON[turn];
     if (name && name !== 'listen-open') void playEarcon(name);
   });

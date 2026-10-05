@@ -139,7 +139,10 @@ export const isLatest = (): boolean => {
  * the agent is blocked on it, so it makes no new call while the port changes hands (a new call
  * then made its client start an older daemon), and the listen is forwarded to the new daemon.
  */
-const safe = (): boolean => slot?.body.kind === 'stt' && !carry && !held;
+// A tts with listen counts once its speech has played (the page said `listening`): it is then
+// forwarded as a plain listen. Most listens are tts with listen, so stt alone rarely came up.
+const safe = (): boolean =>
+  !!slot && (slot.body.kind === 'stt' || (isListen(slot.body) && !!slot.listening)) && !carry && !held;
 
 let httpServer: { close: () => void } | null = null;
 let closePage: (() => void) | null = null;
@@ -172,7 +175,11 @@ async function handOver(to: string): Promise<void> {
     const r = await fetch(`http://127.0.0.1:${port}/request`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(s.body),
+      body: JSON.stringify(
+        s.body.kind === 'stt'
+          ? s.body
+          : { kind: 'stt', who: s.body.who, ...(s.body.idleSec === undefined ? {} : { idleSec: s.body.idleSec }) },
+      ),
     }).catch(() => null);
     const text = r ? await r.text() : NO_SPEECH;
     s.done({ status: r?.status === 504 ? 504 : 200, text });
@@ -198,6 +205,8 @@ type Slot = {
   done: (r: Reply) => void;
   // The page already got this request (its speech may already have played).
   sent?: boolean;
+  // The page reported its speech done and the listen open.
+  listening?: boolean;
 };
 
 let slot: Slot | null = null;
@@ -377,6 +386,9 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         send();
         return;
       // Unmute: the page lost track of an open listen; resend only a listen, never a tts (a replay).
+      case 'listening':
+        if (slot) slot.listening = true;
+        return;
       case 'relisten':
         if (slot && isListen(slot.body)) send();
         return;

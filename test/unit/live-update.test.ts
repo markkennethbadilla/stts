@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
-import { app, deps, installedDir, isLatest, liveUpdate } from '../../src/daemon.ts';
+import { app, attachPage, deps, installedDir, isLatest, liveUpdate } from '../../src/daemon.ts';
 
 const src = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src');
 const handoffs: string[] = [];
@@ -46,6 +46,20 @@ it('hands off to a newer install only while a plain listen is open', async () =>
   expect(await liveUpdate()).toBe(true);
   expect(updates).toBe(1);
   expect(handoffs).toEqual([join(root, 'dist')]);
+});
+
+it('a tts with listen counts once the page reports its speech done', async () => {
+  installs(newInstall());
+  const page = attachPage(() => {});
+  void app.request('/request', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'tts', text: 'Hi there.', listen: true }),
+  });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(await liveUpdate()).toBe(false); // still speaking
+  page.onMessage(JSON.stringify({ type: 'listening' }));
+  expect(await liveUpdate()).toBe(true);
+  page.detach();
 });
 
 it('stays when the install is missing, has no daemon.js, or the file is bad', async () => {

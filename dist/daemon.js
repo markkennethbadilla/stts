@@ -16781,6 +16781,7 @@ const RequestBody = object({
 const PageMessage = discriminatedUnion("type", [
 	object({ type: literal("ready") }),
 	object({ type: literal("relisten") }),
+	object({ type: literal("listening") }),
 	object({
 		type: literal("complete"),
 		text: string(),
@@ -17047,7 +17048,7 @@ const isLatest = () => {
 * the agent is blocked on it, so it makes no new call while the port changes hands (a new call
 * then made its client start an older daemon), and the listen is forwarded to the new daemon.
 */
-const safe = () => slot?.body.kind === "stt" && !carry && !held;
+const safe = () => !!slot && (slot.body.kind === "stt" || isListen(slot.body) && !!slot.listening) && !carry && !held;
 let httpServer = null;
 let closePage = null;
 /**
@@ -17081,7 +17082,11 @@ async function handOver(to) {
 		const r = await fetch(`http://127.0.0.1:${port}/request`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify(s.body)
+			body: JSON.stringify(s.body.kind === "stt" ? s.body : {
+				kind: "stt",
+				who: s.body.who,
+				...s.body.idleSec === void 0 ? {} : { idleSec: s.body.idleSec }
+			})
 		}).catch(() => null);
 		const text = r ? await r.text() : NO_SPEECH;
 		s.done({
@@ -17269,6 +17274,9 @@ function attachPage(sendToPage) {
 		switch (m.type) {
 			case "ready":
 				send();
+				return;
+			case "listening":
+				if (slot) slot.listening = true;
 				return;
 			case "relisten":
 				if (slot && isListen(slot.body)) send();
