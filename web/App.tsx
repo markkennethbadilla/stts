@@ -118,7 +118,11 @@ export function App() {
     return spokenLog.current.map((x) => x.text);
   };
   const listen = useRef({ part: 1, after: false, idleTimer: 0, idleSec: 200 });
+  // Every listen opens here. Words left from before it (heard with no listen open, or the
+  // agent's own tail) are dropped: a stale final made the idle timer skip nospeech and the
+  // listen hang until the daemon budget, and a stale startAt dated turns minutes early.
   const armIdle = (sec: number): void => {
+    heard.current = { final: '', startAt: 0 };
     if (sec > 0) {
       listen.current.idleTimer = window.setTimeout(() => {
         if (!heard.current.final) post({ type: 'nospeech' });

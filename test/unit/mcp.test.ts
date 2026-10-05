@@ -62,5 +62,8 @@ describe('STTS_WHO', () => {
     await Promise.all([s2.connect(a), c2.connect(b)]);
     await c2.callTool({ name: 'tts', arguments: { text: 'bye', close: true } });
     expect(request).toHaveBeenLastCalledWith({ kind: 'tts', who: 'agent', text: 'bye', close: true });
+    // The gateway path: stt keeps idleSec as given.
+    await c2.callTool({ name: 'stt', arguments: { idleSec: 5 } });
+    expect(request).toHaveBeenLastCalledWith({ kind: 'stt', who: 'agent', idleSec: 5 });
   });
 });
