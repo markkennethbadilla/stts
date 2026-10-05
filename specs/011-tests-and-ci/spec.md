@@ -16,6 +16,7 @@ flowchart LR
   B --> C[tsc --noEmit]
   C --> D[markdownlint-cli2 over specs]
   D --> E[vitest run]
+  E --> F[playwright test]
 ```
 
 - **Style and types:** Biome for lint and format; TypeScript with `@tsconfig/strictest`, no `any` and no suppressions.
@@ -23,7 +24,8 @@ flowchart LR
 - **Unit tests (vitest, `test/unit/`):** protocol and fixtures, turns, sentences, daemon through `app.request()`, client, MCP, hook, page machine, page log lines, build output, and the client-to-daemon integration.
 - **Live check:** build, start the MCP server on a spare `STTS_PORT` with the SDK stdio client, call tts and stt, read `daemon.log`, then shut down.
 
-Not built yet: Playwright end-to-end tests (fake mic, page errors fail the run, mute survives listens) and a GitHub Actions workflow. When added, the workflow runs on pull requests and main only, with path filters, `concurrency` with `cancel-in-progress`, and `timeout-minutes: 15`, and states its expected minutes per month here.
+- **End-to-end (Playwright, `test/e2e/`, `playwright.config.ts`):** builds, starts the daemon on `STTS_TEST_PORT` (default 15990) with its own data dir under `test-results/`, and drives the page in headless Chromium with a fake speech recogniser, fake media, `page.clock` and a fake Piper server. Page errors fail the run. Cases: a listen produces a turn, pause survives 3 listens and the watchdog, an untrusted End click is ignored, `/notify` produces a background result, a file is read in parts and resumed.
+- **CI (`.github/workflows/ci.yml`):** one job on ubuntu-latest for pull requests and pushes to main, path filters, `concurrency` with `cancel-in-progress`, `timeout-minutes: 15`. Runs biome, tsc, markdownlint-cli2, vitest, then installs the Playwright Chromium shell and runs the e2e tests. A run takes about 1 to 3 minutes; at about 40 runs a month that is at most about 120 of the free 2,000 minutes.
 
 ## What it reads and writes
 
@@ -31,4 +33,4 @@ Tests use their own ports and fakes; they do not touch the live daemon on 15986.
 
 ## How to run, check and hand over
 
-`npm run check` runs everything above; `npm test` runs the spec lint and the unit tests.
+`npm run check` runs biome, tsc, the spec lint and the unit tests; `npm test` runs the spec lint and the unit tests; `npm run e2e` runs the Playwright tests.

@@ -8,6 +8,8 @@ stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt`
 2. `/plugin install stts@stts-marketplace`
 3. Run `/stts` to start a voice conversation.
 
+Gateway (MCPJungle, every agent): register a stdio server with command `node <repo>/dist/mcp.js` (after `npm run build`) and env `STTS_WHO=agent`, so a helper agent cannot close the session's window. The entry lives in mkb-agentops (spec 010).
+
 For development: `npm ci`, then `npm run check` and `npm run build`. `npm run e2e` builds, starts the daemon on `STTS_TEST_PORT` (default 15990) with its own data dir under `test-results/`, and drives the page in headless Chromium with a fake speech recogniser, fake media, `page.clock` and a fake Piper server. Locally it uses the shared Playwright headless shell from `mkb-agentops/versions.json`.
 
 CI (`.github/workflows/ci.yml`): one job on ubuntu-latest, pull requests and pushes to main that touch code only, cancel-in-progress, 15-minute cap. A run takes about 3 minutes; at about 40 runs a month that is about 120 of the free 2,000 minutes.
