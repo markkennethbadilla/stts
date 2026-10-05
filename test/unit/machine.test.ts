@@ -175,6 +175,7 @@ describe('page machine', () => {
     vi.advanceTimersByTime(20000);
     actor.send({ type: 'CLIP_ENDED' });
     expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'listening' }, turn: 'speakNow' })).toBe(true);
+    vi.advanceTimersByTime(14000);
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 

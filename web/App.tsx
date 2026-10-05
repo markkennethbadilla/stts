@@ -110,7 +110,14 @@ export function App() {
   const heard = useRef({ final: '', startAt: 0 });
   // The clip whose echo was last logged: "page echo discarded" once per clip.
   const echoLogged = useRef('');
-  const listen = useRef({ part: 1, after: false, idleTimer: 0 });
+  const listen = useRef({ part: 1, after: false, idleTimer: 0, idleSec: 200 });
+  const armIdle = (sec: number): void => {
+    if (sec > 0) {
+      listen.current.idleTimer = window.setTimeout(() => {
+        if (!heard.current.final) post({ type: 'nospeech' });
+      }, sec * 1000);
+    }
+  };
   const audio = useRef<HTMLAudioElement | null>(null);
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
@@ -342,12 +349,7 @@ export function App() {
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
         actor.send({ type: 'REQUEST', kind: 'listen' });
-        const idle = (b.idleSec ?? 200) * 1000;
-        if (idle > 0) {
-          listen.current.idleTimer = window.setTimeout(() => {
-            if (!heard.current.final) post({ type: 'nospeech' });
-          }, idle);
-        }
+        armIdle(b.idleSec ?? 200);
         return;
       }
       const clips = toParts(b.text ?? '');
@@ -356,6 +358,7 @@ export function App() {
       setSpoken({ done: 0, of: clips.length });
       setInterim('');
       listen.current.after = b.listen === true;
+      listen.current.idleSec = b.idleSec ?? 200;
       actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
     };
     sock.onclose = () => log('ws closed');
@@ -372,8 +375,11 @@ export function App() {
       const playing = s.matches({ speech: 'playing' });
       if (wasPlaying && !playing) {
         setSpoken({ done: 0, of: 0 });
-        if (listen.current.after) actor.send({ type: 'REQUEST', kind: 'listen' });
-        else post({ type: 'complete', text: '', startAt: 0, endAt: 0 });
+        if (listen.current.after) {
+          actor.send({ type: 'REQUEST', kind: 'listen' });
+          // The listen after a tts gets the same no-speech timer as an stt.
+          armIdle(listen.current.idleSec);
+        } else post({ type: 'complete', text: '', startAt: 0, endAt: 0 });
       }
       wasPlaying = playing;
     });
