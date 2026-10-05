@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
-import { nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
+import { bargeVerdict, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
 
 function start() {
   const startMic = vi.fn();
@@ -157,12 +157,12 @@ describe('page machine', () => {
     expect(actor.getSnapshot().matches({ autosend: 'off' })).toBe(true);
   });
 
-  it('speech: 3 clips ahead, fallback on failure, results discarded, mic resumes when empty', () => {
+  it('speech: 3 clips ahead, fallback on failure, results discarded, mic stays on through it', () => {
     const { actor, startMic, playClip, prefetchClips, speakFallback } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'ENQUEUE', clips: ['a', 'b', 'c', 'd', 'e'] });
-    expect(actor.getSnapshot().matches({ mic: { live: 'idle' }, turn: 'agentSpeaking' })).toBe(true);
+    expect(actor.getSnapshot().matches({ mic: { live: 'listening' }, turn: 'agentSpeaking' })).toBe(true);
     expect(playClip).toHaveBeenLastCalledWith(expect.anything(), { clip: 'a' });
     expect(prefetchClips).toHaveBeenLastCalledWith(expect.anything(), { clips: ['b', 'c', 'd'] });
     actor.send({ type: 'RESULT', text: 'echo' });
@@ -171,9 +171,57 @@ describe('page machine', () => {
     expect(speakFallback).toHaveBeenCalledWith(expect.anything(), { clip: 'a' });
     for (let i = 0; i < 4; i++) actor.send({ type: 'CLIP_ENDED' });
     expect(startMic).toHaveBeenCalledTimes(1);
+    // 20 s of speech with no words: the watchdog leaves the mic alone.
+    vi.advanceTimersByTime(20000);
     actor.send({ type: 'CLIP_ENDED' });
-    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'starting' } })).toBe(true);
-    expect(startMic).toHaveBeenCalledTimes(2);
+    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'listening' }, turn: 'speakNow' })).toBe(true);
+    expect(startMic).toHaveBeenCalledTimes(1);
+  });
+
+  it('spoken barge: a final during speech is BARGE; interims, short finals and no-listen speech end', () => {
+    const { actor, startMic, deliver, stopAudio, sendTurn } = start();
+    actor.send({ type: 'ENQUEUE', clips: ['Hello there.', 'More.'] });
+    // A plain tts still runs the mic so speaking over it barges in.
+    expect(actor.getSnapshot().matches({ mic: { live: 'starting' } })).toBe(true);
+    actor.send({ type: 'MIC_STARTED' });
+    expect(actor.getSnapshot().matches({ turn: 'agentSpeaking' })).toBe(true);
+    actor.send({ type: 'INTERIM', text: 'wait' });
+    actor.send({ type: 'SPEECH_END', text: 'wait' });
+    vi.advanceTimersByTime(5000);
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(actor.getSnapshot().matches({ speech: 'playing', turn: 'agentSpeaking' })).toBe(true);
+    actor.send({ type: 'BARGE', text: 'stop and check the logs', part: 1 });
+    expect(stopAudio).toHaveBeenCalled();
+    expect(deliver).toHaveBeenCalledWith(expect.anything(), {
+      text: 'stop and check the logs',
+      source: 'heard',
+      interrupted: { part: 1, sentence: 1 },
+    });
+    // No listen wanted after the barge: the mic goes off.
+    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'idle' } })).toBe(true);
+    expect(startMic).toHaveBeenCalledTimes(1);
+    actor.send({ type: 'ENQUEUE', clips: ['x'] });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'CLIP_ENDED' });
+    expect(actor.getSnapshot().matches({ mic: { live: 'idle' }, turn: 'notListening' })).toBe(true);
+  });
+
+  it('paused stays paused through speech: no mic during playback', () => {
+    const { actor, startMic } = start();
+    actor.send({ type: 'PAUSE', trusted: true });
+    actor.send({ type: 'ENQUEUE', clips: ['a', 'b'], listen: true });
+    vi.advanceTimersByTime(20000);
+    actor.send({ type: 'CLIP_ENDED' });
+    actor.send({ type: 'CLIP_ENDED' });
+    expect(actor.getSnapshot().matches({ mic: 'paused' })).toBe(true);
+    expect(startMic).not.toHaveBeenCalled();
+  });
+
+  it('bargeVerdict: short, echo, barge', () => {
+    expect(bargeVerdict('stop it', 'The build is green.')).toBe('short');
+    expect(bargeVerdict('the build is green', 'The build is green.')).toBe('echo');
+    expect(bargeVerdict('build is green now', 'The build is green.')).toBe('barge');
+    expect(bargeVerdict('wait use the other repo', 'The build is green.')).toBe('barge');
   });
 
   it('the watchdog checks every 2 s and restarts after 15 s of nothing', () => {

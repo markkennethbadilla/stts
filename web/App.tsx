@@ -29,7 +29,7 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { holdMs, LANG_ERR, pageMachine } from './machine.ts';
+import { bargeVerdict, holdMs, LANG_ERR, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -108,6 +108,8 @@ export function App() {
   // On-device recognition: null until SpeechRecognition.available() has answered once.
   const local = useRef<boolean | null>(null);
   const heard = useRef({ final: '', startAt: 0 });
+  // The clip whose echo was last logged: "page echo discarded" once per clip.
+  const echoLogged = useRef('');
   const listen = useRef({ part: 1, after: false, idleTimer: 0 });
   const audio = useRef<HTMLAudioElement | null>(null);
   const [interim, setInterim] = useState('');
@@ -238,7 +240,8 @@ export function App() {
 
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
-    await playEarcon('listen-open');
+    // Not over the agent's speech: the mic opening there is silent.
+    if (!actor.getSnapshot().matches({ speech: 'playing' })) await playEarcon('listen-open');
     // Paused, or the listen ended, during the chime: the mic must not start.
     const stillStarting = () => actor.getSnapshot().matches({ mic: { live: 'starting' } });
     if (!stillStarting()) return;
@@ -258,7 +261,9 @@ export function App() {
     local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
     const stream = await navigator.mediaDevices
-      .getUserMedia({ audio: { echoCancellation: true, ...(mic === 'default' ? {} : { deviceId: mic }) } })
+      .getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, ...(mic === 'default' ? {} : { deviceId: mic }) },
+      })
       .catch(() => null);
     if (!stillStarting()) {
       for (const t of stream?.getTracks() ?? []) t.stop();
@@ -291,9 +296,17 @@ export function App() {
         if (res?.isFinal) final = `${final} ${t}`.trim();
         else live += t;
       }
-      // Final words while the agent speaks cut it off (a barge).
-      if (final && actor.getSnapshot().matches({ speech: 'playing' })) {
-        send({ type: 'BARGE', text: final, part: listen.current.part });
+      // While the agent speaks only a final of 3+ words that is not its own echo cuts it off.
+      const snap = actor.getSnapshot();
+      if (snap.matches({ speech: 'playing' })) {
+        if (!final) return;
+        const clip = snap.context.queue[0] ?? '';
+        const v = bargeVerdict(final, clip);
+        if (v === 'barge') send({ type: 'BARGE', text: final, part: listen.current.part });
+        else if (v === 'echo' && echoLogged.current !== clip) {
+          echoLogged.current = clip;
+          log('echo discarded');
+        }
         return;
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
@@ -343,7 +356,7 @@ export function App() {
       setSpoken({ done: 0, of: clips.length });
       setInterim('');
       listen.current.after = b.listen === true;
-      actor.send({ type: 'ENQUEUE', clips });
+      actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
     };
     sock.onclose = () => log('ws closed');
     return () => sock.close();

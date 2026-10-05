@@ -142,9 +142,11 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
   voice,
   request,
 }) => {
+  // Hold every clip so the speech is still playing when the message is sent.
+  const held: (() => void)[] = [];
   const piper = createServer((req, res) => {
     req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
   });
   piper.listen(testPort + 1, '127.0.0.1');
   await once(piper, 'listening');
@@ -158,6 +160,36 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
     expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] also check the logs\n/);
     expect(text).toContain(bargeLine(1, 1));
   } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});
+
+test('speaking over the agent cuts it off; its own echo and short words do not', async ({ voice, request }) => {
+  // Hold every clip so the speech is still playing when the words arrive.
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    const say = (t: string) =>
+      voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
+    await say('one sentence here');
+    await say('wait');
+    await expect.poll(daemonLog).toContain('page echo discarded');
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await say('use the other repo please');
+    const text = await (await speech).text();
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] use the other repo please\n/);
+    expect(text).toContain(bargeLine(1, 1));
+  } finally {
+    for (const send of held.splice(0)) send();
     piper.close();
   }
 });

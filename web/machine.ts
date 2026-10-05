@@ -1,6 +1,6 @@
 // The page machine (brief section 6): mic, turn, autosend, speech and watchdog rules.
 // Side effects are named actions; the page supplies them with pageMachine.provide().
-import { and, assign, not, raise, setup, stateIn } from 'xstate';
+import { and, assign, not, or, raise, setup, stateIn } from 'xstate';
 import { readsUnfinished } from '../src/protocol';
 
 export const CLIPS_AHEAD = 3;
@@ -16,8 +16,11 @@ export function watchdogVerdict(s: {
   speechAt: number;
   resultAt: number;
   heardAt: number;
+  // Speech playing: silence and wordless sound are expected, so only a dead mic restarts.
+  playing?: boolean;
 }): string | null {
   if (!s.running) return s.now - s.endedAt > 6000 ? 'not running during a listen' : null;
+  if (s.playing) return null;
   if (s.speechAt > s.resultAt && s.now - s.speechAt > 8000) return 'speech heard but no words for 8s';
   if (s.now - s.heardAt > 15000) return 'no audio or words for 15s during a listen';
   return null;
@@ -32,6 +35,21 @@ export function nextBackoff(prev: number | null): number {
 /** Why the mic is restarting, for the "mic restart #N: reason" log line. */
 export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   return c.holdMs ?? (readsUnfinished(c.transcript) ? 1000 : 700);
+}
+
+const norm = (t: string): string[] => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+
+/**
+ * A final heard while the agent speaks: 'barge' cuts the speech off, 'short' (under 3 words)
+ * and 'echo' (80% of its words are in the sentence now playing) are discarded.
+ * ponytail: word-overlap echo check; misses an echo the recogniser garbles past 20% and drops a
+ * real barge that repeats the sentence. Upgrade: compare against the played audio, not its text.
+ */
+export function bargeVerdict(final: string, clip: string): 'barge' | 'short' | 'echo' {
+  const words = norm(final);
+  if (words.length < 3) return 'short';
+  const said = new Set(norm(clip));
+  return words.filter((w) => said.has(w)).length / words.length >= 0.8 ? 'echo' : 'barge';
 }
 
 export function restartReason(event: { type: string }, c: PageContext): string {
@@ -57,7 +75,8 @@ export type PageEvent =
   | { type: 'LISTEN_DONE' }
   | { type: 'SET_AUTOSEND'; on: boolean }
   | { type: 'SET_HOLD'; ms: number | null }
-  | { type: 'ENQUEUE'; clips: string[] }
+  // listen: the tts opens a listen after it, so the mic running during the speech stays on.
+  | { type: 'ENQUEUE'; clips: string[]; listen?: boolean }
   | { type: 'CLIP_ENDED' }
   | { type: 'CLIP_FAILED' }
   | { type: 'STOP' }
@@ -102,6 +121,9 @@ const cut = ({ context, event }: { context: PageContext; event: PageEvent }): In
 
 const live = not(stateIn({ mic: 'paused' }));
 const quiet = stateIn({ speech: 'idle' });
+const playing = stateIn({ speech: 'playing' });
+// The mic runs during a listen and while the agent speaks (so speaking over it barges in).
+const wantMic = or([({ context }: { context: PageContext }) => context.wantListen, playing]);
 const now = () => Date.now();
 
 export const pageMachine = setup({
@@ -122,8 +144,11 @@ export const pageMachine = setup({
   },
   guards: {
     trusted: ({ event }) => 'trusted' in event && event.trusted,
-    canStart: and([live, quiet, ({ context }) => context.wantListen]),
+    canStart: and([live, wantMic]),
+    wantMic,
     watchdogTrips: ({ context }) => watchdogVerdict({ ...context, now: now() }) !== null,
+    // During speech only a dead mic restarts; no words is expected.
+    deadMic: ({ context }) => watchdogVerdict({ ...context, now: now(), playing: true }) !== null,
     // A second language-not-supported error: cloud recognition was tried too, so stop.
     langGiveUp: ({ context, event }) =>
       event.type === 'MIC_ERROR' && event.error === LANG_ERR && context.langFails >= 1,
@@ -190,9 +215,12 @@ export const pageMachine = setup({
               },
             },
             listening: {
+              // The speech ended with no listen wanted: the mic goes off.
+              always: { guard: not('wantMic'), target: 'idle', actions: 'stopMic' },
               after: {
                 [WATCHDOG_MS]: [
-                  { guard: 'watchdogTrips', target: 'restarting' },
+                  { guard: and([playing, 'deadMic']), target: 'restarting' },
+                  { guard: and([quiet, 'watchdogTrips']), target: 'restarting' },
                   { target: 'listening', reenter: true },
                 ],
               },
@@ -205,7 +233,6 @@ export const pageMachine = setup({
                 RESULT: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
                 LISTEN_DONE: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
                 TYPED: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
-                ENQUEUE: { target: 'idle', actions: 'stopMic' },
               },
             },
             restarting: {
@@ -246,9 +273,13 @@ export const pageMachine = setup({
       on: {
         PAUSE: { guard: 'trusted', target: '.notListening' },
         LISTEN_DONE: '.notListening',
-        QUEUE_EMPTY: '.notListening',
+        // A tts with listen whose mic already runs: speak now, no restart.
+        QUEUE_EMPTY: [
+          { guard: ({ context }) => context.wantListen && context.running, target: '.speakNow' },
+          { target: '.notListening' },
+        ],
         STOP: '.notListening',
-        MIC_STARTED: '.speakNow',
+        MIC_STARTED: { guard: 'quiet', target: '.speakNow' },
         INTERIM: { guard: 'quiet', target: '.heard' },
         SPEECH_END: { guard: 'quiet', target: '.heard' },
         RESULT: { guard: 'quiet', target: '.heard' },
@@ -297,7 +328,11 @@ export const pageMachine = setup({
           on: {
             ENQUEUE: {
               target: 'playing',
-              actions: assign({ queue: ({ event }) => [...event.clips], sentence: 1 }),
+              actions: assign({
+                queue: ({ event }) => [...event.clips],
+                sentence: 1,
+                wantListen: ({ context, event }) => context.wantListen || event.listen === true,
+              }),
             },
             TYPED: {
               actions: [
@@ -308,6 +343,8 @@ export const pageMachine = setup({
           },
         },
         playing: {
+          // The watchdog clocks restart when the speech ends, so a long speech is not "no audio".
+          exit: assign({ heardAt: now, speechAt: 0 }),
           entry: [
             { type: 'playClip', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
             {
@@ -332,7 +369,7 @@ export const pageMachine = setup({
             TYPED: {
               target: 'idle',
               actions: [
-                assign({ interrupted: cut }),
+                assign({ interrupted: cut, wantListen: false }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({
@@ -348,7 +385,7 @@ export const pageMachine = setup({
             BARGE: {
               target: 'idle',
               actions: [
-                assign({ interrupted: cut }),
+                assign({ interrupted: cut, wantListen: false }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({
