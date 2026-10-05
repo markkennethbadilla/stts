@@ -71,7 +71,16 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
     const s = sw.join(' ');
     if (!s) return false;
     if (1 - distance(h, s) / Math.max(h.length, s.length) >= 0.5) return true;
-    return h.length < 0.6 * s.length && sharesEnd(hw, sw);
+    if (h.length < 0.6 * s.length && sharesEnd(hw, sw)) return true;
+    // A fragment from the middle of a long sentence (2026-10-06: "our conversations carry on" from
+    // "Our conversation would carry on, ..." cut the agent off): any run of the sentence's words,
+    // one shorter to one longer than what was heard, at least 0.7 similar.
+    for (let n = Math.max(1, hw.length - 1); n <= hw.length + 1; n++)
+      for (let i = 0; i + n <= sw.length; i++) {
+        const w = sw.slice(i, i + n).join(' ');
+        if (1 - distance(h, w) / Math.max(h.length, w.length) >= 0.7) return true;
+      }
+    return false;
   });
 }
 

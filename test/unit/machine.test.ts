@@ -313,6 +313,11 @@ describe('page machine', () => {
     expect(isEcho('give it a minute', said)).toBe(true);
     expect(isEcho('all 12 test or passing', said)).toBe(true);
     expect(isEcho('cut over complete', said)).toBe(true);
+    // 2026-10-06 07:38: a fragment of a long sentence cut the agent off.
+    const long = ['Our conversation would carry on, and the listen you have open stays open while it reloads.'];
+    expect(isEcho('our conversations carry on', long)).toBe(true);
+    expect(bargeVerdict('our conversations carry on', long, 5000)).toBe('echo');
+    expect(isEcho('the listen stays open', long)).toBe(true);
     for (const barge of ['stop talking', 'wait I have a question', 'no not that one']) {
       expect(isEcho(barge, said)).toBe(false);
       expect(bargeVerdict(barge, said, 2000)).toBe(barge === 'stop talking' ? 'short' : 'barge');
