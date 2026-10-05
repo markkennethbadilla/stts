@@ -8,7 +8,7 @@ import { BACKGROUND_RESULT, bargeLine, readNotes, STOPPED, SUPERSEDED } from '..
 import { daemonLog, expect, test } from './fixtures.ts';
 
 const ask = (request: APIRequestContext, data: object) =>
-  request.post('/request', { data: { who: 'session', ...data }, timeout: 60_000 });
+  request.post('/request', { data: { who: 'session', ...data }, timeout: 150_000 });
 
 test('a listen produces a turn', async ({ voice, request }) => {
   const reply = ask(request, { kind: 'stt' });
@@ -81,6 +81,8 @@ function wav(): Buffer {
 }
 
 test('a file is read in parts and resumed', async ({ voice, request }) => {
+  // Sentence-sized clips (spec 006) play one by one: three parts of real-time clips need over a minute.
+  test.setTimeout(180_000);
   let clips = 0;
   // Hold every clip after the first until Stop is pressed, so a fast runner cannot finish part 1 first.
   const held: (() => void)[] = [];
@@ -133,7 +135,7 @@ test('a typed message is returned by stt as a turn', async ({ voice, request }) 
   await voice.getByLabel('Message').fill('typed from the keyboard');
   await voice.getByLabel('Message').press('Enter');
   const text = await (await reply).text();
-  expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] typed from the keyboard$/);
+  expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] typed from the keyboard$/);
   await expect(voice.getByLabel('Message')).toHaveValue('');
   expect(daemonLog()).toMatch(/page typed turn \d+/);
 });
@@ -157,7 +159,7 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
     await voice.getByLabel('Message').fill('also check the logs');
     await voice.getByLabel('Message').press('Enter');
     const text = await (await speech).text();
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] also check the logs\n/);
+    expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] also check the logs\n/);
     expect(text).toContain(bargeLine(1, 1));
   } finally {
     for (const send of held.splice(0)) send();

@@ -134,7 +134,7 @@ export function App() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const micStream = useRef<MediaStream | null>(null);
   // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
-  const clipCache = useRef(new Map<string, Promise<Response | null>>());
+  const clipCache = useRef(new Map<string, Promise<Blob | string>>());
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
   const [turnNo, setTurnNo] = useState(0);
@@ -149,6 +149,15 @@ export function App() {
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
   const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
+  const [theme, setTheme] = useSetting('theme', 'system');
+  useEffect(() => {
+    const os = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () =>
+      document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && os.matches));
+    apply();
+    os.addEventListener('change', apply);
+    return () => os.removeEventListener('change', apply);
+  }, [theme]);
   const [draft, setDraft] = useState('');
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [localVoices, setLocalVoices] = useState<string[]>([]);
@@ -169,6 +178,8 @@ export function App() {
         // The capture stream stops with it: every start opened a new one and none was ever closed.
         stopMic: () => {
           rec.current?.stop();
+          // Its late end, error and speechend now belong to no one: a stopped recogniser moves nothing.
+          rec.current = null;
           for (const t of micStream.current?.getTracks() ?? []) t.stop();
           micStream.current = null;
         },
@@ -230,14 +241,20 @@ export function App() {
   const armed = state.matches({ autosend: 'armed' });
 
   // One synthesis per clip text: a prefetch and the later play share it.
-  function fetchClip(clip: string): Promise<Response | null> {
+  // The audio is cached, not the Response: a body reads once, so two equal sentences in a row
+  // shared one Response and the second failed into the browser voice.
+  function fetchClip(clip: string): Promise<Blob | string> {
     let p = clipCache.current.get(clip);
     if (!p) {
-      p = fetch('/voice/clip', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
-      }).catch(() => null);
+      p = (async (): Promise<Blob | string> => {
+        const r = await fetch('/voice/clip', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
+        }).catch(() => null);
+        if (!r) return 'clip unreachable';
+        return r.ok ? await r.blob() : `clip ${r.status} ${clipVoice}`;
+      })();
       clipCache.current.set(clip, p);
     }
     return p;
@@ -246,11 +263,11 @@ export function App() {
   async function playClip(clip: string): Promise<void> {
     const r = await fetchClip(clip);
     clipCache.current.delete(clip);
-    if (!r?.ok) {
-      send({ type: 'CLIP_FAILED', reason: r ? `clip ${r.status} ${clipVoice}` : 'clip unreachable' });
+    if (typeof r === 'string') {
+      send({ type: 'CLIP_FAILED', reason: r });
       return;
     }
-    const a = new Audio(URL.createObjectURL(await r.blob()));
+    const a = new Audio(URL.createObjectURL(r));
     audio.current = a;
     a.onended = () => {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
@@ -503,8 +520,11 @@ export function App() {
     if (name && name !== 'listen-open') void playEarcon(name);
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; runs on each mute change.
   useEffect(() => {
     document.title = paused ? 'stts (muted)' : 'stts';
+    // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
+    if (!paused) post({ type: 'relisten' });
   }, [paused]);
 
   useEffect(() => {
@@ -598,31 +618,8 @@ export function App() {
   const holdSec = holdMs(state.context) / 1000;
 
   return (
-    <main className="@container relative flex h-dvh flex-col w-full overflow-hidden bg-neutral-950 text-neutral-50">
-      <div className="absolute inset-0 grid place-items-center [mask-image:radial-gradient(circle,black_40%,transparent_75%)]">
-        <div className="relative aspect-square h-[min(90cqh,90cqw)] @min-[1200px]:h-[110cqh]">
-          {turn === 'speakNow' && <Ripple mainCircleSize={260} className="opacity-70" />}
-          <Orb className="absolute inset-[12%]" colors={TINT[turn]} agentState={ORB_STATE[turn]} />
-          <svg className="pointer-events-none absolute inset-[8%] -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-            {armed && (
-              <motion.circle
-                key={state.context.transcript}
-                cx="50"
-                cy="50"
-                r="48"
-                fill="none"
-                stroke={TINT[turn][0]}
-                strokeWidth="1.5"
-                initial={{ pathLength: 1 }}
-                animate={{ pathLength: 0 }}
-                transition={{ duration: holdSec, ease: 'linear' }}
-              />
-            )}
-          </svg>
-        </div>
-      </div>
-
-      <header className="relative flex shrink-0 items-center gap-3 p-4">
+    <main className="@container relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background text-foreground">
+      <header className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 p-[clamp(0.25rem,2cqw,1rem)]">
         <span
           className="rounded-full px-3 py-1 font-mono text-sm font-semibold text-neutral-950"
           style={{ background: TINT[turn][0] }}
@@ -634,7 +631,7 @@ export function App() {
           className="size-6"
           style={{ color: micFailed ? '#ef4444' : TINT[turn][0] }}
         />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -670,10 +667,22 @@ export function App() {
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Settings" />}>
               <Settings2 />
             </PopoverTrigger>
-            <PopoverContent className="grid w-72 gap-4">
+            <PopoverContent className="grid w-[min(18rem,calc(100vw-1rem))] gap-4">
+              <Row label="Theme">
+                <Select value={theme} onValueChange={(v) => v && setTheme(String(v))}>
+                  <SelectTrigger className="w-40 max-w-full" aria-label="Theme">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system">System</SelectItem>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Row>
               <Row label="Voice">
                 <Select value={voice} onValueChange={(v) => v && setVoice(String(v))}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-40 max-w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -687,7 +696,7 @@ export function App() {
               </Row>
               <Row label={`Rate ${rate}`}>
                 <Slider
-                  className="w-40"
+                  className="w-40 max-w-full"
                   min={0.5}
                   max={2}
                   step={0.1}
@@ -704,7 +713,7 @@ export function App() {
               </Row>
               <Row label={hold ? `Hold ${hold} ms` : 'Hold auto'}>
                 <Slider
-                  className="w-40"
+                  className="w-40 max-w-full"
                   min={300}
                   max={3000}
                   step={100}
@@ -714,7 +723,7 @@ export function App() {
               </Row>
               <Row label="Mic">
                 <Select value={mic} onValueChange={(v) => v && setMic(String(v))}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-40 max-w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -732,7 +741,7 @@ export function App() {
               </Row>
               <Row label="Earcon volume">
                 <Slider
-                  className="w-40"
+                  className="w-40 max-w-full"
                   min={0}
                   max={1}
                   step={0.05}
@@ -758,18 +767,47 @@ export function App() {
         </div>
       </header>
 
-      <section className="relative mt-auto min-h-0 overflow-y-auto px-6 text-center @min-[1200px]:my-auto @min-[1200px]:ml-auto @min-[1200px]:w-[32cqw] @min-[1200px]:text-left">
-        {interim && !browse ? (
-          <TextShimmer className="text-2xl font-medium [--base-color:theme(colors.neutral.400)] [--base-gradient-color:white]">
-            {interim}
-          </TextShimmer>
-        ) : (
-          <p className="text-2xl font-medium text-neutral-200">{shown}</p>
-        )}
-      </section>
+      <div className="flex min-h-0 flex-1 flex-col @min-[1200px]:flex-row">
+        {/* The orb has its own row (a column at 1200 px and up) and shrinks to fit it: nothing overlaps. */}
+        <div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden [container-type:size] [mask-image:radial-gradient(circle,black_40%,transparent_75%)]">
+          {turn === 'speakNow' && <Ripple mainCircleSize={260} className="opacity-70" />}
+          <div data-orb className="relative aspect-square size-[min(100cqw,100cqh)]">
+            <Orb className="absolute inset-[12%]" colors={TINT[turn]} agentState={ORB_STATE[turn]} />
+            <svg
+              className="pointer-events-none absolute inset-[8%] -rotate-90"
+              viewBox="0 0 100 100"
+              aria-hidden="true"
+            >
+              {armed && (
+                <motion.circle
+                  key={state.context.transcript}
+                  cx="50"
+                  cy="50"
+                  r="48"
+                  fill="none"
+                  stroke={TINT[turn][0]}
+                  strokeWidth="1.5"
+                  initial={{ pathLength: 1 }}
+                  animate={{ pathLength: 0 }}
+                  transition={{ duration: holdSec, ease: 'linear' }}
+                />
+              )}
+            </svg>
+          </div>
+        </div>
+        <section className="relative max-h-[50%] shrink-0 overflow-y-auto px-[clamp(0.5rem,4cqw,1.5rem)] text-center @min-[1200px]:my-auto @min-[1200px]:max-h-full @min-[1200px]:w-[32cqw] @min-[1200px]:text-left">
+          {interim && !browse ? (
+            <TextShimmer className="text-[clamp(1rem,0.85rem+1.6cqw,1.75rem)] font-medium [--base-color:var(--muted-foreground)] [--base-gradient-color:var(--foreground)]">
+              {interim}
+            </TextShimmer>
+          ) : (
+            <p className="text-[clamp(1rem,0.85rem+1.6cqw,1.75rem)] font-medium text-foreground/90">{shown}</p>
+          )}
+        </section>
+      </div>
 
       {/* In the flow, its height always reserved: the words above can never run under the wave. */}
-      <div className="relative h-24 shrink-0 opacity-80">
+      <div data-wave className="relative h-24 shrink-0 opacity-80">
         {turn === 'agentSpeaking' && (
           <>
             <LiveWaveform processing mode="static" height={96} barColor={TINT.agentSpeaking[0]} />
@@ -782,7 +820,7 @@ export function App() {
 
       {inputMode === 'keyboard' && (
         <form
-          className="relative mx-6 mb-4 flex shrink-0 items-end gap-2"
+          className="relative mx-2 mb-2 flex shrink-0 flex-col items-stretch gap-2 @min-[360px]:flex-row @min-[360px]:items-end"
           onSubmit={(e) => {
             e.preventDefault();
             sendDraft();
@@ -790,8 +828,8 @@ export function App() {
         >
           <Textarea
             aria-label="Message"
-            placeholder="Type a message, Enter to send, Shift+Enter for a new line"
-            className="max-h-40 bg-neutral-900/80"
+            placeholder="Message (Enter sends)"
+            className="max-h-40 min-w-0 bg-card/80 text-[clamp(0.875rem,0.8rem+0.6cqw,1rem)] placeholder:truncate"
             autoFocus
             value={draft}
             onChange={(e) => typeDraft(e.target.value)}
@@ -802,7 +840,13 @@ export function App() {
               }
             }}
           />
-          <Button type="submit" size="icon" aria-label="Send" disabled={!draft.trim()}>
+          <Button
+            type="submit"
+            size="icon"
+            aria-label="Send"
+            disabled={!draft.trim()}
+            className="w-full @min-[360px]:w-9"
+          >
             <SendHorizontal />
           </Button>
         </form>
@@ -815,7 +859,7 @@ const first = (v: number | readonly number[]): number => (typeof v === 'number' 
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
       <span>{label}</span>
       {children}
     </div>

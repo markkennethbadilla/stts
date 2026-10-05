@@ -136,7 +136,7 @@ describe('daemon', () => {
     const r = post('/request', { kind: 'stt' });
     await tick();
     typed('typed hello');
-    expect(await (await r).text()).toMatch(/^\[turn 1, heard [\d:]+ to [\d:]+\] typed hello$/);
+    expect(await (await r).text()).toMatch(/^\[turn 1, typed [\d:]+ to [\d:]+\] typed hello$/);
     expect(logs).toContain('page typed turn 1');
   });
 

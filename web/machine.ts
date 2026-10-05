@@ -184,6 +184,8 @@ export const pageMachine = setup({
     langGiveUp: ({ context, event }) =>
       event.type === 'MIC_ERROR' && event.error === LANG_ERR && context.langFails >= 1,
     autosendOn: ({ context }) => context.autosend && !context.typing,
+    // Only an open listen sends: a speechend after the turn went out sent it twice (log 2026-10-06).
+    listenOpen: ({ context }) => context.wantListen,
     quiet,
   },
   delays: {
@@ -313,10 +315,12 @@ export const pageMachine = setup({
           { target: '.notListening' },
         ],
         STOP: '.notListening',
-        MIC_STARTED: { guard: 'quiet', target: '.speakNow' },
-        INTERIM: { guard: 'quiet', target: '.heard' },
-        SPEECH_END: { guard: 'quiet', target: '.heard' },
-        RESULT: { guard: 'quiet', target: '.heard' },
+        // Green only while a listen is open: a mic restarted after the turn went out showed green over
+        // a closed listen, so his words went nowhere (log 2026-10-06 21:22-21:29).
+        MIC_STARTED: { guard: and(['quiet', 'listenOpen']), target: '.speakNow' },
+        INTERIM: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
+        SPEECH_END: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
+        RESULT: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
         NOTIFY: '.background',
         TYPED: '.heard',
         BARGE: { guard: not('quiet'), target: '.heard' },
@@ -329,7 +333,7 @@ export const pageMachine = setup({
         off: {
           on: {
             SPEECH_END: {
-              guard: and(['autosendOn', 'quiet', live]),
+              guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
               actions: assign({ transcript: ({ event }) => event.text }),
             },
@@ -337,7 +341,7 @@ export const pageMachine = setup({
             // continuous mode fires only when the session ends (the 15 s watchdog restart), so
             // arming on it alone held every turn 15 s or more (Mark, 2026-10-06).
             RESULT: {
-              guard: and(['autosendOn', 'quiet', live, ({ event }) => event.text !== '']),
+              guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
               actions: assign({ transcript: ({ event }) => event.text }),
             },
@@ -357,6 +361,9 @@ export const pageMachine = setup({
             PAUSE: { guard: 'trusted', target: 'off' },
             SPEECH_START: 'off',
             INTERIM: 'off',
+            // The listen closed or the agent started speaking: a late speechend must not send again.
+            LISTEN_DONE: 'off',
+            ENQUEUE: 'off',
             // Another final: the hold restarts on the longer transcript.
             RESULT: {
               target: 'armed',

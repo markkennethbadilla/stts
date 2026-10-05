@@ -147,10 +147,11 @@ export const isLatest = (): boolean => {
  * Between turns, move to a newer install. Safe when nothing is held or only a listen with no
  * words yet: the client resends the listen to the new daemon, and the page reconnects.
  */
-export async function liveUpdate(): Promise<boolean> {
-  const safe = (): boolean => (!slot || isListen(slot.body)) && !carry && !held;
+const safe = (): boolean => (!slot || isListen(slot.body)) && !carry && !held;
+
+export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   if (!safe()) return false;
-  if (process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
+  if (!skipUpdate && process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
   const to = installedDir();
   if (!to || same(to, here) || !safe()) return false;
   deps.handoff(to);
@@ -289,7 +290,7 @@ function hear(h: Heard, typed: boolean): void {
   carry = '';
   keepCarry = false;
   typedNext = typed;
-  turns.send({ type: 'heard', text, startAt: h.startAt, endAt: h.endAt });
+  turns.send({ type: 'heard', text, startAt: h.startAt, endAt: h.endAt, typed });
 }
 
 // The page side of /ws. Returns the frame handler; the caller wires close to detach().
@@ -317,6 +318,10 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
     switch (m.type) {
       case 'ready':
         send();
+        return;
+      // Unmute: the page lost track of an open listen; resend only a listen, never a tts (a replay).
+      case 'relisten':
+        if (slot && isListen(slot.body) && slot.body.kind === 'stt') send();
         return;
       case 'log':
         deps.log(`page ${m.line}`);
@@ -404,6 +409,22 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/api/ping', (c) => c.text('ok'));
+
+// Force a live update now instead of waiting for the 60 s check: pull the new version, then hand
+// off at the first safe moment (checked every second for up to 5 minutes).
+app.post('/api/update', async (c) => {
+  if (process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
+  const to = installedDir();
+  if (!to || same(to, here)) return c.text('up to date');
+  void (async () => {
+    for (let i = 0; i < 300; i++) {
+      if (await liveUpdate(true)) return;
+      await sleep(1000);
+    }
+    deps.log('live update: no safe moment within 5 minutes');
+  })();
+  return c.text(`updating to ${to}`);
+});
 
 app.post('/api/shutdown', (c) => {
   // An older client after a live update would retire the newer daemon; it uses this one instead.

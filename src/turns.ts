@@ -6,7 +6,7 @@ export const DEDUPE_MS = 1000;
 export const MAX_JOINS = 3;
 export const joinSec = (): number => Number(process.env['STTS_JOIN_SEC'] ?? 3);
 
-export type Heard = { text: string; startAt: number; endAt: number };
+export type Heard = { text: string; startAt: number; endAt: number; typed?: boolean | undefined };
 type Ctx = {
   joinMs: number;
   id: number;
@@ -44,8 +44,8 @@ export const turnsMachine = setup({
       if (event.type !== 'heard') return {};
       const p = c.pending;
       const pending = p
-        ? { text: `${p.text} ${event.text}`, startAt: p.startAt, endAt: event.endAt }
-        : { text: event.text, startAt: event.startAt, endAt: event.endAt };
+        ? { text: `${p.text} ${event.text}`, startAt: p.startAt, endAt: event.endAt, typed: event.typed }
+        : { text: event.text, startAt: event.startAt, endAt: event.endAt, typed: event.typed };
       return { pending, joins: p ? c.joins + 1 : 0 };
     }),
     finish: assign(({ context: c }) => {
@@ -58,7 +58,7 @@ export const turnsMachine = setup({
         last: h,
         pending: null,
         joins: 0,
-        reply: turnReply(id, h.text, h.startAt, h.endAt),
+        reply: turnReply(id, h.text, h.startAt, h.endAt, h.typed),
       };
     }),
   },

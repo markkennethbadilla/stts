@@ -2,7 +2,7 @@
 
 ## What it does
 
-Turns what Mark says into numbered turns. Each heard reply starts with `[turn N, heard HH:MM:SS to HH:MM:SS]`, N always rises, repeats and stale speech are dropped, a sentence cut mid-thought is joined with what follows, and an agent cannot listen again before it has answered the last turn.
+Turns what Mark says into numbered turns. Each reply starts with `[turn N, heard HH:MM:SS to HH:MM:SS]`, or `[turn N, typed ...]` when he typed it on the keyboard, so the agent knows how the turn came in, N always rises, repeats and stale speech are dropped, a sentence cut mid-thought is joined with what follows, and an agent cannot listen again before it has answered the last turn.
 
 ## Why it exists
 

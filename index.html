@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,6 +9,17 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0b1020" />
+    <!-- Dark Reader leaves this window alone (its documented opt-out); the page has its own themes. -->
+    <meta name="darkreader-lock" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The theme before first paint, so a light or dark choice never flashes the other one. -->
+    <script>
+      (() => {
+        var t = localStorage.getItem("__stts__theme") || "system";
+        var dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

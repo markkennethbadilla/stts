@@ -43,7 +43,7 @@ export const NO_SLEEP_NOTE =
   'A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.';
 
 export const TURN_NOTE =
-  ' Every heard turn starts with [turn N, heard HH:MM:SS to HH:MM:SS]. The protocol is listen, answer that exact turn at once, listen: ' +
+  ' Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: ' +
   'your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer ' +
   '(not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: ' +
   'the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and drops speech said ' +
@@ -98,10 +98,11 @@ export function readsUnfinished(text: string): boolean {
 // Reply formats.
 const hhmmss = (ms: number): string => new Date(ms).toTimeString().slice(0, 8);
 
-export const turnReply = (id: number, text: string, startAt: number, endAt: number): string =>
-  `[turn ${id}, heard ${hhmmss(startAt)} to ${hhmmss(endAt)}] ${text}`;
+// The source is in the prefix: heard (spoken) or typed (keyboard), so the agent knows how it came in.
+export const turnReply = (id: number, text: string, startAt: number, endAt: number, typed = false): string =>
+  `[turn ${id}, ${typed ? 'typed' : 'heard'} ${hhmmss(startAt)} to ${hhmmss(endAt)}] ${text}`;
 
-export const TURN_PREFIX = /^\[turn (\d+), heard (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d)\] /;
+export const TURN_PREFIX = /^\[turn (\d+), (?:heard|typed) (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d)\] /;
 
 export const unansweredError = (n: number): string =>
   `turn ${n} is unanswered. Answer it now with tts (listen=true), or, if it needs no spoken answer, call stt with ack=${n}.`;
@@ -189,6 +190,7 @@ export type RequestBody = z.infer<typeof RequestBody>;
 // WebSocket, page to daemon.
 export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
+  z.object({ type: z.literal('relisten') }),
   z.object({
     type: z.literal('complete'),
     text: z.string(),

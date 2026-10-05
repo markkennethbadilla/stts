@@ -30,7 +30,7 @@ The request body is `{kind, text|file|url, part, listen, close, idleSec, rate, v
 
 WebSocket messages, one checked list per direction:
 
-- Page to daemon: `ready`, `complete{text,startAt,endAt,source?,interrupted?}` (`source` is `typed` or `heard`, absent means heard so an old page still validates; `interrupted{part,sentence}` marks a barge), `cancel`, `close`, `ended`, `nospeech`, `stopped{part}`, `log{line}`, `settings`.
+- Page to daemon: `ready`, `relisten` (sent on unmute: the daemon resends an open stt listen, never a tts), `complete{text,startAt,endAt,source?,interrupted?}` (`source` is `typed` or `heard`, absent means heard so an old page still validates; `interrupted{part,sentence}` marks a barge), `cancel`, `close`, `ended`, `nospeech`, `stopped{part}`, `log{line}`, `settings`.
 - Daemon to page: `request{id,body}`, `released{reason}` where reason is `superseded`, `timeout` or `background`.
 
 A frame that fails the check is logged as `ws bad message` and dropped; parsing never throws.

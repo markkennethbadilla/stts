@@ -151,6 +151,7 @@ describe('page machine', () => {
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there' });
 
     const b = start();
+    b.actor.send({ type: 'REQUEST', kind: 'listen' });
     b.actor.send({ type: 'SPEECH_END', text: 'I want to go to the' });
     vi.advanceTimersByTime(700);
     expect(b.sendTurn).not.toHaveBeenCalled();
@@ -158,8 +159,27 @@ describe('page machine', () => {
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('one turn per listen: a speechend after the turn went out, or during speech, sends nothing', () => {
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'RESULT', text: 'hello there' });
+    vi.advanceTimersByTime(700);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
+    // Chrome's late speechend once the turn is out (log 2026-10-06: two "turn sent" 700 ms apart).
+    actor.send({ type: 'SPEECH_END', text: 'hello there' });
+    vi.advanceTimersByTime(5000);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
+    expect(actor.getSnapshot().matches({ turn: 'heard' })).toBe(true);
+    // A reply that asks for a listen keeps it through its speech.
+    actor.send({ type: 'ENQUEUE', clips: ['ok'], listen: true });
+    actor.send({ type: 'CLIP_ENDED' });
+    expect(actor.getSnapshot().context.wantListen).toBe(true);
+  });
+
   it('hold_ms overrides the autosend delay; null restores the defaults', () => {
     const { actor, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'SET_HOLD', ms: 2000 });
     actor.send({ type: 'SPEECH_END', text: 'I want to go to the' });
     vi.advanceTimersByTime(1999);
@@ -170,6 +190,7 @@ describe('page machine', () => {
     const b = start();
     b.actor.send({ type: 'SET_HOLD', ms: 2000 });
     b.actor.send({ type: 'SET_HOLD', ms: null });
+    b.actor.send({ type: 'REQUEST', kind: 'listen' });
     b.actor.send({ type: 'SPEECH_END', text: 'done' });
     vi.advanceTimersByTime(700);
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
