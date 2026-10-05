@@ -1,0 +1,18 @@
+{
+  // Every spec: a title, then exactly these five sections in this order (rule 48).
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD043": {
+      "headings": [
+        "?",
+        "## What it does",
+        "## Why it exists",
+        "## How it works",
+        "## What it reads and writes",
+        "## How to run, check and hand over"
+      ]
+    }
+  },
+  "globs": ["specs/**/*.md"]
+}
