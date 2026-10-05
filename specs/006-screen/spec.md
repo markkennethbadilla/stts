@@ -19,7 +19,7 @@ He talks hands-free and glances at the window. Colour and sound tell him the sta
 - **Earcons:** Kenney Interface Sounds (CC0) in `public/earcon/`: `listen-open`, `turn-captured`, `background-result`, one per state change.
 - The 1600x600 strip and a 390 wide phone layout come from Tailwind container queries.
 
-Known gap: on a fresh profile the page can log `mic error language-not-supported` and restart the mic in a loop, because the on-device language pack is not installed automatically.
+The status icon turns red when the mic has failed (spec 005: on-device and cloud recognition both refused the language).
 
 ## What it reads and writes
 
