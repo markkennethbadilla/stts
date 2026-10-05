@@ -11,7 +11,10 @@ let updates = 0;
 deps.log = () => {};
 deps.exit = () => {};
 deps.update = async () => void updates++;
-deps.handoff = (to) => void handoffs.push(to);
+deps.handoff = async (to) => void handoffs.push(to);
+deps.openWindow = async () => {};
+// A plain listen open: the only moment a hand-off happens.
+const listen = () => app.request('/request', { method: 'POST', body: JSON.stringify({ kind: 'stt' }) });
 
 // An installed_plugins.json whose stts entry points at installPath (its dist holds daemon.js).
 function installs(installPath: string | null): void {
@@ -34,9 +37,12 @@ afterEach(() => {
   updates = 0;
 });
 
-it('hands off to a newer install between turns', async () => {
+it('hands off to a newer install only while a plain listen is open', async () => {
   const root = newInstall();
   installs(root);
+  expect(await liveUpdate()).toBe(false);
+  void listen();
+  await new Promise((r) => setTimeout(r, 0));
   expect(await liveUpdate()).toBe(true);
   expect(updates).toBe(1);
   expect(handoffs).toEqual([join(root, 'dist')]);

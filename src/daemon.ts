@@ -106,17 +106,8 @@ export const deps = {
       );
     });
   },
-  // Hands the port and the open window to the newer install, then exits.
-  handoff(to: string): void {
-    deps.log(`live update: handing off to ${to}`);
-    spawn(process.execPath, [join(to, 'daemon.js')], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      env: { ...process.env, STTS_ADOPT: '1' },
-    }).unref();
-    deps.exit(0);
-  },
+  // Hands the port, the window and the open listen to the newer install, then exits.
+  handoff: (to: string): Promise<void> => handOver(to),
 };
 
 const same = (a: string, b: string): boolean => resolve(a).toLowerCase() === resolve(b).toLowerCase();
@@ -144,18 +135,58 @@ export const isLatest = (): boolean => {
 };
 
 /**
- * Between turns, move to a newer install. Safe when nothing is held or only a listen with no
- * words yet: the client resends the listen to the new daemon, and the page reconnects.
+ * Between turns, move to a newer install. Only while a plain listen with no words held is open:
+ * the agent is blocked on it, so it makes no new call while the port changes hands (a new call
+ * then made its client start an older daemon), and the listen is forwarded to the new daemon.
  */
-// Only on a plain listen: the client resends a cut request whole, so a cut tts would play again.
-const safe = (): boolean => (!slot || slot.body.kind === 'stt') && !carry && !held;
+const safe = (): boolean => slot?.body.kind === 'stt' && !carry && !held;
+
+let httpServer: { close: () => void } | null = null;
+let closePage: (() => void) | null = null;
+
+/**
+ * The hand-off with no gap a client can fall into. Stop taking new connections, start the new
+ * daemon, wait until it answers, move the window to it, then forward the open listen to it and
+ * pass its reply back on the connection the agent is already waiting on. Exiting first made the
+ * agent's client respawn its own older daemon, which won the port and handed off again every
+ * minute (log 2026-10-06 22:53 and 23:07 UTC).
+ */
+async function handOver(to: string): Promise<void> {
+  deps.log(`live update: handing off to ${to}`);
+  httpServer?.close();
+  spawn(process.execPath, [join(to, 'daemon.js')], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: { ...process.env, STTS_ADOPT: '1' },
+  }).unref();
+  for (let i = 0; i < 100; i++) {
+    await sleep(100);
+    const r = await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
+    if (r?.ok && same(r.headers.get('X-Stts-Dir') ?? '', to)) break;
+  }
+  closePage?.();
+  const s = slot;
+  if (s) {
+    clearTimeout(s.timer);
+    const r = await fetch(`http://127.0.0.1:${port}/request`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(s.body),
+    }).catch(() => null);
+    const text = r ? await r.text() : NO_SPEECH;
+    s.done({ status: r?.status === 504 ? 504 : 200, text });
+    await sleep(200);
+  }
+  deps.exit(0);
+}
 
 export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   if (!safe()) return false;
   if (!skipUpdate && process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
   const to = installedDir();
   if (!to || same(to, here) || !safe()) return false;
-  deps.handoff(to);
+  await deps.handoff(to);
   return true;
 }
 
@@ -633,6 +664,7 @@ app.get(
     return {
       onOpen: (_e, ws) => {
         link = attachPage((m) => ws.send(JSON.stringify(m)));
+        closePage = () => ws.close();
       },
       onMessage: (e) => link?.onMessage(String(e.data)),
       onClose: () => link?.detach(),
@@ -654,6 +686,7 @@ export function start(p: number = port): void {
     deps.log(`daemon start pid ${process.pid}`),
   );
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
+  httpServer = server;
   // Adopted with no window coming back (closed during the hand-off): exit like a closed window.
   if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 20_000);
   let tries = 0;

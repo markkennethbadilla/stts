@@ -17022,19 +17022,7 @@ const deps = {
 			], done));
 		});
 	},
-	handoff(to) {
-		deps.log(`live update: handing off to ${to}`);
-		spawn(process.execPath, [join(to, "daemon.js")], {
-			detached: true,
-			stdio: "ignore",
-			windowsHide: true,
-			env: {
-				...process.env,
-				STTS_ADOPT: "1"
-			}
-		}).unref();
-		deps.exit(0);
-	}
+	handoff: (to) => handOver(to)
 };
 const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
 const INSTALLS = () => process.env["STTS_INSTALLS"] ?? join(homedir(), ".claude", "plugins", "installed_plugins.json");
@@ -17055,16 +17043,61 @@ const isLatest = () => {
 	return d !== "" && same(d, here);
 };
 /**
-* Between turns, move to a newer install. Safe when nothing is held or only a listen with no
-* words yet: the client resends the listen to the new daemon, and the page reconnects.
+* Between turns, move to a newer install. Only while a plain listen with no words held is open:
+* the agent is blocked on it, so it makes no new call while the port changes hands (a new call
+* then made its client start an older daemon), and the listen is forwarded to the new daemon.
 */
-const safe = () => (!slot || slot.body.kind === "stt") && !carry && !held;
+const safe = () => slot?.body.kind === "stt" && !carry && !held;
+let httpServer = null;
+let closePage = null;
+/**
+* The hand-off with no gap a client can fall into. Stop taking new connections, start the new
+* daemon, wait until it answers, move the window to it, then forward the open listen to it and
+* pass its reply back on the connection the agent is already waiting on. Exiting first made the
+* agent's client respawn its own older daemon, which won the port and handed off again every
+* minute (log 2026-10-06 22:53 and 23:07 UTC).
+*/
+async function handOver(to) {
+	deps.log(`live update: handing off to ${to}`);
+	httpServer?.close();
+	spawn(process.execPath, [join(to, "daemon.js")], {
+		detached: true,
+		stdio: "ignore",
+		windowsHide: true,
+		env: {
+			...process.env,
+			STTS_ADOPT: "1"
+		}
+	}).unref();
+	for (let i = 0; i < 100; i++) {
+		await setTimeout$1(100);
+		const r = await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: AbortSignal.timeout(1e3) }).catch(() => null);
+		if (r?.ok && same(r.headers.get("X-Stts-Dir") ?? "", to)) break;
+	}
+	closePage?.();
+	const s = slot;
+	if (s) {
+		clearTimeout(s.timer);
+		const r = await fetch(`http://127.0.0.1:${port}/request`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(s.body)
+		}).catch(() => null);
+		const text = r ? await r.text() : NO_SPEECH;
+		s.done({
+			status: r?.status === 504 ? 504 : 200,
+			text
+		});
+		await setTimeout$1(200);
+	}
+	deps.exit(0);
+}
 async function liveUpdate(skipUpdate = false) {
 	if (!safe()) return false;
 	if (!skipUpdate && process.env["STTS_LIVE_UPDATE"] !== "check") await deps.update();
 	const to = installedDir();
 	if (!to || same(to, here) || !safe()) return false;
-	deps.handoff(to);
+	await deps.handoff(to);
 	return true;
 }
 let slot = null;
@@ -17498,6 +17531,7 @@ app.get("/ws", upgradeWebSocket(() => {
 	return {
 		onOpen: (_e, ws) => {
 			link = attachPage((m) => ws.send(JSON.stringify(m)));
+			closePage = () => ws.close();
 		},
 		onMessage: (e) => link?.onMessage(String(e.data)),
 		onClose: () => link?.detach()
@@ -17519,6 +17553,7 @@ function start(p = port) {
 		hostname: "127.0.0.1"
 	}, () => deps.log(`daemon start pid ${process.pid}`));
 	injectWebSocket(server);
+	httpServer = server;
 	if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 2e4);
 	let tries = 0;
 	server.on("error", (e) => {
