@@ -97,15 +97,11 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(TURN_PREFIX);
   });
 
-  it('speech with no listen open is held for the next listen; lost speech is reported', async () => {
+  it('speech with no listen open is held for the next listen', async () => {
     speak('said after a stop');
     expect(logs).toContain('page heard held for the next listen');
     const r = post('/request', { kind: 'stt' });
     expect(await (await r).text()).toMatch(/said after a stop$/);
-    const l = post('/request', { kind: 'stt', ack: 1 });
-    await tick();
-    page.onMessage(JSON.stringify({ type: 'lost' }));
-    expect(await (await l).text()).toBe('__STTS_SPEECH_LOST__');
   });
 
   it('a newer request supersedes the old one with 504 and released', async () => {

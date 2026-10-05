@@ -30,7 +30,6 @@ import {
   RequestBody,
   readNotes,
   SENTINELS,
-  SPEECH_LOST,
   STOPPED,
   SUPERSEDED,
   TURN_PREFIX,
@@ -394,11 +393,6 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         if (slot) send();
         return;
       }
-      // The page heard speech it could not turn into words: the open listen says so.
-      case 'lost':
-        deps.log('page speech lost');
-        if (slot && isListen(slot.body) && !carry) settle(200, SPEECH_LOST);
-        return;
       case 'nospeech':
         turns.send({ type: 'nospeech' });
         settle(200, NO_SPEECH);

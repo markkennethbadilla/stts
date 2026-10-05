@@ -239,17 +239,7 @@ export function App() {
         prefetchClips: (_, { clips }) => {
           for (const c of clips) fetchClip(c);
         },
-        log: (_, { line }) => {
-          log(line);
-          // A recogniser that heard speech but gave no words: tell the listen his words were lost.
-          // On-device recognition that hears speech but returns no words: use the cloud from the next
-          // start (real Chrome test 2026-10-06: on-device gave no words, cloud heard every turn).
-          // ponytail: stays on the cloud until a reload; retry on-device if Mark wants it local-first.
-          if (line.includes('speech heard but no words')) {
-            local.current = false;
-            post({ type: 'lost' });
-          }
-        },
+        log: (_, { line }) => log(line),
         speakFallback: (_, { clip }) => {
           const u = new SpeechSynthesisUtterance(clip);
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);

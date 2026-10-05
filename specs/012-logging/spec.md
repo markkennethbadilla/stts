@@ -27,7 +27,6 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `page live update: reloading for the new version` | the window reloads onto the new code |
 | `page mic start` | mic opened |
 | `page mic start timed out` | a recogniser start reported nothing within 5 s and was restarted |
-| `page speech lost` | speech was heard but gave no words; the open listen returned `__STTS_SPEECH_LOST__` |
 | `page heard held for the next listen` | speech with no listen open, kept for the next one |
 | `page skipped by Mark` | Skip or Esc stopped the speech |
 | `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |
