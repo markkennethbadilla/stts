@@ -13,6 +13,7 @@ import { launch } from 'chrome-launcher';
 import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
+import { z } from 'zod';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -205,6 +206,8 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
           settle(200, readNotes.spoken);
           return;
         }
+        // An empty complete is the page finishing a tts this listen superseded: not a turn.
+        if (!m.text.trim()) return;
         const text = `${carry} ${m.text}`.trim();
         carry = '';
         keepCarry = false;
@@ -354,6 +357,12 @@ app.post('/request', async (c) => {
 // Piper: its own HTTP server, started on the first clip if nothing answers on its port,
 // proxied so the page needs one origin. The page calls POST /voice/clip {text, voice, rate}.
 let piper: ChildProcess | null = null;
+// voice becomes a file name for Piper: no path separators.
+const ClipBody = z.object({
+  text: z.string(),
+  voice: z.string().regex(/^[\w.-]+$/),
+  rate: z.number().min(0.5).max(2).optional(),
+});
 const piperClip = (text: string, voice: string, rate: number) =>
   fetch(`http://127.0.0.1:${PIPER_PORT}/synthesize`, {
     method: 'POST',
@@ -374,7 +383,9 @@ function startPiper(voice: string): void {
 }
 
 app.post('/voice/clip', async (c) => {
-  const { text, voice, rate } = (await c.req.json()) as { text: string; voice: string; rate?: number };
+  const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.text(parsed.error.message, 400);
+  const { text, voice, rate } = parsed.data;
   const t0 = Date.now();
   let r = await piperClip(text, voice, rate ?? 1);
   if (!r && !piper) {

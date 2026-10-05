@@ -175,6 +175,9 @@ export function App() {
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
     await playEarcon('listen-open');
+    // Paused, or the listen ended, during the chime: the mic must not start.
+    const stillStarting = () => actor.getSnapshot().matches({ mic: { live: 'starting' } });
+    if (!stillStarting()) return;
     const SR = (
       globalThis as unknown as {
         SpeechRecognition?: new () => Recognition;
@@ -191,6 +194,10 @@ export function App() {
     const stream = await navigator.mediaDevices
       .getUserMedia({ audio: { echoCancellation: true, ...(mic === 'default' ? {} : { deviceId: mic }) } })
       .catch(() => null);
+    if (!stillStarting()) {
+      for (const t of stream?.getTracks() ?? []) t.stop();
+      return;
+    }
     const r = new Ctor();
     r.continuous = true;
     r.interimResults = true;
