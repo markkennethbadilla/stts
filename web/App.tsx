@@ -4,7 +4,7 @@ import { useMachine } from '@xstate/react';
 import { Bell, CircleStop, Ear, Mic, MicOff, PhoneOff, Settings2, Volume2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { DaemonMessage, type PageMessage, parseMessage, readsUnfinished } from '../src/protocol.ts';
+import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
 import { toParts } from '../src/sentences.ts';
 import { Button } from './components/ui/button.tsx';
 import { LiveWaveform } from './components/ui/live-waveform.tsx';
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
-import { pageMachine } from './machine.ts';
+import { holdMs, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -96,7 +96,7 @@ export function App() {
   const [voice, setVoice] = useSetting('voice', DEFAULT_PIPER);
   const [rate, setRate] = useSetting('rate', '1');
   const [autosend, setAutosend] = useSetting('autosend', '1');
-  const [hold, setHold] = useSetting('hold_ms', '1000');
+  const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
   const [earcons, setEarcons] = useSetting('earcons', '1');
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
@@ -310,6 +310,10 @@ export function App() {
   }, [actor, autosend]);
 
   useEffect(() => {
+    actor.send({ type: 'SET_HOLD', ms: hold ? Number(hold) : null });
+  }, [actor, hold]);
+
+  useEffect(() => {
     navigator.mediaDevices
       ?.enumerateDevices()
       .then((d) => setMics(d.filter((x) => x.kind === 'audioinput' && x.deviceId)))
@@ -357,7 +361,7 @@ export function App() {
         : turn === 'heard'
           ? Ear
           : Mic;
-  const holdSec = readsUnfinished(state.context.transcript) ? 1 : 0.7;
+  const holdSec = holdMs(state.context) / 1000;
 
   return (
     <main className="@container relative grid h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-50">
@@ -459,13 +463,13 @@ export function App() {
                   onCheckedChange={(c) => setAutosend(c ? '1' : '0')}
                 />
               </Row>
-              <Row label={`Hold ${hold} ms`}>
+              <Row label={hold ? `Hold ${hold} ms` : 'Hold auto'}>
                 <Slider
                   className="w-40"
                   min={300}
                   max={3000}
                   step={100}
-                  value={[Number(hold)]}
+                  value={[Number(hold || 1000)]}
                   onValueChange={(v) => setHold(String(first(v)))}
                 />
               </Row>

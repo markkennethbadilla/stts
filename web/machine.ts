@@ -29,6 +29,10 @@ export function nextBackoff(prev: number | null): number {
 }
 
 /** Why the mic is restarting, for the "mic restart #N: reason" log line. */
+export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
+  return c.holdMs ?? (readsUnfinished(c.transcript) ? 1000 : 700);
+}
+
 export function restartReason(event: { type: string }, c: PageContext): string {
   if (event.type === 'MIC_ERROR') return 'mic error';
   if (event.type === 'WATCHDOG') return 'watchdog';
@@ -51,6 +55,7 @@ export type PageEvent =
   | { type: 'NOTIFY'; text: string }
   | { type: 'LISTEN_DONE' }
   | { type: 'SET_AUTOSEND'; on: boolean }
+  | { type: 'SET_HOLD'; ms: number | null }
   | { type: 'ENQUEUE'; clips: string[] }
   | { type: 'CLIP_ENDED' }
   | { type: 'CLIP_FAILED' }
@@ -58,6 +63,8 @@ export type PageEvent =
 
 export interface PageContext {
   autosend: boolean;
+  // The hold_ms setting; null keeps the defaults (0.7 s, or 1 s when the words read unfinished).
+  holdMs: number | null;
   wantListen: boolean;
   transcript: string;
   backoff: number | null;
@@ -95,13 +102,14 @@ export const pageMachine = setup({
   },
   delays: {
     backoff: ({ context }) => context.backoff ?? 0,
-    autosend: ({ context }) => (readsUnfinished(context.transcript) ? 1000 : 700),
+    autosend: ({ context }) => holdMs(context),
   },
 }).createMachine({
   id: 'page',
   type: 'parallel',
   context: {
     autosend: true,
+    holdMs: null,
     wantListen: false,
     transcript: '',
     backoff: null,
@@ -115,6 +123,7 @@ export const pageMachine = setup({
   },
   on: {
     SET_AUTOSEND: { actions: assign({ autosend: ({ event }) => event.on }) },
+    SET_HOLD: { actions: assign({ holdMs: ({ event }) => event.ms }) },
     // A listen request is remembered even while paused; only a trusted resume acts on it.
     REQUEST: { guard: ({ event }) => event.kind === 'listen', actions: assign({ wantListen: true }) },
   },

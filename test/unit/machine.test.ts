@@ -80,6 +80,23 @@ describe('page machine', () => {
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('hold_ms overrides the autosend delay; null restores the defaults', () => {
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'SET_HOLD', ms: 2000 });
+    actor.send({ type: 'SPEECH_END', text: 'I want to go to the' });
+    vi.advanceTimersByTime(1999);
+    expect(sendTurn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
+
+    const b = start();
+    b.actor.send({ type: 'SET_HOLD', ms: 2000 });
+    b.actor.send({ type: 'SET_HOLD', ms: null });
+    b.actor.send({ type: 'SPEECH_END', text: 'done' });
+    vi.advanceTimersByTime(700);
+    expect(b.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
   it('pause cancels an armed autosend', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'SPEECH_END', text: 'done' });

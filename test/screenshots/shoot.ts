@@ -42,6 +42,7 @@ for (const [name, width, height] of [
     class FakeRec {
       onstart: (() => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
+      onspeechend: (() => void) | null = null;
       start() {
         (globalThis as unknown as { __rec: FakeRec }).__rec = this;
         setTimeout(() => this.onstart?.(), 50);
@@ -63,6 +64,16 @@ for (const [name, width, height] of [
   });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}${name}-interim.png` });
+  // Speech end with final words arms autosend: the countdown ring shrinks around the orb.
+  await page.evaluate(() => {
+    const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void; onspeechend: () => void } }).__rec;
+    const res = Object.assign([{ transcript: 'read me the next chapter' }], { isFinal: true });
+    r.onresult({ resultIndex: 0, results: [res] });
+    r.onspeechend();
+  });
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: `${out}${name}-countdown.png` });
+  await page.waitForTimeout(1000);
   send({ type: 'request', id: 2, body: { kind: 'tts', text: 'Chapter two. The orb wakes.', who: 'session' } });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}${name}-speaking.png` });
