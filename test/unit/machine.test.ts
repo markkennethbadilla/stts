@@ -111,6 +111,20 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(2);
   });
 
+  it('a no-words restart does not loop, and an automatic restart is marked auto (no chime)', () => {
+    const { actor, startMic } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    expect(actor.getSnapshot().context.auto).toBe(false);
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'SPEECH_START' });
+    vi.advanceTimersByTime(10100); // speech heard, no words for 8 s: one restart
+    expect(startMic).toHaveBeenCalledTimes(2);
+    expect(actor.getSnapshot().context.auto).toBe(true);
+    actor.send({ type: 'MIC_STARTED' });
+    vi.advanceTimersByTime(6000); // the old speechstart must not trip it again
+    expect(startMic).toHaveBeenCalledTimes(2);
+  });
+
   it('a trusted resume with a pending listen starts the mic', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'PAUSE', trusted: true });

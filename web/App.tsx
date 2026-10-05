@@ -307,7 +307,8 @@ export function App() {
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
     // Not over the agent's speech: the mic opening there is silent.
-    if (!actor.getSnapshot().matches({ speech: 'playing' })) await playEarcon('listen-open');
+    const snap = actor.getSnapshot();
+    if (!snap.matches({ speech: 'playing' }) && !snap.context.auto) await playEarcon('listen-open');
     // Paused, or the listen ended, during the chime: the mic must not start.
     const stillStarting = () => actor.getSnapshot().matches({ mic: { live: 'starting' } });
     if (!stillStarting()) return;

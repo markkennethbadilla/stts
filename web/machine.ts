@@ -143,6 +143,8 @@ export interface PageContext {
   sentence: number;
   // Where the last barge cut the agent's speech off.
   interrupted: Interrupted | null;
+  // The mic start in progress is an automatic restart (no chime).
+  auto: boolean;
 }
 
 const cut = ({ context, event }: { context: PageContext; event: PageEvent }): Interrupted => ({
@@ -212,6 +214,7 @@ export const pageMachine = setup({
     typing: false,
     sentence: 1,
     interrupted: null,
+    auto: false,
   },
   on: {
     SET_TYPING: { actions: assign({ typing: ({ event }) => event.on }) },
@@ -233,12 +236,14 @@ export const pageMachine = setup({
           on: { PAUSE: { guard: 'trusted', target: 'paused' } },
           states: {
             idle: {
-              always: { guard: 'canStart', target: 'starting' },
+              always: { guard: 'canStart', target: 'starting', actions: assign({ auto: false }) },
               on: {},
             },
             starting: {
               // The only place the mic starts; every path here passes canStart (!paused).
-              entry: ['startMic', assign({ running: false, endedAt: now, heardAt: now })],
+              // speechAt resets: an old speechstart made the 8 s rule trip on every restart, a loop every
+              // 3.5 s (log 2026-10-06 21:44 to 21:47 UTC).
+              entry: ['startMic', assign({ running: false, endedAt: now, heardAt: now, speechAt: 0 })],
               on: {
                 MIC_STARTED: {
                   target: 'listening',
@@ -287,7 +292,13 @@ export const pageMachine = setup({
                   }),
                 },
               ],
-              after: { backoff: [{ guard: 'canStart', target: 'starting' }, { target: 'idle' }] },
+              // An automatic restart opens the mic without the chime (Mark 2026-10-06).
+              after: {
+                backoff: [
+                  { guard: 'canStart', target: 'starting', actions: assign({ auto: true }) },
+                  { target: 'idle' },
+                ],
+              },
             },
             // No recogniser for the language, locally or in the cloud: the mic stays off until a mute and unmute.
             failed: {
