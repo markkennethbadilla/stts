@@ -74,9 +74,18 @@ for (const [name, width, height] of [
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${out}${name}-countdown.png` });
   await page.waitForTimeout(1000);
-  send({ type: 'request', id: 2, body: { kind: 'tts', text: 'Chapter two. The orb wakes.', who: 'session' } });
+  // A long reply: the words must never run under the wave (Mark, 2026-10-06).
+  const long = 'Chapter two. The orb wakes, and the long reply keeps going so the words fill the window. '.repeat(10);
+  send({ type: 'request', id: 2, body: { kind: 'tts', text: long, who: 'session' } });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}${name}-speaking.png` });
+  const gap = await page.evaluate(() => {
+    const s = document.querySelector('section')?.getBoundingClientRect();
+    const w = document.querySelector('section + div')?.getBoundingClientRect();
+    const h = document.querySelector('header')?.getBoundingClientRect();
+    return s && w && h ? Math.min(w.top - s.bottom, s.top - h.bottom) : -1;
+  });
+  if (gap < 0) errors.push(`${name} words overlap the wave or header by ${-gap}px`);
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${out}${name}-settings.png` });

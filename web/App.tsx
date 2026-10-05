@@ -2,6 +2,7 @@
 // web/machine.ts. The machine decides; this file only supplies its side effects.
 import { useMachine } from '@xstate/react';
 import {
+  AudioLines,
   Bell,
   CircleAlert,
   CircleStop,
@@ -53,6 +54,7 @@ const EARCON: Partial<Record<Turn, string>> = {
   background: 'background-result',
 };
 const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
+const CLIP_CHARS = 120;
 const HISTORY_MAX = 50;
 
 // localStorage under the old __stts__* keys, so saved settings carry over.
@@ -130,6 +132,9 @@ export function App() {
     }
   };
   const audio = useRef<HTMLAudioElement | null>(null);
+  const micStream = useRef<MediaStream | null>(null);
+  // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
+  const clipCache = useRef(new Map<string, Promise<Response | null>>());
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
   const [turnNo, setTurnNo] = useState(0);
@@ -161,9 +166,16 @@ export function App() {
       actions: {
         startMic: () => void startMic(),
         // A mic restart must not cancel the listen's idle timer, so stopMic leaves it alone.
-        stopMic: () => rec.current?.stop(),
-        sendTurn: (_, { text }) => {
+        // The capture stream stops with it: every start opened a new one and none was ever closed.
+        stopMic: () => {
+          rec.current?.stop();
+          for (const t of micStream.current?.getTracks() ?? []) t.stop();
+          micStream.current = null;
+        },
+        sendTurn: ({ context }, { text }) => {
           clearTimeout(listen.current.idleTimer);
+          // The end-of-speech stage, measured: last words to turn sent.
+          log(`turn sent ${Date.now() - context.resultAt}ms after the last words`);
           ls.push('history_prompts', text);
           setSaid(text);
           setInterim('');
@@ -196,7 +208,10 @@ export function App() {
           speechSynthesis.cancel();
         },
         playClip: (_, { clip }) => void playClip(clip),
-        prefetchClips: () => {},
+        // Clips ahead synthesise while the current one plays, so the next starts with no gap.
+        prefetchClips: (_, { clips }) => {
+          for (const c of clips) fetchClip(c);
+        },
         log: (_, { line }) => log(line),
         speakFallback: (_, { clip }) => {
           const u = new SpeechSynthesisUtterance(clip);
@@ -214,12 +229,23 @@ export function App() {
   const paused = state.matches({ mic: 'paused' });
   const armed = state.matches({ autosend: 'armed' });
 
+  // One synthesis per clip text: a prefetch and the later play share it.
+  function fetchClip(clip: string): Promise<Response | null> {
+    let p = clipCache.current.get(clip);
+    if (!p) {
+      p = fetch('/voice/clip', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
+      }).catch(() => null);
+      clipCache.current.set(clip, p);
+    }
+    return p;
+  }
+
   async function playClip(clip: string): Promise<void> {
-    const r = await fetch('/voice/clip', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
-    }).catch(() => null);
+    const r = await fetchClip(clip);
+    clipCache.current.delete(clip);
     if (!r?.ok) {
       send({ type: 'CLIP_FAILED', reason: r ? `clip ${r.status} ${clipVoice}` : 'clip unreachable' });
       return;
@@ -296,21 +322,28 @@ export function App() {
     r.continuous = true;
     r.interimResults = true;
     r.processLocally = local.current;
-    r.onstart = () => send({ type: 'MIC_STARTED' });
-    r.onend = () => send({ type: 'MIC_ENDED' });
+    micStream.current = stream;
+    // A stopped recogniser still fires its end and error late; only the current one may move
+    // the machine, or a dead one's end marks the new mic as stopped.
+    const mine = (): boolean => rec.current === r;
+    r.onstart = () => mine() && send({ type: 'MIC_STARTED' });
+    r.onend = () => mine() && send({ type: 'MIC_ENDED' });
     r.onerror = (e) => {
+      if (!mine()) return;
       log(`mic error ${e.error ?? 'unknown'}`);
       // On-device refused the language: the next start uses cloud recognition.
       if (e.error === LANG_ERR) local.current = false;
       send({ type: 'MIC_ERROR', ...(e.error ? { error: e.error } : {}) });
     };
-    r.onaudiostart = () => send({ type: 'AUDIO' });
+    r.onaudiostart = () => mine() && send({ type: 'AUDIO' });
     r.onspeechstart = () => {
+      if (!mine()) return;
       heard.current.startAt ||= Date.now();
       send({ type: 'SPEECH_START' });
     };
-    r.onspeechend = () => send({ type: 'SPEECH_END', text: heard.current.final });
+    r.onspeechend = () => mine() && send({ type: 'SPEECH_END', text: heard.current.final });
     r.onresult = (e) => {
+      if (!mine()) return;
       let live = '';
       let final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -341,7 +374,8 @@ export function App() {
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       setInterim(`${heard.current.final} ${live}`.trim());
-      send({ type: 'RESULT', text: heard.current.final });
+      // Words still forming cancel an armed autosend; a settled final arms it.
+      send({ type: live ? 'INTERIM' : 'RESULT', text: heard.current.final });
     };
     rec.current = r;
     const track = stream?.getAudioTracks()[0];
@@ -375,7 +409,9 @@ export function App() {
         armIdle(b.idleSec ?? 200);
         return;
       }
-      const clips = toParts(b.text ?? '');
+      // Short clips: Piper renders a whole clip before it plays, so a 1000-char first clip
+      // held the first word 2-5 s (log, 2026-10-05). The rest synthesise ahead while it plays.
+      const clips = toParts(b.text ?? '', CLIP_CHARS);
       ls.push('history_responses', b.text ?? '');
       setSaid(b.text ?? '');
       setSpoken({ done: 0, of: clips.length });
@@ -414,6 +450,8 @@ export function App() {
   useEffect(() => {
     if (lastTurn.current === turn) return;
     lastTurn.current = turn;
+    // The light's every change in the log, so a wrong colour can be traced to its event.
+    log(`light ${turn}`);
     const name = EARCON[turn];
     if (name && name !== 'listen-open') void playEarcon(name);
   });
@@ -430,6 +468,7 @@ export function App() {
     actor.send({ type: 'SET_HOLD', ms: hold ? Number(hold) : null });
   }, [actor, hold]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once; the warm-up uses the voice saved at load.
   useEffect(() => {
     navigator.mediaDevices
       ?.enumerateDevices()
@@ -445,7 +484,14 @@ export function App() {
     fill();
     fetch('/voice/list')
       .then((r) => r.json() as Promise<string[]>)
-      .then((l) => l.length && setPiperVoices(l))
+      .then((l) => {
+        if (l.length) setPiperVoices(l);
+        void fetch('/voice/warm', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voice: l.includes(voice) ? voice : DEFAULT_PIPER }),
+        }).catch(() => {});
+      })
       .catch(() => {});
     speechSynthesis.addEventListener('voiceschanged', fill);
     return () => speechSynthesis.removeEventListener('voiceschanged', fill);
@@ -505,7 +551,7 @@ export function App() {
   const holdSec = holdMs(state.context) / 1000;
 
   return (
-    <main className="@container relative grid h-dvh w-full overflow-hidden bg-neutral-950 text-neutral-50">
+    <main className="@container relative flex h-dvh flex-col w-full overflow-hidden bg-neutral-950 text-neutral-50">
       <div className="absolute inset-0 grid place-items-center [mask-image:radial-gradient(circle,black_40%,transparent_75%)]">
         <div className="relative aspect-square h-[min(90cqh,90cqw)] @min-[1200px]:h-[110cqh]">
           {turn === 'speakNow' && <Ripple mainCircleSize={260} className="opacity-70" />}
@@ -529,16 +575,7 @@ export function App() {
         </div>
       </div>
 
-      {turn === 'agentSpeaking' && (
-        <div className="absolute inset-x-0 bottom-0 h-24 opacity-80">
-          <LiveWaveform processing mode="static" height={96} barColor={TINT.agentSpeaking[0]} />
-          {spoken.of > 1 && (
-            <Progress value={(spoken.done / spoken.of) * 100} className="absolute inset-x-8 bottom-2" />
-          )}
-        </div>
-      )}
-
-      <header className="absolute inset-x-0 top-0 flex items-center gap-3 p-4">
+      <header className="relative flex shrink-0 items-center gap-3 p-4">
         <span
           className="rounded-full px-3 py-1 font-mono text-sm font-semibold text-neutral-950"
           style={{ background: TINT[turn][0] }}
@@ -557,7 +594,7 @@ export function App() {
             aria-label={inputMode === 'keyboard' ? 'Switch to mic input' : 'Switch to keyboard input'}
             onClick={() => setInputMode(inputMode === 'keyboard' ? 'mic' : 'keyboard')}
           >
-            {inputMode === 'keyboard' ? <Mic /> : <Keyboard />}
+            {inputMode === 'keyboard' ? <AudioLines /> : <Keyboard />}
           </Button>
           <Button
             variant="ghost"
@@ -674,7 +711,7 @@ export function App() {
         </div>
       </header>
 
-      <section className="absolute inset-x-0 bottom-28 px-6 text-center @min-[1200px]:bottom-auto @min-[1200px]:left-auto @min-[1200px]:top-1/2 @min-[1200px]:w-[32cqw] @min-[1200px]:-translate-y-1/2 @min-[1200px]:text-left">
+      <section className="relative mt-auto min-h-0 overflow-y-auto px-6 text-center @min-[1200px]:my-auto @min-[1200px]:ml-auto @min-[1200px]:w-[32cqw] @min-[1200px]:text-left">
         {interim && !browse ? (
           <TextShimmer className="text-2xl font-medium [--base-color:theme(colors.neutral.400)] [--base-gradient-color:white]">
             {interim}
@@ -684,9 +721,21 @@ export function App() {
         )}
       </section>
 
+      {/* In the flow, its height always reserved: the words above can never run under the wave. */}
+      <div className="relative h-24 shrink-0 opacity-80">
+        {turn === 'agentSpeaking' && (
+          <>
+            <LiveWaveform processing mode="static" height={96} barColor={TINT.agentSpeaking[0]} />
+            {spoken.of > 1 && (
+              <Progress value={(spoken.done / spoken.of) * 100} className="absolute inset-x-8 bottom-2" />
+            )}
+          </>
+        )}
+      </div>
+
       {inputMode === 'keyboard' && (
         <form
-          className="absolute inset-x-6 bottom-4 flex items-end gap-2"
+          className="relative mx-6 mb-4 flex shrink-0 items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             sendDraft();

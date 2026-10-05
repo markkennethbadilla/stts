@@ -102,6 +102,15 @@ describe('page machine', () => {
     expect(actor.getSnapshot().matches({ mic: { live: 'listening' }, turn: 'speakNow' })).toBe(true);
   });
 
+  it('a recogniser that ends on its own during a listen restarts at once', () => {
+    const { actor, startMic } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'MIC_ENDED' });
+    vi.advanceTimersByTime(1);
+    expect(startMic).toHaveBeenCalledTimes(2);
+  });
+
   it('a trusted resume with a pending listen starts the mic', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'PAUSE', trusted: true });
@@ -110,13 +119,31 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 
-  it('autosend arms on speechend only: 0.7 s, or 1 s when unfinished', () => {
+  it('autosend arms on a final result, not only speechend; interim words cancel it', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
-    actor.send({ type: 'RESULT', text: 'hello there' });
+    actor.send({ type: 'INTERIM', text: '' });
     vi.advanceTimersByTime(5000);
     expect(sendTurn).not.toHaveBeenCalled();
+    actor.send({ type: 'RESULT', text: 'hello' });
+    vi.advanceTimersByTime(500);
+    actor.send({ type: 'INTERIM', text: 'hello' });
+    vi.advanceTimersByTime(5000);
+    expect(sendTurn).not.toHaveBeenCalled();
+    actor.send({ type: 'RESULT', text: 'hello there' });
+    vi.advanceTimersByTime(400);
+    actor.send({ type: 'RESULT', text: 'hello there friend' });
+    vi.advanceTimersByTime(699);
+    expect(sendTurn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend' });
+  });
+
+  it('autosend on speechend: 0.7 s, or 1 s when unfinished', () => {
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'SPEECH_END', text: 'hello there' });
     vi.advanceTimersByTime(699);
     expect(sendTurn).not.toHaveBeenCalled();

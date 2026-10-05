@@ -17331,6 +17331,11 @@ app.get("/voice/list", async (c) => {
 	const files = await readdir(join(PIPER_HOME, "voices")).catch(() => []);
 	return c.json(files.filter((f) => f.endsWith(".onnx")).map((f) => f.slice(0, -5)).sort());
 });
+app.post("/voice/warm", async (c) => {
+	const parsed = ClipBody.pick({ voice: true }).safeParse(await c.req.json().catch(() => null));
+	if (parsed.success && !piper) startPiper(parsed.data.voice);
+	return c.body(null, 204);
+});
 app.post("/voice/clip", async (c) => {
 	const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
 	if (!parsed.success) {
@@ -17340,8 +17345,8 @@ app.post("/voice/clip", async (c) => {
 	const { text, voice, rate } = parsed.data;
 	const t0 = Date.now();
 	let r = await piperClip(text, voice, rate ?? 1);
-	if (!r && !piper) {
-		startPiper(voice);
+	if (!r) {
+		if (!piper) startPiper(voice);
 		for (let i = 0; i < 30 && !r; i++) {
 			await setTimeout$1(500);
 			r = await piperClip(text, voice, rate ?? 1);

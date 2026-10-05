@@ -85,6 +85,7 @@ export function bargeVerdict(final: string, spoken: readonly string[], msIntoCli
 export function restartReason(event: { type: string }, c: PageContext): string {
   if (event.type === 'MIC_ERROR') return 'mic error';
   if (event.type === 'WATCHDOG') return 'watchdog';
+  if (event.type === 'MIC_ENDED') return 'recogniser ended';
   return watchdogVerdict({ ...c, now: Date.now() }) ?? 'watchdog';
 }
 
@@ -257,10 +258,13 @@ export const pageMachine = setup({
               on: {
                 MIC_ERROR: [{ guard: 'langGiveUp', target: 'failed' }, { target: 'restarting' }],
                 WATCHDOG: 'restarting',
-                MIC_ENDED: { actions: assign({ running: false, endedAt: now }) },
+                // Chrome ends a continuous session on its own (silence, network). Restart at once:
+                // waiting for the 6 s watchdog left the light green over a dead mic.
+                MIC_ENDED: { target: 'restarting', actions: assign({ running: false, endedAt: now }) },
                 AUDIO: { actions: assign({ heardAt: now }) },
                 SPEECH_START: { actions: assign({ speechAt: now, heardAt: now }) },
                 RESULT: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
+                INTERIM: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
                 LISTEN_DONE: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
                 TYPED: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
               },
@@ -329,6 +333,14 @@ export const pageMachine = setup({
               target: 'armed',
               actions: assign({ transcript: ({ event }) => event.text }),
             },
+            // A final result is the recogniser's own end of utterance. Chrome's speechend in
+            // continuous mode fires only when the session ends (the 15 s watchdog restart), so
+            // arming on it alone held every turn 15 s or more (Mark, 2026-10-06).
+            RESULT: {
+              guard: and(['autosendOn', 'quiet', live, ({ event }) => event.text !== '']),
+              target: 'armed',
+              actions: assign({ transcript: ({ event }) => event.text }),
+            },
           },
         },
         armed: {
@@ -345,6 +357,12 @@ export const pageMachine = setup({
             PAUSE: { guard: 'trusted', target: 'off' },
             SPEECH_START: 'off',
             INTERIM: 'off',
+            // Another final: the hold restarts on the longer transcript.
+            RESULT: {
+              target: 'armed',
+              reenter: true,
+              actions: assign({ transcript: ({ event }) => event.text }),
+            },
             TYPED: 'off',
             SET_AUTOSEND: { guard: ({ event }) => !event.on, target: 'off' },
           },

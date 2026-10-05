@@ -452,6 +452,14 @@ app.get('/voice/list', async (c) => {
   );
 });
 
+// The page calls this on load: Piper loads its model while Mark speaks, not on the first
+// reply (that cost 5.5 s, log 2026-10-05).
+app.post('/voice/warm', async (c) => {
+  const parsed = ClipBody.pick({ voice: true }).safeParse(await c.req.json().catch(() => null));
+  if (parsed.success && !piper) startPiper(parsed.data.voice);
+  return c.body(null, 204);
+});
+
 app.post('/voice/clip', async (c) => {
   const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
@@ -461,8 +469,9 @@ app.post('/voice/clip', async (c) => {
   const { text, voice, rate } = parsed.data;
   const t0 = Date.now();
   let r = await piperClip(text, voice, rate ?? 1);
-  if (!r && !piper) {
-    startPiper(voice);
+  // Not up yet: start it, or wait for the one the warm-up started.
+  if (!r) {
+    if (!piper) startPiper(voice);
     for (let i = 0; i < 30 && !r; i++) {
       await sleep(500);
       r = await piperClip(text, voice, rate ?? 1);

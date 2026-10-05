@@ -24,7 +24,9 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
 | `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
 | `page mic start` | mic opened |
-| `page mic restart #N: reason` | watchdog or error restart |
+| `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |
+| `page turn sent MSms after the last words` | auto-send fired: the end-of-speech delay |
+| `page light TURN` | the status light changed (notListening, speakNow, heard, background, agentSpeaking) |
 | `page mic error ERROR` | speech recognition error |
 | `page paused by Mark`, `page resumed by Mark` | mute and unmute |
 | `page ws closed` | the page lost the daemon |
