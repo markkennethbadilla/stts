@@ -429,17 +429,27 @@ export function App() {
     if (recognizer !== 'device') local.current = false;
     else local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
-    startStage.current = 'getUserMedia';
-    const stream = await navigator.mediaDevices
-      .getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, ...(mic === 'default' ? {} : { deviceId: mic }) },
-      })
-      .catch(() => null);
-    if (!stillStarting()) {
-      for (const t of stream?.getTracks() ?? []) t.stop();
-      return;
+    // The default mic goes to the recogniser as the old stts did: r.start() with no track, Chrome's own
+    // capture, nothing awaited first. Opening our own stream before every start put getUserMedia in
+    // the gap, which timed out and lost the first words of his turns (Mark 2026-10-07). The level
+    // meter gets its own stream, opened once, off the start path. A chosen mic still needs the track.
+    let stream: MediaStream | null = null;
+    if (mic !== 'default') {
+      startStage.current = 'getUserMedia';
+      stream = await navigator.mediaDevices
+        .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, deviceId: mic } })
+        .catch(() => null);
+      if (!stillStarting()) {
+        for (const t of stream?.getTracks() ?? []) t.stop();
+        return;
+      }
+      if (stream) watchLevel(stream);
+    } else if (!levelStop.current) {
+      void navigator.mediaDevices
+        .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+        .then(watchLevel)
+        .catch(() => {});
     }
-    if (stream) watchLevel(stream);
     const r = new Ctor();
     consumed.current = 0;
     resultsSeen.current = 0;

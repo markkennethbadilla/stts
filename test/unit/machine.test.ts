@@ -112,18 +112,18 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(2);
   });
 
-  it('a no-words restart does not loop, and an automatic restart is marked auto (no chime)', () => {
+  it('wordless speech never restarts a running recogniser; an automatic restart is marked auto (no chime)', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     expect(actor.getSnapshot().context.auto).toBe(false);
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'SPEECH_START' });
-    vi.advanceTimersByTime(10100); // speech heard, no words for 8 s: one restart
+    vi.advanceTimersByTime(60_000); // speech heard, no words: the session is left running
+    expect(startMic).toHaveBeenCalledTimes(1);
+    actor.send({ type: 'MIC_ENDED' });
+    vi.advanceTimersByTime(1);
     expect(startMic).toHaveBeenCalledTimes(2);
     expect(actor.getSnapshot().context.auto).toBe(true);
-    actor.send({ type: 'MIC_STARTED' });
-    vi.advanceTimersByTime(6000); // the old speechstart must not trip it again
-    expect(startMic).toHaveBeenCalledTimes(2);
   });
 
   it('a trusted resume with a pending listen starts the mic', () => {
@@ -364,14 +364,15 @@ describe('page machine', () => {
     }
   });
 
-  it('the watchdog checks every 2 s and restarts after 15 s of nothing', () => {
+  it('the watchdog never aborts a running recogniser for silence', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
-    vi.advanceTimersByTime(14000);
+    vi.advanceTimersByTime(120_000);
     expect(startMic).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(2000);
-    vi.advanceTimersByTime(1); // the 0 s backoff timer
+    // A recogniser that ended on its own still restarts.
+    actor.send({ type: 'MIC_ENDED' });
+    vi.advanceTimersByTime(1);
     expect(startMic).toHaveBeenCalledTimes(2);
   });
 
@@ -410,8 +411,9 @@ describe('page machine', () => {
     const base = { now: 20000, running: true, endedAt: 0, speechAt: 0, resultAt: 0, heardAt: 19000 };
     expect(watchdogVerdict(base)).toBeNull();
     expect(watchdogVerdict({ ...base, running: false, endedAt: 13999 })).toMatch(/not running/);
-    expect(watchdogVerdict({ ...base, speechAt: 11000, resultAt: 10000 })).toMatch(/8s/);
-    expect(watchdogVerdict({ ...base, heardAt: 4000 })).toMatch(/15s/);
+    // A running recogniser is never aborted for quiet or wordless sound (Mark 2026-10-07).
+    expect(watchdogVerdict({ ...base, speechAt: 11000, resultAt: 10000 })).toBeNull();
+    expect(watchdogVerdict({ ...base, heardAt: 4000 })).toBeNull();
     expect([null, 0, 250, 1000, 2000].map((p) => nextBackoff(p))).toEqual([0, 250, 500, 2000, 2000]);
   });
 });

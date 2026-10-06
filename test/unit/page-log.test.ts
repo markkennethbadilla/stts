@@ -20,12 +20,13 @@ it('mic start and mic restart #N: reason reach daemon.log word for word', () => 
   actor.send({ type: 'MIC_ERROR' });
   vi.advanceTimersByTime(0);
   actor.send({ type: 'MIC_STARTED' });
-  vi.advanceTimersByTime(16_000);
+  actor.send({ type: 'MIC_ENDED' });
+  vi.advanceTimersByTime(1);
   expect(logged.slice(0, 4)).toEqual([
     'page mic start',
     'page mic restart #1: mic error',
     'page mic start',
-    'page mic restart #2: no audio or words for 15s during a listen',
+    'page mic restart #2: recogniser ended',
   ]);
   link.detach();
 });

@@ -28,9 +28,10 @@ export function watchdogVerdict(s: {
   playing?: boolean;
 }): string | null {
   if (!s.running) return s.now - s.endedAt > 6000 ? 'not running during a listen' : null;
+  // Only a recogniser that stopped restarts (the old stts never aborted a running one; Mark 2026-10-07).
+  // Aborting after 8 s with no words or 15 s with no audio threw away speech in flight: 14 restarts
+  // in two minutes, and a 2-minute turn came back as "Hello" (log 2026-10-06 19:36 to 19:38 UTC).
   if (s.playing) return null;
-  if (s.speechAt > s.resultAt && s.now - s.speechAt > 8000) return 'speech heard but no words for 8s';
-  if (s.now - s.heardAt > 15000) return 'no audio or words for 15s during a listen';
   return null;
 }
 
