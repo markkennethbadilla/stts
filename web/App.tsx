@@ -206,6 +206,10 @@ export function App() {
   const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
   const [cues, setCues] = useSetting('cues', 'words');
+  // Speech recognition: Google's cloud service by default. On-device returned chopped and changed
+  // words on long turns (2026-10-06 11:43: 32 s of speech came back as nine words) and none at all
+  // in the real-Chrome test; the cloud heard every turn there.
+  const [recognizer, setRecognizer] = useSetting('recognizer', 'cloud');
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
   const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
@@ -422,7 +426,8 @@ export function App() {
       return;
     }
     startStage.current = 'on-device check';
-    local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
+    if (recognizer !== 'device') local.current = false;
+    else local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
     startStage.current = 'getUserMedia';
     const stream = await navigator.mediaDevices
@@ -882,6 +887,24 @@ export function App() {
                         {m.label || m.deviceId.slice(0, 8)}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+              <Row label="Recognition">
+                <Select
+                  value={recognizer}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    setRecognizer(String(v));
+                    local.current = null;
+                  }}
+                >
+                  <SelectTrigger className="w-40 max-w-full" aria-label="Recognition">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cloud">Cloud (Google)</SelectItem>
+                    <SelectItem value="device">On this device</SelectItem>
                   </SelectContent>
                 </Select>
               </Row>
