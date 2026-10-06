@@ -188,9 +188,17 @@ async function handOver(to: string): Promise<void> {
   deps.exit(0);
 }
 
-// End conversation, remembered across daemons (a hand-off or a respawn starts a new process).
+// End conversation, remembered across daemons (a hand-off or a respawn starts a new process)
+// until one reply carries it. Only the End button sets it (Mark 2026-10-07); a closed window never does.
 const endedFile = (): string => join(dataDir, 'ended');
 export const ended = (): boolean => existsSync(endedFile());
+// Reads and clears: an End reaches exactly one reply, so a stale press never ends a later session
+// (2026-10-07: a press from the day before ended the next session's first stt).
+export function takeEnded(): boolean {
+  const on = ended();
+  if (on) setEnded(false);
+  return on;
+}
 export function setEnded(on: boolean): void {
   mkdirSync(dataDir, { recursive: true });
   if (on) writeFileSync(endedFile(), new Date().toISOString());
@@ -292,7 +300,7 @@ function release(reason: 'superseded' | 'timeout' | 'background'): void {
 
 function send(): void {
   if (!slot) return;
-  if (ended()) {
+  if (takeEnded()) {
     settle(200, CONVERSATION_ENDED);
     return;
   }
@@ -455,18 +463,19 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
-        settle(200, ended() ? CONVERSATION_ENDED : `${STOPPED} ${m.part}`);
+        settle(200, takeEnded() ? CONVERSATION_ENDED : `${STOPPED} ${m.part}`);
         return;
       case 'cancel':
       case 'close':
+        // Not an End (Mark 2026-10-07): only the End button ends. The call ends empty and the
+        // next call reopens the window.
+        settle(200, NO_SPEECH);
+        return;
       case 'ended':
-        // End is final (Mark 2026-10-06): remembered on disk, so no later call, hand-off, watchdog
-        // or reconnect opens the window again until a call with start=true.
-        if (m.type === 'ended') setEnded(true);
-        settle(200, CONVERSATION_ENDED);
-        // Exit after the reply is out: exiting at once made the waiting call fail with
-        // "fetch failed" and its client respawn a daemon that reopened the window.
-        // No exit: the newest daemon keeps the port (see the note above app).
+        // Written first so a press with no call open (mid-speech, between calls) is never lost;
+        // an open call takes it at once. No exit: the newest daemon keeps the port (note above app).
+        setEnded(true);
+        if (slot && takeEnded()) settle(200, CONVERSATION_ENDED);
         return;
     }
   };
@@ -547,7 +556,7 @@ app.post('/request', async (c) => {
   const body = parsed.data;
   if (body.who === 'agent' && body.close) body.close = false; // spec 026: only the session closes
   if (body.start) setEnded(false);
-  else if (ended()) return c.text(CONVERSATION_ENDED);
+  else if (takeEnded()) return c.text(CONVERSATION_ENDED);
 
   const t = turns.getSnapshot().context;
   if (body.kind === 'stt') {

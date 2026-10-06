@@ -39,7 +39,7 @@ Sentinels are replies that are exactly one special word and mean a signal, not s
 
 | Sentinel | Meaning |
 | --- | --- |
-| `__STTS_CONVERSATION_ENDED__` | He pressed End conversation; stop |
+| `__STTS_CONVERSATION_ENDED__` | He pressed End conversation; stop. Returned once per press, never for a closed window |
 | `__STTS_NO_SPEECH__` | Nothing said within `idleSec`; listen again |
 | `__STTS_LISTEN_CONTINUES__` | The listen hit the time budget; call stt again, nothing is lost |
 | `__STTS_STOPPED__` | He pressed Stop during speech (followed by the part number) |

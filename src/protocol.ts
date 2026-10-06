@@ -22,7 +22,8 @@ export const SENTINELS = [CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPP
 // Tool-description notes. The text is the contract agents read; keep it word for word.
 export const ENDED_NOTE =
   ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the ` +
-  'window has already shut down, so do not speak, do not call stt or tts again, and stop.';
+  'window has already shut down, so do not speak, do not call stt or tts again, and stop. ' +
+  'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.';
 
 export const NO_SPEECH_NOTE =
   ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window ` +
@@ -136,7 +137,7 @@ export const sttShape = {
     .boolean()
     .optional()
     .describe(
-      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true.',
+      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
     ),
   ack: z
     .number()
@@ -162,7 +163,7 @@ export const ttsShape = {
     .boolean()
     .optional()
     .describe(
-      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true.',
+      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
     ),
   close: z
     .boolean()

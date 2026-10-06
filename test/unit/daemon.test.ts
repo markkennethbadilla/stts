@@ -200,20 +200,39 @@ describe('daemon', () => {
     expect(await (await r).text()).toBe(CONVERSATION_ENDED);
     await new Promise((res) => setTimeout(res, 600));
     expect(exits).toEqual([]); // the daemon keeps the port: an older client must not start its own
-    // End is final: later calls, a Stop and a window that comes back all stay ended, opening nothing.
-    const opened: number[] = [];
-    deps.openWindow = async () => void opened.push(1);
-    expect(await (await post('/request', { kind: 'stt' })).text()).toBe(CONVERSATION_ENDED);
-    expect(await (await post('/request', { kind: 'tts', text: 'hi', listen: true })).text()).toBe(CONVERSATION_ENDED);
-    page.onMessage(JSON.stringify({ type: 'ready' }));
-    expect(opened).toEqual([]);
-    // Until voice is started again.
-    const again = post('/request', { kind: 'stt', start: true });
+    // An End reaches exactly one reply: a stale press never ends a later session (2026-10-07).
+    const again = post('/request', { kind: 'stt' });
     await tick();
     expect(sent.at(-1)).toMatchObject({ type: 'request' });
     speak('back again');
     expect(await (await again).text()).toMatch(/back again$/);
-    deps.openWindow = async () => {};
+  });
+
+  it('an End pressed with no call open is kept for the next call, once', async () => {
+    page.onMessage(JSON.stringify({ type: 'ended' }));
+    expect(await (await post('/request', { kind: 'tts', text: 'hi' })).text()).toBe(CONVERSATION_ENDED);
+    const next = post('/request', { kind: 'stt' });
+    await tick();
+    speak('still here');
+    expect(await (await next).text()).toMatch(/still here$/);
+  });
+
+  it('an End pressed mid-speech ends that tts', async () => {
+    const r = post('/request', { kind: 'tts', text: 'a long sentence', listen: true });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'ended' }));
+    expect(await (await r).text()).toBe(CONVERSATION_ENDED);
+  });
+
+  it('a closed window is not an End', async () => {
+    const r = post('/request', { kind: 'stt' });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'close' }));
+    expect(await (await r).text()).not.toBe(CONVERSATION_ENDED);
+    const next = post('/request', { kind: 'stt' });
+    await tick();
+    speak('reopened');
+    expect(await (await next).text()).toMatch(/reopened$/);
   });
 
   it('a bad ws message is logged and dropped', () => {
