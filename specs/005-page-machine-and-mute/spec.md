@@ -38,7 +38,7 @@ stateDiagram-v2
   }
 ```
 
-Recognition is Google's cloud service by default (settings, `__stts__recognizer`: `cloud` or `device`): on-device recognition chopped and changed words on long turns (2026-10-06 11:43, 32 s of speech came back as nine words). With `device`, before the first start the page asks `SpeechRecognition.available({langs: ['en-US'], processLocally: true})`. `available` uses on-device recognition; `downloadable` starts `SpeechRecognition.install()` and uses cloud recognition until it lands; anything else uses cloud recognition. A `language-not-supported` error switches to cloud and restarts once; a second one moves the mic to `failed`: the status icon turns red, the page logs `mic failed language-not-supported` once, and nothing restarts until a mute and unmute.
+Recognition is the daemon's local speech engine (spec 014). The cloud and on-device Chrome recognisers and their setting are gone: both lost his words (2026-10-07).
 
 Every listen (an stt, or the listen after a tts with `listen=true`) starts with no heard words: the page clears what it heard before the listen opened and the turn's start time, then arms the `idleSec` timer. Words left over from before the listen made the timer skip `nospeech`, so the listen hung until the daemon's budget (seen through the gateway, 2026-10-05).
 

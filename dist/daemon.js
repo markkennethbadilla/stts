@@ -16714,6 +16714,104 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
 	return /* @__PURE__ */ _superRefine(fn, params);
 }
+//#endregion
+//#region src/asr.ts
+const SAMPLE_RATE = 16e3;
+const MODEL = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
+const WINDOW = 512;
+const asrPaths = (dataDir) => ({
+	addon: join(dataDir, "asr", "node_modules", "sherpa-onnx-node"),
+	model: join(dataDir, "models", MODEL),
+	vad: join(dataDir, "models", "silero_vad.onnx")
+});
+let sherpa = null;
+let recognizer = null;
+/** Loads the addon and the model once per daemon; throws a plain message when they are missing. */
+function load(dataDir) {
+	const p = asrPaths(dataDir);
+	for (const f of [
+		p.addon,
+		join(p.model, "encoder.int8.onnx"),
+		p.vad
+	]) if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); run mkb-agentops setup-stts.ps1 -Apply`);
+	sherpa ??= createRequire(import.meta.url)(p.addon);
+	recognizer ??= new sherpa.OfflineRecognizer({
+		featConfig: {
+			sampleRate: SAMPLE_RATE,
+			featureDim: 80
+		},
+		modelConfig: {
+			transducer: {
+				encoder: join(p.model, "encoder.int8.onnx"),
+				decoder: join(p.model, "decoder.int8.onnx"),
+				joiner: join(p.model, "joiner.int8.onnx")
+			},
+			tokens: join(p.model, "tokens.txt"),
+			numThreads: 4,
+			provider: "cpu",
+			modelType: "nemo_transducer"
+		}
+	});
+	return sherpa;
+}
+/** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
+function createEngine(dataDir, emit) {
+	let vad;
+	try {
+		vad = new (load(dataDir)).Vad({
+			sileroVad: {
+				model: asrPaths(dataDir).vad,
+				threshold: .5,
+				minSpeechDuration: .25,
+				minSilenceDuration: .5,
+				maxSpeechDuration: 20,
+				windowSize: WINDOW
+			},
+			sampleRate: SAMPLE_RATE,
+			numThreads: 1
+		}, 60);
+	} catch (e) {
+		emit({
+			type: "error",
+			error: e instanceof Error ? e.message : String(e)
+		});
+		return { push: () => {} };
+	}
+	let pending = /* @__PURE__ */ new Float32Array(0);
+	let speaking = false;
+	let chain = Promise.resolve();
+	const drain = () => {
+		while (!vad.isEmpty()) {
+			const samples = vad.front().samples;
+			vad.pop();
+			chain = chain.then(async () => {
+				const st = recognizer?.createStream();
+				if (!st || !recognizer) return;
+				st.acceptWaveform({
+					samples,
+					sampleRate: SAMPLE_RATE
+				});
+				const text = (await recognizer.decodeAsync(st)).text.trim();
+				if (text) emit({
+					type: "final",
+					text
+				});
+			});
+		}
+	};
+	return { push(s) {
+		const all = new Float32Array(pending.length + s.length);
+		all.set(pending);
+		all.set(s, pending.length);
+		let i = 0;
+		for (; i + WINDOW <= all.length; i += WINDOW) vad.acceptWaveform(all.subarray(i, i + WINDOW));
+		pending = all.slice(i);
+		const now = vad.isDetected();
+		if (now && !speaking) emit({ type: "speechstart" });
+		speaking = now;
+		drain();
+	} };
+}
 const CONVERSATION_ENDED = "__STTS_CONVERSATION_ENDED__";
 const NO_SPEECH = "__STTS_NO_SPEECH__";
 const LISTEN_CONTINUES = "__STTS_LISTEN_CONTINUES__";
@@ -17570,6 +17668,23 @@ app.get("/ws", upgradeWebSocket(() => {
 		},
 		onMessage: (e) => link?.onMessage(String(e.data)),
 		onClose: () => link?.detach()
+	};
+}));
+app.get("/asr", upgradeWebSocket(() => {
+	let engine = null;
+	return {
+		onOpen: (_e, ws) => {
+			engine = createEngine(dataDir, (ev) => {
+				if (ev.type === "error") deps.log(`asr ${ev.error}`);
+				ws.send(JSON.stringify(ev));
+			});
+		},
+		onMessage: (e) => {
+			const d = e.data;
+			if (typeof d === "string") return;
+			const u8 = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer);
+			engine?.push(new Float32Array(u8.slice().buffer));
+		}
 	};
 }));
 app.get("/earcon/:name", serveStatic({

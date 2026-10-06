@@ -312,10 +312,12 @@ test('every header button has a tooltip and responds', async ({ voice }) => {
 });
 
 // Last: End stops the daemon.
-test('End is final: the open listen and the next call both return ENDED', async ({ voice, request }) => {
+test('End reaches the open listen once; the next call carries on', async ({ voice, request }) => {
   const reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await voice.getByLabel('End conversation').click();
   expect(await (await reply).text()).toBe(CONVERSATION_ENDED);
-  expect(await (await ask(request, { kind: 'stt' })).text()).toBe(CONVERSATION_ENDED);
+  const next = ask(request, { kind: 'stt', idleSec: 1 });
+  await voice.clock.fastForward(1500);
+  expect(await (await next).text()).not.toBe(CONVERSATION_ENDED);
 });

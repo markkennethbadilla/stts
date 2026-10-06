@@ -31,7 +31,8 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { bargeVerdict, holdMs, isEcho, LANG_ERR, pageMachine } from './machine.ts';
+import { DaemonRecognition, feed } from './daemonRecognition.ts';
+import { bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -85,13 +86,6 @@ function useSetting(key: string, initial: string): [string, (v: string) => void]
   ];
 }
 
-const LOCAL_EN = { langs: ['en-US'], processLocally: true };
-
-type RecognitionStatics = {
-  available?: (o: typeof LOCAL_EN) => Promise<string>;
-  install?: (o: { langs: string[] }) => Promise<boolean>;
-};
-
 type Recognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -116,8 +110,6 @@ type Recognition = {
 export function App() {
   const ws = useRef<WebSocket | null>(null);
   const rec = useRef<Recognition | null>(null);
-  // On-device recognition: null until SpeechRecognition.available() has answered once.
-  const local = useRef<boolean | null>(null);
   const heard = useRef({ final: '', startAt: 0 });
   // The current session's interim words, not yet final.
   const liveWords = useRef('');
@@ -180,14 +172,10 @@ export function App() {
     return spokenLog.current.map((x) => x.text);
   };
   const listen = useRef({ part: 1, after: false, idleTimer: 0, idleSec: 200 });
-  // Every listen opens here. Words left from before it (heard with no listen open, or the
-  // agent's own tail) are dropped: a stale final made the idle timer skip nospeech and the
-  // listen hang until the daemon budget, and a stale startAt dated turns minutes early.
-  const armIdle = (sec: number, keepWords = false): void => {
-    if (!keepWords) {
-      heard.current = { final: '', startAt: 0 };
-      liveWords.current = '';
-    }
+  // Every listen opens here. Words already heard are never cleared: the mic stays on between
+  // listens, so he is often mid-sentence when a listen opens, and clearing here sent 9 of 58 words
+  // (Mark 2026-10-07, 20:14 UTC). Only a sent turn clears them (sendTurn).
+  const armIdle = (sec: number): void => {
     if (sec > 0) {
       listen.current.idleTimer = window.setTimeout(() => {
         if (!heard.current.final) post({ type: 'nospeech' });
@@ -211,7 +199,6 @@ export function App() {
   // Speech recognition: Google's cloud service by default. On-device returned chopped and changed
   // words on long turns (2026-10-06 11:43: 32 s of speech came back as nine words) and none at all
   // in the real-Chrome test; the cloud heard every turn there.
-  const [recognizer, setRecognizer] = useSetting('recognizer', 'cloud');
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
   const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
@@ -392,23 +379,6 @@ export function App() {
     speechEndedAt.current = Date.now();
   }
 
-  /** On-device en-US when Chrome has it; downloadable starts the install and uses the cloud meanwhile. */
-  async function pickLocal(SR: RecognitionStatics): Promise<boolean> {
-    if (!SR.available) return true;
-    const st = await SR.available(LOCAL_EN).catch(() => 'unavailable');
-    log(`mic on-device ${st}`);
-    if (st === 'available') return true;
-    if (st === 'downloadable' && SR.install) {
-      SR.install(LOCAL_EN)
-        .then((ok) => {
-          log(`mic on-device install ${ok}`);
-          if (ok) local.current = true;
-        })
-        .catch((e: unknown) => log(`mic on-device install failed ${String(e)}`));
-    }
-    return false;
-  }
-
   async function startMic(): Promise<void> {
     // The chime first, so it is never recorded and the listen always opens after it.
     // Not over the agent's speech: the mic opening there is silent.
@@ -421,23 +391,6 @@ export function App() {
     if (!snap.matches({ speech: 'playing' }) && !snap.context.auto) await playCue('listen');
     // Paused, or the listen ended, during the chime: the mic must not start.
     const stillStarting = () => actor.getSnapshot().matches({ mic: { live: 'starting' } });
-    if (!stillStarting()) return;
-    const SR = (
-      globalThis as unknown as {
-        SpeechRecognition?: new () => Recognition;
-        webkitSpeechRecognition?: new () => Recognition;
-      }
-    ).SpeechRecognition;
-    const Ctor =
-      SR ?? (globalThis as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
-    if (!Ctor) {
-      log('mic error no SpeechRecognition');
-      send({ type: 'MIC_ERROR' });
-      return;
-    }
-    startStage.current = 'on-device check';
-    if (recognizer !== 'device') local.current = false;
-    else local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
     // One echo-cancelled stream, opened once and reused by every start: the agent's voice is removed
     // before the recogniser hears it. Chrome's own capture (start() with no track) has no echo
@@ -461,12 +414,14 @@ export function App() {
       if (!stillStarting()) return;
     }
     const stream = aec.current?.stream ?? null;
-    const r = new Ctor();
+    if (stream) void feed(stream);
+    // The e2e suite injects a fake recogniser here; the real one is the daemon's engine.
+    const Rec = (globalThis as { __sttsRecognition?: new () => Recognition }).__sttsRecognition ?? DaemonRecognition;
+    const r = new Rec();
     consumed.current = 0;
     resultsSeen.current = 0;
     r.continuous = true;
     r.interimResults = true;
-    r.processLocally = local.current;
     // A stopped recogniser still fires its end and error late; only the current one may move
     // the machine, or a dead one's end marks the new mic as stopped.
     const mine = (): boolean => rec.current === r;
@@ -480,8 +435,6 @@ export function App() {
       if (!mine()) return;
       keepLive();
       log(`mic error ${e.error ?? 'unknown'}`);
-      // On-device refused the language: the next start uses cloud recognition.
-      if (e.error === LANG_ERR) local.current = false;
       send({ type: 'MIC_ERROR', ...(e.error ? { error: e.error } : {}) });
     };
     r.onaudiostart = () => mine() && send({ type: 'AUDIO' });
@@ -566,7 +519,6 @@ export function App() {
     // (no speech playing, no words heard), and the daemon resends the open listen on "ready".
     let dead = false;
     let dir = '';
-    let resumed = false;
     const daemonDir = async (): Promise<string | null> => {
       const r = await fetch('/api/ping', { cache: 'no-store' }).catch(() => null);
       return r?.ok ? (r.headers.get('X-Stts-Dir') ?? '') : null;
@@ -584,7 +536,6 @@ export function App() {
         setTimeout(() => void reconnect(), 500);
         return;
       }
-      resumed = true;
       connect();
       if (dir && d !== dir) {
         log('live update: reloading for the new version');
@@ -618,12 +569,9 @@ export function App() {
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
         actor.send({ type: 'REQUEST', kind: 'listen' });
-        // The same listen resent after a reconnect keeps the words already heard.
-        armIdle(b.idleSec ?? 200, resumed);
-        resumed = false;
+        armIdle(b.idleSec ?? 200);
         return;
       }
-      resumed = false;
       // Short clips: Piper renders a whole clip before it plays, so a 1000-char first clip
       // held the first word 2-5 s (log, 2026-10-05). The rest synthesise ahead while it plays.
       const clips = toParts(b.text ?? '', CLIP_CHARS);
@@ -909,24 +857,6 @@ export function App() {
                         {m.label || m.deviceId.slice(0, 8)}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </Row>
-              <Row label="Recognition">
-                <Select
-                  value={recognizer}
-                  onValueChange={(v) => {
-                    if (!v) return;
-                    setRecognizer(String(v));
-                    local.current = null;
-                  }}
-                >
-                  <SelectTrigger className="w-40 max-w-full" aria-label="Recognition">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cloud">Cloud (Google)</SelectItem>
-                    <SelectItem value="device">On this device</SelectItem>
                   </SelectContent>
                 </Select>
               </Row>

@@ -1,5 +1,6 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
+
 import { type ChildProcess, spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
@@ -15,6 +16,7 @@ import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
 import { z } from 'zod';
+import { createEngine } from './asr.js';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -721,6 +723,29 @@ app.get(
       },
       onMessage: (e) => link?.onMessage(String(e.data)),
       onClose: () => link?.detach(),
+    };
+  }),
+);
+
+// Speech to text (spec 014): the page streams 16 kHz float audio here, the engine answers with
+// speechstart and final text on the same socket.
+app.get(
+  '/asr',
+  upgradeWebSocket(() => {
+    let engine: ReturnType<typeof createEngine> | null = null;
+    return {
+      onOpen: (_e, ws) => {
+        engine = createEngine(dataDir, (ev) => {
+          if (ev.type === 'error') deps.log(`asr ${ev.error}`);
+          ws.send(JSON.stringify(ev));
+        });
+      },
+      onMessage: (e) => {
+        const d = e.data;
+        if (typeof d === 'string') return;
+        const u8 = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array((d as Blob & Uint8Array).buffer);
+        engine?.push(new Float32Array(u8.slice().buffer));
+      },
     };
   }),
 );

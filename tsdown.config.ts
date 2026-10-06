@@ -23,7 +23,7 @@ export default defineConfig([
       // The earcons sit next to dist/daemon.js, where its /earcon route serves them.
       { from: 'public/earcon/*.ogg', to: 'dist/earcon' },
       // Icons and manifest go beside dist/web/index.html (Vite keeps them: emptyOutDir false).
-      { from: 'public/*.{ico,svg,png,webmanifest}', to: 'dist/web' },
+      { from: 'public/*.{ico,svg,png,webmanifest,js}', to: 'dist/web' },
     ],
   },
 ]);

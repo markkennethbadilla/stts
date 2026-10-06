@@ -1,4 +1,4 @@
-// Shared e2e fixture: a fake SpeechRecognition, earcons off, page.clock installed, and a
+// Shared e2e fixture: a fake recogniser (in place of the daemon's engine), earcons off, page.clock installed, and a
 // failure on any pageerror or console error.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +48,7 @@ export const test = base.extend<{ voice: Page }>({
           setTimeout(() => this.onend?.(), 0);
         }
       }
-      g['SpeechRecognition'] = FakeRecognition;
+      g['__sttsRecognition'] = FakeRecognition;
       // The mic level the page reads: silence unless a test sets __level (the fake device beeps).
       g['__level'] = 0;
       AnalyserNode.prototype.getFloatTimeDomainData = (buf: Float32Array) => {

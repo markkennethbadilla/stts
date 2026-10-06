@@ -364,6 +364,11 @@ export const pageMachine = setup({
         // Green only while a listen is open: a mic restarted after the turn went out showed green over
         // a closed listen, so his words went nowhere (log 2026-10-06 21:22-21:29).
         MIC_STARTED: { guard: and(['quiet', 'listenOpen']), target: '.speakNow' },
+        // A listen that opens while the mic already runs (it stays on after every turn): speak now.
+        REQUEST: {
+          guard: and(['quiet', ({ context, event }) => event.kind === 'listen' && context.running]),
+          target: '.speakNow',
+        },
         INTERIM: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
         SPEECH_END: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
         RESULT: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
