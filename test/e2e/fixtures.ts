@@ -11,6 +11,8 @@ export const logFile =
     : join(dataRoot, '.local', 'share', 'cc-gc-stts', 'daemon.log');
 export const daemonLog = (): string => readFileSync(logFile, 'utf-8');
 
+let clockStep = 0;
+
 export const test = base.extend<{ voice: Page }>({
   voice: async ({ page }, use) => {
     const errors: string[] = [];
@@ -18,7 +20,10 @@ export const test = base.extend<{ voice: Page }>({
     page.on('console', (m) => {
       if (m.type() === 'error') errors.push(`console ${m.text()}`);
     });
-    await page.clock.install();
+    // One daemon serves every test and drops a turn that ended before the last one (stale), by page
+    // time. Each test's clock starts an hour after the previous one's, so a test that fast-forwarded
+    // never makes the next test's words stale.
+    await page.clock.install({ time: Date.now() + 3_600_000 * ++clockStep });
     await page.addInitScript(() => {
       localStorage.setItem('__stts__cues', 'off');
       type Handler = ((e?: unknown) => void) | null;

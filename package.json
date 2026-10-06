@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsdown && vite build",
     "check": "biome ci . && tsc --noEmit && npm test",
-    "test": "markdownlint-cli2 && vitest run",
+    "test": "markdownlint-cli2 && vitest run && npm run build && playwright test",
     "e2e": "playwright test"
   },
   "dependencies": {

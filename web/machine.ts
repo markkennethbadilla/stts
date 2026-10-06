@@ -258,7 +258,7 @@ export const pageMachine = setup({
       initial: 'live',
       states: {
         paused: {
-          entry: 'stopMic',
+          entry: ['stopMic', assign({ running: false })],
           on: { RESUME: { guard: 'trusted', target: 'live' } },
         },
         live: {
@@ -266,6 +266,8 @@ export const pageMachine = setup({
           on: { PAUSE: { guard: 'trusted', target: 'paused' } },
           states: {
             idle: {
+              // Every way into idle stopped the mic: a stale running flag lit green with no recogniser.
+              entry: assign({ running: false }),
               always: { guard: 'canStart', target: 'starting', actions: assign({ auto: false }) },
               on: {},
             },
@@ -337,7 +339,11 @@ export const pageMachine = setup({
             },
             // No recogniser for the language, locally or in the cloud: the mic stays off until a mute and unmute.
             failed: {
-              entry: ['stopMic', { type: 'log', params: { line: `mic failed ${LANG_ERR}` } }],
+              entry: [
+                'stopMic',
+                assign({ running: false }),
+                { type: 'log', params: { line: `mic failed ${LANG_ERR}` } },
+              ],
             },
           },
         },

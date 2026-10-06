@@ -91,21 +91,12 @@ test('leading words survive: interim then final, and two finals, all reach the t
   expect(text).toMatch(/\] is it active right now$/);
   reply = ask(request, { kind: 'stt', ack: Number(/turn (\d+)/.exec(text)?.[1]) });
   await expect(voice.getByLabel('speakNow')).toBeVisible();
-  await emit([['is it', true]], 0);
-  await emit(
-    [
-      ['is it', true],
-      [' active right', false],
-    ],
-    1,
-  );
-  await emit(
-    [
-      ['is it', true],
-      [' active right now', true],
-    ],
-    1,
-  );
+  // The mic stays on between listens, so the same session keeps growing: the first turn's
+  // result stays at index 0 and is not sent again.
+  const first: [string, boolean] = ['is it active right now', true];
+  await emit([first, ['is it', true]], 1);
+  await emit([first, ['is it', true], [' active right', false]], 2);
+  await emit([first, ['is it', true], [' active right now', true]], 2);
   await voice.clock.fastForward(1500);
   text = await (await reply).text();
   expect(text).toMatch(/\] is it active right now$/);
