@@ -51,14 +51,14 @@ const words = (t: string): string[] =>
     .match(/[a-z0-9]+/g) ?? [];
 
 const sharesEnd = (a: string[], b: string[]): boolean =>
-  a.length >= 2 &&
-  b.length >= 2 &&
-  (a.slice(0, 2).join(' ') === b.slice(0, 2).join(' ') || a.slice(-2).join(' ') === b.slice(-2).join(' '));
+  a.length >= 3 &&
+  b.length >= 3 &&
+  (a.slice(0, 3).join(' ') === b.slice(0, 3).join(' ') || a.slice(-3).join(' ') === b.slice(-3).join(' '));
 
 /**
  * Is heard speech the agent's own voice? Checked against every sentence spoken in the last 30 s,
  * normalised (lowercase, no punctuation): echo when the Levenshtein similarity is at least 0.5, or
- * when it is under 60% of the sentence's length and shares its first or last two words.
+ * when it is under 60% of the sentence's length and shares its first or last three words.
  * ponytail: text distance against what was said; an echo garbled past half still slips through
  * and a barge that repeats the sentence is dropped. Upgrade: compare against the played audio.
  */
@@ -71,11 +71,14 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
     const s = sw.join(' ');
     if (!s) return false;
     if (1 - distance(h, s) / Math.max(h.length, s.length) >= 0.5) return true;
-    if (h.length < 0.6 * s.length && sharesEnd(hw, sw)) return true;
+    // Three words at least: two ("for the") matched the start of many sentences and cut his
+    // own words out of long turns (2026-10-06 09:49).
+    if (hw.length >= 3 && h.length < 0.6 * s.length && sharesEnd(hw, sw)) return true;
     // A fragment from the middle of a long sentence (2026-10-06: "our conversations carry on" from
     // "Our conversation would carry on, ..." cut the agent off): any run of the sentence's words,
     // one shorter to one longer than what was heard, at least 0.7 similar.
-    for (let n = Math.max(1, hw.length - 1); n <= hw.length + 1; n++)
+    if (hw.length < 4) return false;
+    for (let n = hw.length - 1; n <= hw.length + 1; n++)
       for (let i = 0; i + n <= sw.length; i++) {
         const w = sw.slice(i, i + n).join(' ');
         if (1 - distance(h, w) / Math.max(h.length, w.length) >= 0.7) return true;

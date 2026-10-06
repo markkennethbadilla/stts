@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { Http2ServerRequest, constants } from "http2";
 import { Readable } from "stream";
 import crypto from "crypto";
 import * as fs$1 from "fs";
-import fs, { createReadStream, existsSync as existsSync$1, mkdtempSync, statSync } from "fs";
+import fs, { createReadStream, existsSync as existsSync$1, mkdtempSync, statSync as statSync$1 } from "fs";
 import path, { join as join$1 } from "path";
 import process$1, { versions } from "process";
 import { EventEmitter } from "events";
@@ -661,7 +661,7 @@ var createStreamBody = (stream) => {
 var getStats = (path) => {
 	let stats;
 	try {
-		stats = statSync(path);
+		stats = statSync$1(path);
 	} catch {}
 	return stats;
 };
@@ -17111,6 +17111,10 @@ async function liveUpdate(skipUpdate = false) {
 	if (!skipUpdate && process.env["STTS_LIVE_UPDATE"] !== "check") await deps.update();
 	const to = installedDir();
 	if (!to || same(to, here) || !safe()) return false;
+	if (!newer(to)) {
+		deps.log(`live update: refused a downgrade to ${to}`);
+		return false;
+	}
 	await deps.handoff(to);
 	return true;
 }
@@ -17383,7 +17387,7 @@ app.get("/api/ping", (c) => c.text("ok"));
 app.post("/api/update", async (c) => {
 	if (process.env["STTS_LIVE_UPDATE"] !== "check") await deps.update();
 	const to = installedDir();
-	if (!to || same(to, here)) return c.text("up to date");
+	if (!to || same(to, here) || !newer(to)) return c.text("up to date");
 	(async () => {
 		for (let i = 0; i < 300; i++) {
 			if (await liveUpdate(true)) return;
@@ -17608,6 +17612,44 @@ function start(p = port) {
 	}
 }
 const LIVE_UPDATE_MS = Number(process.env["STTS_LIVE_UPDATE_MS"] ?? 6e4);
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start();
+/** A daemon built after this one: never hand off or redirect to an older install. */
+function newer(dir) {
+	const at = (d) => {
+		try {
+			return statSync(join(d, "daemon.js")).mtimeMs;
+		} catch {
+			return NaN;
+		}
+	};
+	const theirs = at(dir);
+	const ours = at(here);
+	return !Number.isNaN(theirs) && (Number.isNaN(ours) || theirs > ours);
+}
+/**
+* Every daemon start, whichever client started it: update the plugin first, then run the newest
+* installed daemon instead of this one. An agent session keeps its MCP client from when it began,
+* and that client started its own, older daemon, so the window showed old layout and old behaviour
+* until a live update a minute later (Mark, 2026-10-06 09:23).
+*/
+async function boot() {
+	if (!adopted && process.env["STTS_LIVE_UPDATE"] !== "0") {
+		if (process.env["STTS_LIVE_UPDATE"] !== "check") await Promise.race([deps.update(), setTimeout$1(3e4)]);
+		const to = installedDir();
+		if (to && !same(to, here)) {
+			if (newer(to)) {
+				deps.log(`daemon start redirected to the newest install ${to}`);
+				spawn(process.execPath, [join(to, "daemon.js")], {
+					detached: true,
+					stdio: "ignore",
+					windowsHide: true
+				}).unref();
+				process.exit(0);
+			}
+			deps.log(`live update: refused a downgrade to ${to}`);
+		}
+	}
+	start();
+}
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
 //#endregion
-export { WINDOW_OPEN_MS, app, attachPage, dataDir, deps, ended, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, port, resetTurns, setEnded, slotId, start };
+export { WINDOW_OPEN_MS, app, attachPage, boot, dataDir, deps, ended, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start };

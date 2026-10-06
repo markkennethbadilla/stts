@@ -56,6 +56,7 @@ const EARCON: Partial<Record<Turn, string>> = {
 };
 const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
 const CLIP_CHARS = 120;
+const ECHO_TAIL_MS = 3000;
 const HISTORY_MAX = 50;
 
 // localStorage under the old __stts__* keys, so saved settings carry over.
@@ -114,6 +115,8 @@ export function App() {
   const heard = useRef({ final: '', startAt: 0 });
   // The current session's interim words, not yet final.
   const liveWords = useRef('');
+  // When the agent's speech last stopped playing (the echo tail is measured from it).
+  const speechEndedAt = useRef(0);
   // The browser's own voice is speaking (Piper failed).
   const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
@@ -418,15 +421,18 @@ export function App() {
         }
         return;
       }
+      // Echo only lands during speech or its tail: after 3 s of quiet his words are his, so a
+      // phrase that happens to resemble the agent's never cuts his turn (2026-10-06 09:49).
+      const tail = Date.now() - speechEndedAt.current < ECHO_TAIL_MS;
       // A final landing just after speech ended is still the tail of its echo.
-      if (final && isEcho(final, recentSpoken())) {
+      if (tail && final && isEcho(final, recentSpoken())) {
         log('echo discarded');
         final = '';
         if (!live) return;
       }
       // Interim words now send a turn too, so they get the same check: the agent's own reply came
       // back as turn 7 at 07:19 (log 2026-10-05 23:19:04 UTC, sent 1512 ms after, from interim words).
-      if (live && isEcho(live, recentSpoken())) {
+      if (tail && live && isEcho(live, recentSpoken())) {
         if (echoLogged.current !== live) log('echo discarded');
         echoLogged.current = live;
         liveWords.current = '';
@@ -542,6 +548,7 @@ export function App() {
     const s2 = actor.subscribe((s) => {
       const playing = s.matches({ speech: 'playing' });
       if (wasPlaying && !playing) {
+        speechEndedAt.current = Date.now();
         setSpoken({ done: 0, of: 0 });
         if (listen.current.after) {
           actor.send({ type: 'REQUEST', kind: 'listen' });

@@ -1,7 +1,7 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 import { type ChildProcess, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -202,6 +202,10 @@ export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   if (!skipUpdate && process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
   const to = installedDir();
   if (!to || same(to, here) || !safe()) return false;
+  if (!newer(to)) {
+    deps.log(`live update: refused a downgrade to ${to}`);
+    return false;
+  }
   await deps.handoff(to);
   return true;
 }
@@ -508,7 +512,7 @@ app.get('/api/ping', (c) => c.text('ok'));
 app.post('/api/update', async (c) => {
   if (process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
   const to = installedDir();
-  if (!to || same(to, here)) return c.text('up to date');
+  if (!to || same(to, here) || !newer(to)) return c.text('up to date');
   void (async () => {
     for (let i = 0; i < 300; i++) {
       if (await liveUpdate(true)) return;
@@ -758,4 +762,45 @@ export function start(p: number = port): void {
 
 const LIVE_UPDATE_MS = Number(process.env['STTS_LIVE_UPDATE_MS'] ?? 60_000);
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start();
+/** A daemon built after this one: never hand off or redirect to an older install. */
+export function newer(dir: string): boolean {
+  const at = (d: string): number => {
+    try {
+      return statSync(join(d, 'daemon.js')).mtimeMs;
+    } catch {
+      return Number.NaN;
+    }
+  };
+  const theirs = at(dir);
+  const ours = at(here);
+  // Run from source (tests, a dev run): any built install is newer.
+  return !Number.isNaN(theirs) && (Number.isNaN(ours) || theirs > ours);
+}
+
+/**
+ * Every daemon start, whichever client started it: update the plugin first, then run the newest
+ * installed daemon instead of this one. An agent session keeps its MCP client from when it began,
+ * and that client started its own, older daemon, so the window showed old layout and old behaviour
+ * until a live update a minute later (Mark, 2026-10-06 09:23).
+ */
+export async function boot(): Promise<void> {
+  if (!adopted && process.env['STTS_LIVE_UPDATE'] !== '0') {
+    if (process.env['STTS_LIVE_UPDATE'] !== 'check') await Promise.race([deps.update(), sleep(30_000)]);
+    const to = installedDir();
+    if (to && !same(to, here)) {
+      if (newer(to)) {
+        deps.log(`daemon start redirected to the newest install ${to}`);
+        spawn(process.execPath, [join(to, 'daemon.js')], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+        }).unref();
+        process.exit(0);
+      }
+      deps.log(`live update: refused a downgrade to ${to}`);
+    }
+  }
+  start();
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) void boot();

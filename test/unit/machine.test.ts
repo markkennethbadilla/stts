@@ -318,6 +318,10 @@ describe('page machine', () => {
     expect(isEcho('our conversations carry on', long)).toBe(true);
     expect(bargeVerdict('our conversations carry on', long, 5000)).toBe('echo');
     expect(isEcho('the listen stays open', long)).toBe(true);
+    // 2026-10-06 09:49: short phrases of his own that resemble the agent's are not echo.
+    expect(isEcho('for the numbers', ['For the record, the numbers are all in now.'])).toBe(false);
+    expect(isEcho('for the', ['For the record, the numbers are all in now.'])).toBe(false);
+    expect(isEcho('for the exitrous color block tiles', ['For the record, the numbers are all in now.'])).toBe(false);
     for (const barge of ['stop talking', 'wait I have a question', 'no not that one']) {
       expect(isEcho(barge, said)).toBe(false);
       expect(bargeVerdict(barge, said, 2000)).toBe(barge === 'stop talking' ? 'short' : 'barge');
