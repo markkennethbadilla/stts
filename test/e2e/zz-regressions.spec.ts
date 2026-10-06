@@ -220,6 +220,32 @@ test('a pause mid-sentence loses nothing: both parts arrive, short or long pause
   expect(text).toMatch(/and then I wanted to change the colours too$/);
 });
 
+test('30 s of continuous speech is one turn, even when the recogniser goes quiet for seconds', async ({
+  voice,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const level = (v: number) => voice.evaluate((x) => ((globalThis as unknown as { __level: number }).__level = x), v);
+  const reply = listen(request);
+  await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 15_000 });
+  await level(0.3); // his voice is on the mic for the whole 30 s
+  const parts = [
+    'first I want to say this',
+    'then I keep going without a pause',
+    'and here is more',
+    'right to the end',
+  ];
+  for (const p of parts) {
+    await say(voice, p);
+    // The recogniser gives nothing for 7.5 s while he talks: no turn may go out.
+    for (let i = 0; i < 15; i++) await voice.clock.fastForward(500);
+  }
+  await level(0);
+  await voice.clock.fastForward(2000);
+  const text = await (await reply).text();
+  expect(text).toMatch(new RegExp(`\\] ${parts.join(' ')}$`));
+});
+
 test('every header button has a tooltip and responds', async ({ voice }) => {
   for (const label of [
     'Switch to keyboard input',

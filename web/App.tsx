@@ -60,6 +60,9 @@ const WORD: Partial<Record<Cue, string>> = { listen: 'Speak.', captured: 'Stop.'
 const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
 const CLIP_CHARS = 120;
 const ECHO_TAIL_MS = 3000;
+const VOICE_MIN = 0.015;
+const VOICE_X = 3;
+const TALKING_MS = 400;
 const HISTORY_MAX = 50;
 
 // localStorage under the old __stts__* keys, so saved settings carry over.
@@ -125,6 +128,33 @@ export function App() {
   // Recogniser results this session: how many there are, and how many a kept-open turn already sent.
   const resultsSeen = useRef(0);
   const consumed = useRef(0);
+  // The mic level, from the browser's own Web Audio analyser: when his voice was last above the
+  // room's noise floor. Auto-send waits while it is recent.
+  const voiceAt = useRef(0);
+  const levelStop = useRef<(() => void) | null>(null);
+  function watchLevel(stream: MediaStream): void {
+    levelStop.current?.();
+    const ctx = new AudioContext();
+    const an = ctx.createAnalyser();
+    an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let floor = 0.01;
+    const tick = window.setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += v * v;
+      const rms = Math.sqrt(sum / buf.length);
+      // ponytail: a slow-moving noise floor and 3x above it as voice; tune VOICE_X if a loud room holds turns.
+      // The floor follows the quiet: it drops to quieter readings fast and creeps up slowly.
+      floor = rms < floor ? floor * 0.8 + rms * 0.2 : Math.min(0.05, floor * 1.003);
+      if (rms > Math.max(VOICE_MIN, floor * VOICE_X)) voiceAt.current = Date.now();
+    }, 100);
+    levelStop.current = () => {
+      clearInterval(tick);
+      void ctx.close();
+    };
+  }
   // The browser's own voice is speaking (Piper failed).
   const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
@@ -200,6 +230,8 @@ export function App() {
 
   const [state, send, actor] = useMachine(
     pageMachine.provide({
+      // His voice was on the mic in the last 0.4 s, and the agent is not the one speaking.
+      guards: { stillTalking: () => Date.now() - voiceAt.current < TALKING_MS },
       actions: {
         startMic: () => void startMic(),
         // A mic restart must not cancel the listen's idle timer, so stopMic leaves it alone.
@@ -394,6 +426,7 @@ export function App() {
       for (const t of stream?.getTracks() ?? []) t.stop();
       return;
     }
+    if (stream) watchLevel(stream);
     const r = new Ctor();
     consumed.current = 0;
     resultsSeen.current = 0;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
 import { bargeVerdict, isEcho, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
 
-function start() {
+function start(talking: () => boolean = () => false) {
   const startMic = vi.fn();
   const sendTurn = vi.fn();
   const playClip = vi.fn();
@@ -12,6 +12,7 @@ function start() {
   const stopAudio = vi.fn();
   const actor = createActor(
     pageMachine.provide({
+      guards: { stillTalking: talking },
       actions: { startMic, sendTurn, playClip, prefetchClips, speakFallback, deliver, stopAudio },
     }),
   ).start();
@@ -133,7 +134,7 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 
-  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 1 s', () => {
+  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 0.5 s', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
@@ -144,7 +145,7 @@ describe('page machine', () => {
     actor.send({ type: 'INTERIM', text: 'can you' });
     vi.advanceTimersByTime(1000);
     actor.send({ type: 'INTERIM', text: 'can you hear me' });
-    vi.advanceTimersByTime(1999);
+    vi.advanceTimersByTime(1299);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'can you hear me', keep: false });
@@ -158,18 +159,38 @@ describe('page machine', () => {
     actor.send({ type: 'RESULT', text: 'hello there' });
     vi.advanceTimersByTime(400);
     actor.send({ type: 'RESULT', text: 'hello there friend' });
-    vi.advanceTimersByTime(999);
+    vi.advanceTimersByTime(799);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend', keep: false });
   });
 
-  it('autosend on speechend: 1 s, or 2 s when unfinished', () => {
+  it('never ends a turn while his voice is on the mic, for up to 30 s; then it sends', () => {
+    let talking = true;
+    const { actor, sendTurn } = start(() => talking);
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'RESULT', text: 'I keep talking with no pause at all' });
+    vi.advanceTimersByTime(20_000); // the recogniser went quiet, the mic did not
+    expect(sendTurn).not.toHaveBeenCalled();
+    talking = false;
+    vi.advanceTimersByTime(900);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
+    // A mic that never goes quiet (a loud room) still sends after 30 s.
+    talking = true;
+    const b = start(() => talking);
+    b.actor.send({ type: 'REQUEST', kind: 'listen' });
+    b.actor.send({ type: 'RESULT', text: 'noise' });
+    vi.advanceTimersByTime(31_000);
+    expect(b.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('autosend on speechend: 0.8 s, or 1.2 s when unfinished', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'SPEECH_END', text: 'hello there' });
-    vi.advanceTimersByTime(999);
+    vi.advanceTimersByTime(799);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there', keep: false });

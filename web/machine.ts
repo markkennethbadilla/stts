@@ -10,7 +10,8 @@ export const CLIPS_AHEAD = 3;
  * interim through a 12 s pause, so only finals arming made every cloud turn wait for the 60 s
  * session end (real Chrome test, 2026-10-06). Interim words unchanged for hold + this are a turn.
  */
-export const INTERIM_EXTRA_MS = 1000;
+export const INTERIM_EXTRA_MS = 500;
+export const MAX_TALK_HOLD_MS = 30_000;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
 export const LANG_ERR = 'language-not-supported';
@@ -43,7 +44,7 @@ export function nextBackoff(prev: number | null): number {
 export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   // 1 s, 2 s when the words read unfinished (Mark 2026-10-06 10:35: 0.7 and 1 s cut the end of
   // his sentences off, ending on "like" or "if").
-  return c.holdMs ?? (readsUnfinished(c.transcript) ? 2000 : 1000);
+  return c.holdMs ?? (readsUnfinished(c.transcript) ? 1200 : 800);
 }
 
 const words = (t: string): string[] =>
@@ -167,6 +168,8 @@ export interface PageContext {
   auto: boolean;
   // The armed transcript is still interim (no final yet): the hold is longer.
   interimHold: boolean;
+  // When auto-send first armed for this turn (the still-talking hold stops at 30 s).
+  armedAt: number;
 }
 
 const cut = ({ context, event }: { context: PageContext; event: PageEvent }): Interrupted => ({
@@ -208,6 +211,8 @@ export const pageMachine = setup({
     langGiveUp: ({ context, event }) =>
       event.type === 'MIC_ERROR' && event.error === LANG_ERR && context.langFails >= 1,
     autosendOn: ({ context }) => context.autosend && !context.typing,
+    // The page supplies it: true while the mic level says he is still speaking.
+    stillTalking: () => false,
     // Only an open listen sends: a speechend after the turn went out sent it twice (log 2026-10-06).
     listenOpen: ({ context }) => context.wantListen,
     quiet,
@@ -238,6 +243,7 @@ export const pageMachine = setup({
     interrupted: null,
     auto: false,
     interimHold: false,
+    armedAt: 0,
   },
   on: {
     SET_TYPING: { actions: assign({ typing: ({ event }) => event.on }) },
@@ -374,12 +380,12 @@ export const pageMachine = setup({
             SPEECH_END: {
               guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
-              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false, armedAt: now }),
             },
             INTERIM: {
               guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
-              actions: assign({ transcript: ({ event }) => event.text, interimHold: true }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: true, armedAt: now }),
             },
             // A final result is the recogniser's own end of utterance. Chrome's speechend in
             // continuous mode fires only when the session ends (the 15 s watchdog restart), so
@@ -387,25 +393,36 @@ export const pageMachine = setup({
             RESULT: {
               guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
               target: 'armed',
-              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false, armedAt: now }),
             },
           },
         },
         armed: {
           after: {
-            autosend: {
-              target: 'off',
-              actions: [
-                // Words that read unfinished keep the listen open: he is still talking after a pause,
-                // and the daemon joins what comes next to this turn (it waits 3 s for it). Closing the
-                // mic here lost everything he said after the pause (Mark 2026-10-06 10:35).
-                {
-                  type: 'sendTurn',
-                  params: ({ context }) => ({ text: context.transcript, keep: readsUnfinished(context.transcript) }),
-                },
-                assign({ wantListen: ({ context }) => readsUnfinished(context.transcript) }),
-              ],
-            },
+            autosend: [
+              // Never end a turn while his voice is still on the mic (Mark 2026-10-06 11:09: turns
+              // were sent mid-sentence when the recogniser went quiet for a second while he talked).
+              // Held again for one more hold; 30 s with no new words while the level stays up is a
+              // loud room, not him, and the turn goes.
+              {
+                guard: and(['stillTalking', ({ context }) => Date.now() - context.armedAt < MAX_TALK_HOLD_MS]),
+                target: 'armed',
+                reenter: true,
+              },
+              {
+                target: 'off',
+                actions: [
+                  // Words that read unfinished keep the listen open: he is still talking after a pause,
+                  // and the daemon joins what comes next to this turn (it waits 3 s for it). Closing the
+                  // mic here lost everything he said after the pause (Mark 2026-10-06 10:35).
+                  {
+                    type: 'sendTurn',
+                    params: ({ context }) => ({ text: context.transcript, keep: readsUnfinished(context.transcript) }),
+                  },
+                  assign({ wantListen: ({ context }) => readsUnfinished(context.transcript) }),
+                ],
+              },
+            ],
           },
           on: {
             PAUSE: { guard: 'trusted', target: 'off' },
@@ -415,7 +432,7 @@ export const pageMachine = setup({
             INTERIM: {
               target: 'armed',
               reenter: true,
-              actions: assign({ transcript: ({ event }) => event.text, interimHold: true }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: true, armedAt: now }),
             },
             // The listen closed or the agent started speaking: a late speechend must not send again.
             LISTEN_DONE: 'off',
@@ -424,7 +441,7 @@ export const pageMachine = setup({
             RESULT: {
               target: 'armed',
               reenter: true,
-              actions: assign({ transcript: ({ event }) => event.text, interimHold: false }),
+              actions: assign({ transcript: ({ event }) => event.text, interimHold: false, armedAt: now }),
             },
             TYPED: 'off',
             SET_AUTOSEND: { guard: ({ event }) => !event.on, target: 'off' },

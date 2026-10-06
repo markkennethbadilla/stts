@@ -49,6 +49,11 @@ export const test = base.extend<{ voice: Page }>({
         }
       }
       g['SpeechRecognition'] = FakeRecognition;
+      // The mic level the page reads: silence unless a test sets __level (the fake device beeps).
+      g['__level'] = 0;
+      AnalyserNode.prototype.getFloatTimeDomainData = (buf: Float32Array) => {
+        buf.fill(g['__level'] as number);
+      };
       g['__say'] = (text: string): void => {
         const r = g['__rec'] as FakeRecognition;
         r.onspeechstart?.();

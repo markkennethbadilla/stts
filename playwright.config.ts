@@ -9,6 +9,8 @@ export const dataRoot = join(import.meta.dirname, 'test-results', 'e2e-data');
 export default defineConfig({
   testDir: 'test/e2e',
   workers: 1,
+  // Cold starts (Piper warm-up, a fresh window) take more than the 5 s default on a busy machine.
+  expect: { timeout: 15_000 },
   fullyParallel: false,
   timeout: 60_000,
   reporter: 'list',
