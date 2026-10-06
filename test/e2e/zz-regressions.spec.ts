@@ -12,6 +12,17 @@ const ask = (request: APIRequestContext, data: object) =>
 const say = (voice: Page, t: string) =>
   voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
 
+// Reload and wait until the new page has its daemon link and is idle: a request sent while the
+// old page was closing went to it and was lost, which made these tests flaky.
+async function reload(voice: Page) {
+  await voice.reload();
+  await expect
+    .poll(async () => (await (await voice.request.get('/barge')).json()) as unknown)
+    .toEqual({ text: '', open: true });
+  await expect(voice.getByLabel('notListening')).toBeVisible();
+  await voice.waitForTimeout(300);
+}
+
 function wav(): Buffer {
   const data = 8000 * 2;
   const b = Buffer.alloc(44 + data);
@@ -64,7 +75,7 @@ test('Dark Reader is locked out and the theme setting applies', async ({ voice }
     ['dark', true],
   ] as const) {
     await voice.evaluate((t) => localStorage.setItem('__stts__theme', t), theme);
-    await voice.reload();
+    await reload(voice);
     expect(await voice.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(dark);
   }
 });
@@ -76,7 +87,7 @@ test('an automatic mic restart plays no chime', async ({ voice, request }) => {
   });
   // The fixture turns earcons off in an init script; a later one turns them back on.
   await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'chime'));
-  await voice.reload();
+  await reload(voice);
   const reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await expect.poll(() => chimes.length).toBe(1);
@@ -139,7 +150,7 @@ test('spoken cues: Speak when the listen opens, Stop when the turn is sent, noth
   await once(piper, 'listening');
   try {
     await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
-    await voice.reload();
+    await reload(voice);
     // This test's Piper is already up: answer and listen without the helper's own.
     const reply = ask(request, { kind: 'tts', text: 'Okay.' }).then(() => ask(request, { kind: 'stt' }));
     await expect(voice.getByLabel('speakNow')).toBeVisible();
@@ -157,6 +168,56 @@ test('spoken cues: Speak when the listen opens, Stop when the turn is sent, noth
   } finally {
     piper.close();
   }
+});
+
+test('spoken cue: Speak plays when the light goes green right after the agent speaks', async ({ voice, request }) => {
+  const said: string[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      said.push((JSON.parse(body) as { text: string }).text);
+      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
+    await reload(voice);
+    // A reply with listen: the mic runs through the speech, so the light goes speaking -> green.
+    const reply = ask(request, { kind: 'tts', text: 'Here is my answer.', listen: true });
+    await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => said.filter((t) => t === 'Speak.').length).toBe(1);
+    await say(voice, 'thanks that works');
+    await voice.clock.fastForward(1500);
+    expect(await (await reply).text()).toMatch(/thanks that works$/);
+  } finally {
+    piper.close();
+  }
+});
+
+test('a pause mid-sentence loses nothing: both parts arrive, short or long pause', async ({ voice, request }) => {
+  // Short pause: the hold (2 s after an unfinished word) waits for the rest.
+  let reply = listen(request);
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await say(voice, 'I was looking at the');
+  await voice.clock.fastForward(1000);
+  await say(voice, 'colour tiles on the page');
+  await voice.clock.fastForward(2500);
+  let text = await (await reply).text();
+  expect(text).toMatch(/I was looking at the colour tiles on the page$/);
+  // Long pause: the unfinished part goes out, the listen stays open, and the daemon joins the rest.
+  reply = ask(request, { kind: 'stt', ack: Number(/turn (\d+)/.exec(text)?.[1]) });
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await say(voice, 'and then I wanted to');
+  await voice.clock.fastForward(3500);
+  await say(voice, 'change the colours too');
+  await voice.clock.fastForward(1500);
+  text = await (await reply).text();
+  expect(text).toMatch(/and then I wanted to change the colours too$/);
 });
 
 test('every header button has a tooltip and responds', async ({ voice }) => {

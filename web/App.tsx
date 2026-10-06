@@ -122,6 +122,9 @@ export function App() {
   const speechEndedAt = useRef(0);
   // Where a mic start is waiting, for the "mic start timed out at ..." log line.
   const startStage = useRef('');
+  // Recogniser results this session: how many there are, and how many a kept-open turn already sent.
+  const resultsSeen = useRef(0);
+  const consumed = useRef(0);
   // The browser's own voice is speaking (Piper failed).
   const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
@@ -208,10 +211,12 @@ export function App() {
           // Its late end, error and speechend now belong to no one: a stopped recogniser moves nothing.
           rec.current = null;
         },
-        sendTurn: ({ context }, { text }) => {
+        sendTurn: ({ context }, { text, keep }) => {
           clearTimeout(listen.current.idleTimer);
           // His turn is captured and sent: say Stop (spoken-words cue only).
-          if (cues === 'words') void playCue('captured');
+          if (cues === 'words' && !keep) void playCue('captured');
+          // Kept open: the results sent so far belong to this turn, later ones to the join.
+          if (keep) consumed.current = resultsSeen.current;
           // The end-of-speech stage, measured: last words to turn sent.
           log(`turn sent ${Date.now() - context.resultAt}ms after the last words`);
           ls.push('history_prompts', text);
@@ -221,7 +226,7 @@ export function App() {
           post({ type: 'complete', text, startAt: heard.current.startAt, endAt: Date.now() });
           heard.current.final = '';
           liveWords.current = '';
-          send({ type: 'LISTEN_DONE' });
+          if (!keep) send({ type: 'LISTEN_DONE' });
         },
         deliver: (_, { text, source, interrupted }) => {
           clearTimeout(listen.current.idleTimer);
@@ -322,7 +327,9 @@ export function App() {
       : '';
     if (word && typeof clip === 'string') clipCache.current.delete(word); // retry Piper next time
     const a = new Audio(typeof clip === 'string' || !word ? `/earcon/${CHIME[cue]}.ogg` : URL.createObjectURL(clip));
+    // The cue word counts as speech from its start, so the mic never takes it for his words.
     if (word) spokenLog.current.push({ text: word, at: Date.now() });
+    speechEndedAt.current = Date.now();
     a.volume = Number(earconVol);
     await new Promise<void>((done) => {
       a.onended = () => done();
@@ -388,6 +395,8 @@ export function App() {
       return;
     }
     const r = new Ctor();
+    consumed.current = 0;
+    resultsSeen.current = 0;
     r.continuous = true;
     r.interimResults = true;
     r.processLocally = local.current;
@@ -419,7 +428,9 @@ export function App() {
       if (!mine()) return;
       let live = '';
       let final = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      resultsSeen.current = e.results.length;
+      // Results already sent in a kept-open turn are skipped, or their words would repeat.
+      for (let i = Math.max(e.resultIndex, consumed.current); i < e.results.length; i++) {
         const res = e.results[i];
         const t = res?.[0]?.transcript ?? '';
         if (res?.isFinal) final = `${final} ${t}`.trim();
@@ -583,14 +594,18 @@ export function App() {
     return () => s2.unsubscribe();
   }, [actor]);
 
-  // Cues on state changes (the listen cue plays in startMic, the spoken Stop in sendTurn).
+  // Cues on state changes. The listen cue plays in startMic when the mic opens for a listen, and
+  // here when the mic kept running through the agent's speech and the light goes straight from
+  // speaking to green: that path had no cue, so it was missing on most turns (Mark, 10:23).
   const lastTurn = useRef<Turn>(turn);
   useEffect(() => {
     if (lastTurn.current === turn) return;
+    const prev = lastTurn.current;
     lastTurn.current = turn;
     // The light's every change in the log, so a wrong colour can be traced to its event.
     log(`light ${turn}`);
     if (turn === 'speakNow') post({ type: 'listening' });
+    if (turn === 'speakNow' && prev === 'agentSpeaking') void playCue('listen');
     if (turn === 'heard' && cues === 'chime') void playCue('captured');
     if (turn === 'background') void playCue('background');
   });

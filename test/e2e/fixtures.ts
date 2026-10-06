@@ -52,7 +52,12 @@ export const test = base.extend<{ voice: Page }>({
       g['__say'] = (text: string): void => {
         const r = g['__rec'] as FakeRecognition;
         r.onspeechstart?.();
-        r.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: text }], { isFinal: true })] });
+        // Like Chrome, a session's results only grow: each phrase is appended, resultIndex points at it.
+        const holder = r as unknown as { list?: unknown[] };
+        holder.list ??= [];
+        const list = holder.list;
+        list.push(Object.assign([{ transcript: text }], { isFinal: true }));
+        r.onresult?.({ resultIndex: list.length - 1, results: list });
         r.onspeechend?.();
       };
     });

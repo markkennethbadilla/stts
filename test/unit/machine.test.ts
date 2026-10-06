@@ -133,7 +133,7 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 
-  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 0.8 s', () => {
+  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 1 s', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
@@ -144,42 +144,42 @@ describe('page machine', () => {
     actor.send({ type: 'INTERIM', text: 'can you' });
     vi.advanceTimersByTime(1000);
     actor.send({ type: 'INTERIM', text: 'can you hear me' });
-    vi.advanceTimersByTime(1499);
+    vi.advanceTimersByTime(1999);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'can you hear me' });
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'can you hear me', keep: false });
     sendTurn.mockClear();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'RESULT', text: 'hello' });
     vi.advanceTimersByTime(500);
     actor.send({ type: 'INTERIM', text: 'hello and' });
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1500);
     expect(sendTurn).not.toHaveBeenCalled();
     actor.send({ type: 'RESULT', text: 'hello there' });
     vi.advanceTimersByTime(400);
     actor.send({ type: 'RESULT', text: 'hello there friend' });
-    vi.advanceTimersByTime(699);
+    vi.advanceTimersByTime(999);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend' });
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend', keep: false });
   });
 
-  it('autosend on speechend: 0.7 s, or 1 s when unfinished', () => {
+  it('autosend on speechend: 1 s, or 2 s when unfinished', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'SPEECH_END', text: 'hello there' });
-    vi.advanceTimersByTime(699);
+    vi.advanceTimersByTime(999);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there' });
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there', keep: false });
 
     const b = start();
     b.actor.send({ type: 'REQUEST', kind: 'listen' });
     b.actor.send({ type: 'SPEECH_END', text: 'I want to go to the' });
-    vi.advanceTimersByTime(700);
+    vi.advanceTimersByTime(1000);
     expect(b.sendTurn).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1000);
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
   });
 
@@ -188,7 +188,7 @@ describe('page machine', () => {
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'RESULT', text: 'hello there' });
-    vi.advanceTimersByTime(700);
+    vi.advanceTimersByTime(1000);
     expect(sendTurn).toHaveBeenCalledTimes(1);
     // Chrome's late speechend once the turn is out (log 2026-10-06: two "turn sent" 700 ms apart).
     actor.send({ type: 'SPEECH_END', text: 'hello there' });
@@ -216,7 +216,7 @@ describe('page machine', () => {
     b.actor.send({ type: 'SET_HOLD', ms: null });
     b.actor.send({ type: 'REQUEST', kind: 'listen' });
     b.actor.send({ type: 'SPEECH_END', text: 'done' });
-    vi.advanceTimersByTime(700);
+    vi.advanceTimersByTime(1000);
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
   });
 

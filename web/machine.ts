@@ -10,7 +10,7 @@ export const CLIPS_AHEAD = 3;
  * interim through a 12 s pause, so only finals arming made every cloud turn wait for the 60 s
  * session end (real Chrome test, 2026-10-06). Interim words unchanged for hold + this are a turn.
  */
-export const INTERIM_EXTRA_MS = 800;
+export const INTERIM_EXTRA_MS = 1000;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
 export const LANG_ERR = 'language-not-supported';
@@ -41,7 +41,9 @@ export function nextBackoff(prev: number | null): number {
 
 /** Silence before autosend: the set hold, else 1 s when the transcript reads unfinished, 700 ms otherwise. */
 export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
-  return c.holdMs ?? (readsUnfinished(c.transcript) ? 1000 : 700);
+  // 1 s, 2 s when the words read unfinished (Mark 2026-10-06 10:35: 0.7 and 1 s cut the end of
+  // his sentences off, ending on "like" or "if").
+  return c.holdMs ?? (readsUnfinished(c.transcript) ? 2000 : 1000);
 }
 
 const words = (t: string): string[] =>
@@ -184,7 +186,7 @@ export const pageMachine = setup({
   actions: {
     startMic: () => {},
     stopMic: () => {},
-    sendTurn: (_: unknown, _p: { text: string }) => {},
+    sendTurn: (_: unknown, _p: { text: string; keep: boolean }) => {},
     prefetchClips: (_: unknown, _p: { clips: string[] }) => {},
     playClip: (_: unknown, _p: { clip: string }) => {},
     speakFallback: (_: unknown, _p: { clip: string }) => {},
@@ -394,8 +396,14 @@ export const pageMachine = setup({
             autosend: {
               target: 'off',
               actions: [
-                { type: 'sendTurn', params: ({ context }) => ({ text: context.transcript }) },
-                assign({ wantListen: false }),
+                // Words that read unfinished keep the listen open: he is still talking after a pause,
+                // and the daemon joins what comes next to this turn (it waits 3 s for it). Closing the
+                // mic here lost everything he said after the pause (Mark 2026-10-06 10:35).
+                {
+                  type: 'sendTurn',
+                  params: ({ context }) => ({ text: context.transcript, keep: readsUnfinished(context.transcript) }),
+                },
+                assign({ wantListen: ({ context }) => readsUnfinished(context.transcript) }),
               ],
             },
           },
