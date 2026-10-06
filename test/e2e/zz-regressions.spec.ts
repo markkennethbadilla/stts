@@ -68,6 +68,49 @@ test('at a narrow width the Send button sits under the box, and the box keeps th
   expect(box?.width ?? 0).toBeGreaterThan(240);
 });
 
+test('leading words survive: interim then final, and two finals, all reach the turn', async ({ voice, request }) => {
+  // Chrome's shape: one session, results grow; early words go final while later ones are interim.
+  const emit = (results: [string, boolean][], from: number) =>
+    voice.evaluate(
+      ({ results, from }) => {
+        const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+        r.onresult({
+          resultIndex: from,
+          results: results.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: f })),
+        });
+      },
+      { results, from },
+    );
+  let reply = listen(request);
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await emit([['is it', false]], 0);
+  await emit([['is it active right', false]], 0);
+  await emit([['is it active right now', true]], 0);
+  await voice.clock.fastForward(1500);
+  let text = await (await reply).text();
+  expect(text).toMatch(/\] is it active right now$/);
+  reply = ask(request, { kind: 'stt', ack: Number(/turn (\d+)/.exec(text)?.[1]) });
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await emit([['is it', true]], 0);
+  await emit(
+    [
+      ['is it', true],
+      [' active right', false],
+    ],
+    1,
+  );
+  await emit(
+    [
+      ['is it', true],
+      [' active right now', true],
+    ],
+    1,
+  );
+  await voice.clock.fastForward(1500);
+  text = await (await reply).text();
+  expect(text).toMatch(/\] is it active right now$/);
+});
+
 test('Dark Reader is locked out and the theme setting applies', async ({ voice }) => {
   await expect(voice.locator('meta[name="darkreader-lock"]')).toHaveCount(1);
   for (const [theme, dark] of [

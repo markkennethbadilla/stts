@@ -128,6 +128,8 @@ export function App() {
   // Recogniser results this session: how many there are, and how many a kept-open turn already sent.
   const resultsSeen = useRef(0);
   const consumed = useRef(0);
+  // The most words the window showed for the turn in progress, for the turn-sent log line.
+  const shownWords = useRef(0);
   // The mic level, from the browser's own Web Audio analyser: when his voice was last above the
   // room's noise floor. Auto-send waits while it is recent.
   const voiceAt = useRef(0);
@@ -250,7 +252,13 @@ export function App() {
           // Kept open: the results sent so far belong to this turn, later ones to the join.
           if (keep) consumed.current = resultsSeen.current;
           // The end-of-speech stage, measured: last words to turn sent.
-          log(`turn sent ${Date.now() - context.resultAt}ms after the last words`);
+          // Word counts only, never the words: a turn shorter than what the window showed was the
+          // recogniser revising itself, or a drop to fix (2026-10-06 11:32, "is it" -> "it's").
+          const n = text.split(/\s+/).filter(Boolean).length;
+          log(
+            `turn sent ${Date.now() - context.resultAt}ms after the last words, ${n} words (the window showed up to ${shownWords.current})`,
+          );
+          shownWords.current = 0;
           ls.push('history_prompts', text);
           setSaid(text);
           setInterim('');
@@ -505,7 +513,9 @@ export function App() {
       }
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       liveWords.current = live;
-      setInterim(`${heard.current.final} ${live}`.trim());
+      const shown = `${heard.current.final} ${live}`.trim();
+      setInterim(shown);
+      shownWords.current = Math.max(shownWords.current, shown.split(/\s+/).filter(Boolean).length);
       // Words still forming restart the hold with everything heard so far; a final settles it.
       if (live) send({ type: 'INTERIM', text: `${heard.current.final} ${live}`.trim() });
       else send({ type: 'RESULT', text: heard.current.final });
