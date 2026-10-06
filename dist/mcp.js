@@ -21608,6 +21608,7 @@ new Set("and or but so because cause like um uh er erm hmm the a an to of with f
 const idleSec = number().min(0).max(200).optional().describe(`Seconds to wait for speech before returning ${NO_SPEECH} (default 200, 0 waits until he speaks).`);
 const sttShape = {
 	idleSec,
+	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true."),
 	ack: number().int().optional().describe("Turn id you are deliberately not answering aloud. Without it, an stt right after a returned turn is refused.")
 };
 const ttsShape = {
@@ -21616,6 +21617,7 @@ const ttsShape = {
 	url: string().optional().describe("URL of plain text or markdown to read aloud, instead of text."),
 	part: number().int().min(1).optional().describe("Start at this part of long content (1 is the start). Use the number a previous call returned."),
 	listen: boolean().optional().describe("After speaking, listen and return the next transcript"),
+	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true."),
 	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen."),
 	rate: number().min(.5).max(2).optional().describe("Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as his default. Omit unless the user asks for a speed change; omitting keeps his saved setting."),
 	volume: number().min(0).max(1).optional().describe("Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as his default. Omit unless the user asks for a volume change; omitting keeps his saved setting."),

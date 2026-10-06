@@ -26,7 +26,7 @@ The daemon listens on `127.0.0.1`, port `STTS_PORT` or 15986 by default.
 
 `/request` answers 200 with the reply text. Any other status is an error whose body is the error text: 400 bad input, 409 unanswered turn (spec 002), 504 `superseded` (spec 003).
 
-The request body is `{kind, text|file|url, part, listen, close, idleSec, rate, volume, ack, who}`. A tts call must carry exactly one of `text`, `file` or `url`. Ranges: `idleSec` 0 to 200 (default 200), `rate` 0.5 to 2, `volume` 0 to 1, `part` 1 or more. `who` is `session` by default. The MCP tool inputs (spec 008) are built from these same field definitions.
+The request body is `{kind, text|file|url, part, listen, close, idleSec, rate, volume, ack, who, start}`. `start: true` goes only on the first call after Mark starts voice (/stts): it clears an End conversation. A tts call must carry exactly one of `text`, `file` or `url`. Ranges: `idleSec` 0 to 200 (default 200), `rate` 0.5 to 2, `volume` 0 to 1, `part` 1 or more. `who` is `session` by default. The MCP tool inputs (spec 008) are built from these same field definitions.
 
 WebSocket messages, one checked list per direction:
 

@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -16755,6 +16755,7 @@ const readNotes = {
 const idleSec = number().min(0).max(200).optional().describe(`Seconds to wait for speech before returning ${NO_SPEECH} (default 200, 0 waits until he speaks).`);
 const sttShape = {
 	idleSec,
+	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true."),
 	ack: number().int().optional().describe("Turn id you are deliberately not answering aloud. Without it, an stt right after a returned turn is refused.")
 };
 const ttsShape = {
@@ -16763,6 +16764,7 @@ const ttsShape = {
 	url: string().optional().describe("URL of plain text or markdown to read aloud, instead of text."),
 	part: number().int().min(1).optional().describe("Start at this part of long content (1 is the start). Use the number a previous call returned."),
 	listen: boolean().optional().describe("After speaking, listen and return the next transcript"),
+	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true."),
 	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen."),
 	rate: number().min(.5).max(2).optional().describe("Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as his default. Omit unless the user asks for a speed change; omitting keeps his saved setting."),
 	volume: number().min(0).max(1).optional().describe("Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as his default. Omit unless the user asks for a volume change; omitting keeps his saved setting."),
@@ -17097,6 +17099,13 @@ async function handOver(to) {
 	}
 	deps.exit(0);
 }
+const endedFile = () => join(dataDir, "ended");
+const ended = () => existsSync(endedFile());
+function setEnded(on) {
+	mkdirSync(dataDir, { recursive: true });
+	if (on) writeFileSync(endedFile(), (/* @__PURE__ */ new Date()).toISOString());
+	else rmSync(endedFile(), { force: true });
+}
 async function liveUpdate(skipUpdate = false) {
 	if (!safe()) return false;
 	if (!skipUpdate && process.env["STTS_LIVE_UPDATE"] !== "check") await deps.update();
@@ -17173,6 +17182,10 @@ function release(reason) {
 }
 function send() {
 	if (!slot) return;
+	if (ended()) {
+		settle(200, CONVERSATION_ENDED);
+		return;
+	}
 	if (page) {
 		if (slot.sent && slot.body.kind === "tts") {
 			if (!isListen(slot.body)) {
@@ -17330,13 +17343,14 @@ function attachPage(sendToPage) {
 				settle(200, NO_SPEECH);
 				return;
 			case "stopped":
-				settle(200, `${STOPPED} ${m.part}`);
+				settle(200, ended() ? CONVERSATION_ENDED : `${STOPPED} ${m.part}`);
 				return;
 			case "cancel":
 			case "close":
 			case "ended":
+				if (m.type === "ended") setEnded(true);
 				settle(200, CONVERSATION_ENDED);
-				if (m.type !== "cancel") deps.exit(0);
+				if (m.type !== "cancel") setTimeout(() => deps.exit(0), 500);
 				return;
 		}
 	};
@@ -17401,6 +17415,8 @@ app.post("/request", async (c) => {
 	if (!parsed.success) return c.text(parsed.error.message, 400);
 	const body = parsed.data;
 	if (body.who === "agent" && body.close) body.close = false;
+	if (body.start) setEnded(false);
+	else if (ended()) return c.text(CONVERSATION_ENDED);
 	const t = turns.getSnapshot().context;
 	if (body.kind === "stt") {
 		const refused = ackGate(t, body.ack);
@@ -17594,4 +17610,4 @@ function start(p = port) {
 const LIVE_UPDATE_MS = Number(process.env["STTS_LIVE_UPDATE_MS"] ?? 6e4);
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start();
 //#endregion
-export { WINDOW_OPEN_MS, app, attachPage, dataDir, deps, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, port, resetTurns, slotId, start };
+export { WINDOW_OPEN_MS, app, attachPage, dataDir, deps, ended, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, port, resetTurns, setEnded, slotId, start };

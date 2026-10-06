@@ -132,6 +132,12 @@ export const idleSec = z
 
 export const sttShape = {
   idleSec,
+  start: z
+    .boolean()
+    .optional()
+    .describe(
+      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true.',
+    ),
   ack: z
     .number()
     .int()
@@ -152,6 +158,12 @@ export const ttsShape = {
     .optional()
     .describe('Start at this part of long content (1 is the start). Use the number a previous call returned.'),
   listen: z.boolean().optional().describe('After speaking, listen and return the next transcript'),
+  start: z
+    .boolean()
+    .optional()
+    .describe(
+      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation every call returns __STTS_CONVERSATION_ENDED__ and opens nothing, until a call with start=true.',
+    ),
   close: z
     .boolean()
     .optional()

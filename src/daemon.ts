@@ -1,7 +1,7 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 import { type ChildProcess, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -188,6 +188,15 @@ async function handOver(to: string): Promise<void> {
   deps.exit(0);
 }
 
+// End conversation, remembered across daemons (a hand-off or a respawn starts a new process).
+const endedFile = (): string => join(dataDir, 'ended');
+export const ended = (): boolean => existsSync(endedFile());
+export function setEnded(on: boolean): void {
+  mkdirSync(dataDir, { recursive: true });
+  if (on) writeFileSync(endedFile(), new Date().toISOString());
+  else rmSync(endedFile(), { force: true });
+}
+
 export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   if (!safe()) return false;
   if (!skipUpdate && process.env['STTS_LIVE_UPDATE'] !== 'check') await deps.update();
@@ -280,6 +289,10 @@ function release(reason: 'superseded' | 'timeout' | 'background'): void {
 
 function send(): void {
   if (!slot) return;
+  if (ended()) {
+    settle(200, CONVERSATION_ENDED);
+    return;
+  }
   if (page) {
     // Never replay: a tts the page already got is not spoken again after a reload or reconnect
     // (Mark 2026-10-06 heard an earlier reply twice). A tts with listen resends only its listen;
@@ -441,13 +454,18 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
-        settle(200, `${STOPPED} ${m.part}`);
+        settle(200, ended() ? CONVERSATION_ENDED : `${STOPPED} ${m.part}`);
         return;
       case 'cancel':
       case 'close':
       case 'ended':
+        // End is final (Mark 2026-10-06): remembered on disk, so no later call, hand-off, watchdog
+        // or reconnect opens the window again until a call with start=true.
+        if (m.type === 'ended') setEnded(true);
         settle(200, CONVERSATION_ENDED);
-        if (m.type !== 'cancel') deps.exit(0);
+        // Exit after the reply is out: exiting at once made the waiting call fail with
+        // "fetch failed" and its client respawn a daemon that reopened the window.
+        if (m.type !== 'cancel') setTimeout(() => deps.exit(0), 500);
         return;
     }
   };
@@ -524,6 +542,8 @@ app.post('/request', async (c) => {
   if (!parsed.success) return c.text(parsed.error.message, 400);
   const body = parsed.data;
   if (body.who === 'agent' && body.close) body.close = false; // spec 026: only the session closes
+  if (body.start) setEnded(false);
+  else if (ended()) return c.text(CONVERSATION_ENDED);
 
   const t = turns.getSnapshot().context;
   if (body.kind === 'stt') {

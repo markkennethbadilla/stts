@@ -3,10 +3,10 @@ name: stts
 description: User speaks the prompt, which is sent to the Model, the received response is spoken/read aloud in a loop.
 ---
 
-Call the stts:stt MCP tool once and look at what comes back. Each kind of answer gets its own move:
+Call the stts:stt MCP tool once, with start set to true (that call reopens voice after an End conversation; no later call sets it), and look at what comes back. Each kind of answer gets its own move:
 
 - `__STTS_LISTEN_CONTINUES__` exactly: the listen ran into the tool-call time limit, most likely because he is still talking. Nothing is lost. Call stt again straight away, saying nothing, and you get all of it.
-- `__STTS_CONVERSATION_ENDED__` exactly: he pressed End conversation and the window has already closed. Say nothing, call no tool, stop.
+- `__STTS_CONVERSATION_ENDED__` exactly: he pressed End conversation and the window has already closed. Say nothing, call no tool, stop. Every stts call now returns this until he starts voice again.
 - `__STTS_NO_SPEECH__` exactly: he has not said anything yet and the window is still listening. If a background result you promised him has arrived, speak it with tts and listen set to true. Otherwise call stt again, silently. It never means the conversation is over.
 - `__STTS_BACKGROUND_RESULT__`: a background helper finished. Speak its result with tts and listen set to true.
 - Empty: the prompt was cancelled. Call tts with the text 'Done.' and close set to true (it speaks, then closes the voice window), and stop.

@@ -198,7 +198,22 @@ describe('daemon', () => {
     await tick();
     page.onMessage(JSON.stringify({ type: 'ended' }));
     expect(await (await r).text()).toBe(CONVERSATION_ENDED);
+    await new Promise((res) => setTimeout(res, 600)); // the exit waits for the reply to go out
     expect(exits).toEqual([0]);
+    // End is final: later calls, a Stop and a window that comes back all stay ended, opening nothing.
+    const opened: number[] = [];
+    deps.openWindow = async () => void opened.push(1);
+    expect(await (await post('/request', { kind: 'stt' })).text()).toBe(CONVERSATION_ENDED);
+    expect(await (await post('/request', { kind: 'tts', text: 'hi', listen: true })).text()).toBe(CONVERSATION_ENDED);
+    page.onMessage(JSON.stringify({ type: 'ready' }));
+    expect(opened).toEqual([]);
+    // Until voice is started again.
+    const again = post('/request', { kind: 'stt', start: true });
+    await tick();
+    expect(sent.at(-1)).toMatchObject({ type: 'request' });
+    speak('back again');
+    expect(await (await again).text()).toMatch(/back again$/);
+    deps.openWindow = async () => {};
   });
 
   it('a bad ws message is logged and dropped', () => {
