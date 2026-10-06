@@ -17323,7 +17323,7 @@ function attachPage(sendToPage) {
 						deps.log("page typed held for the next listen");
 						return;
 					}
-					if (!slot) {
+					if (!slot || said) {
 						if (keepCarry) carry = `${carry} ${m.text}`.trim();
 						else if (said) {
 							held = held ? {

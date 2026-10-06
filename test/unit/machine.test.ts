@@ -222,6 +222,21 @@ describe('page machine', () => {
     expect(actor.getSnapshot().context.wantListen).toBe(true);
   });
 
+  it('the mic stays on after a finished-sounding turn, and later words are a new turn', () => {
+    // 2026-10-07: "leave it alone it's not" went out, the mic closed and the rest was lost.
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'RESULT', text: "probably leave it alone it's not" });
+    vi.advanceTimersByTime(2000);
+    expect(sendTurn).toHaveBeenCalledTimes(1);
+    expect(actor.getSnapshot().context.wantListen).toBe(true);
+    actor.send({ type: 'RESULT', text: 'worth the risk' });
+    vi.advanceTimersByTime(2000);
+    expect(sendTurn).toHaveBeenCalledTimes(2);
+    expect(sendTurn.mock.calls[1]?.[1]).toMatchObject({ text: 'worth the risk' });
+  });
+
   it('hold_ms overrides the autosend delay; null restores the defaults', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });

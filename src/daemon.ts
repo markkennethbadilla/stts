@@ -438,7 +438,8 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
           }
           // Speech with no listen open (after a Stop, a restart or a hand-off) is kept for the next
           // listen, never dropped (rule 43; Mark 2026-10-06: a stt returned only STOPPED and his words were gone).
-          if (!slot) {
+          // Words while a speak-only tts is open are held too: they used to end that tts and vanish.
+          if (!slot || said) {
             if (keepCarry) carry = `${carry} ${m.text}`.trim();
             else if (said) {
               held = held ? { ...held, text: `${held.text} ${said}`, endAt: m.endAt } : h;

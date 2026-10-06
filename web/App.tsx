@@ -253,8 +253,9 @@ export function App() {
           clearTimeout(listen.current.idleTimer);
           // His turn is captured and sent: say Stop (spoken-words cue only).
           if (cues === 'words' && !keep) void playCue('captured');
-          // Kept open: the results sent so far belong to this turn, later ones to the join.
-          if (keep) consumed.current = resultsSeen.current;
+          // The mic stays open after every turn: results sent so far belong to this turn, later ones
+          // to the join or to the next listen (the daemon holds them).
+          consumed.current = resultsSeen.current;
           // The end-of-speech stage, measured: last words to turn sent.
           // Word counts only, never the words: a turn shorter than what the window showed was the
           // recogniser revising itself, or a drop to fix (2026-10-06 11:32, "is it" -> "it's").
@@ -270,7 +271,6 @@ export function App() {
           post({ type: 'complete', text, startAt: heard.current.startAt, endAt: Date.now() });
           heard.current.final = '';
           liveWords.current = '';
-          if (!keep) send({ type: 'LISTEN_DONE' });
         },
         deliver: (_, { text, source, interrupted }) => {
           clearTimeout(listen.current.idleTimer);

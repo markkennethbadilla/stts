@@ -378,7 +378,13 @@ export const pageMachine = setup({
         off: {
           on: {
             SPEECH_END: {
-              guard: and(['autosendOn', 'quiet', live, 'listenOpen', ({ event }) => event.text !== '']),
+              guard: and([
+                'autosendOn',
+                'quiet',
+                live,
+                'listenOpen',
+                ({ event, context }) => event.text !== '' && event.text !== context.transcript,
+              ]),
               target: 'armed',
               actions: assign({ transcript: ({ event }) => event.text, interimHold: false, armedAt: now }),
             },
@@ -419,7 +425,10 @@ export const pageMachine = setup({
                     type: 'sendTurn',
                     params: ({ context }) => ({ text: context.transcript, keep: readsUnfinished(context.transcript) }),
                   },
-                  assign({ wantListen: ({ context }) => readsUnfinished(context.transcript) }),
+                  // The mic stays on after every turn (Mark 2026-10-07: "it's not" read finished, the mic closed and
+                  // the rest of his sentence was lost). Words after the turn reach the daemon, which holds them
+                  // for the next listen; the agent's speech or a barge takes the mic from here.
+                  assign({ wantListen: true }),
                 ],
               },
             ],
