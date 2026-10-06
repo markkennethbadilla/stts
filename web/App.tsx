@@ -49,11 +49,14 @@ const ORB_STATE: Record<Turn, AgentState> = {
   background: 'thinking',
   agentSpeaking: 'talking',
 };
-const EARCON: Partial<Record<Turn, string>> = {
-  speakNow: 'listen-open',
-  heard: 'turn-captured',
+// Turn cues (Mark 2026-10-06): spoken words in the window's voice by default, or the chimes.
+type Cue = 'listen' | 'captured' | 'background';
+const CHIME: Record<Cue, string> = {
+  listen: 'listen-open',
+  captured: 'turn-captured',
   background: 'background-result',
 };
+const WORD: Partial<Record<Cue, string>> = { listen: 'Speak.', captured: 'Stop.' };
 const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
 const CLIP_CHARS = 120;
 const ECHO_TAIL_MS = 3000;
@@ -117,6 +120,8 @@ export function App() {
   const liveWords = useRef('');
   // When the agent's speech last stopped playing (the echo tail is measured from it).
   const speechEndedAt = useRef(0);
+  // Where a mic start is waiting, for the "mic start timed out at ..." log line.
+  const startStage = useRef('');
   // The browser's own voice is speaking (Piper failed).
   const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
@@ -165,7 +170,7 @@ export function App() {
   const [autosend, setAutosend] = useSetting('autosend', '1');
   const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
-  const [earcons, setEarcons] = useSetting('earcons', '1');
+  const [cues, setCues] = useSetting('cues', 'words');
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
   const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
@@ -205,6 +210,8 @@ export function App() {
         },
         sendTurn: ({ context }, { text }) => {
           clearTimeout(listen.current.idleTimer);
+          // His turn is captured and sent: say Stop (spoken-words cue only).
+          if (cues === 'words') void playCue('captured');
           // The end-of-speech stage, measured: last words to turn sent.
           log(`turn sent ${Date.now() - context.resultAt}ms after the last words`);
           ls.push('history_prompts', text);
@@ -245,7 +252,7 @@ export function App() {
         prefetchClips: (_, { clips }) => {
           for (const c of clips) fetchClip(c);
         },
-        log: (_, { line }) => log(line),
+        log: (_, { line }) => log(line === 'mic start timed out' ? `${line} at ${startStage.current}` : line),
         speakFallback: (_, { clip }) => {
           const u = new SpeechSynthesisUtterance(clip);
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
@@ -303,14 +310,21 @@ export function App() {
     a.play().catch((e: unknown) => send({ type: 'CLIP_FAILED', reason: `play ${String(e)}` }));
   }
 
-  async function playEarcon(name: string): Promise<void> {
-    if (earcons !== '1') return;
-    const a = new Audio(`/earcon/${name}.ogg`);
+  // A turn cue: "Speak" / "Stop" in Piper's voice (a chime when the clip fails, or in chime mode).
+  // The word goes in the spoken log and restarts the echo tail, so it is never heard as his words.
+  async function playCue(cue: Cue): Promise<void> {
+    if (cues === 'off') return;
+    const word = cues === 'words' ? WORD[cue] : undefined;
+    const clip = word ? await fetchClip(word) : '';
+    if (word && typeof clip === 'string') clipCache.current.delete(word); // retry Piper next time
+    const a = new Audio(typeof clip === 'string' || !word ? `/earcon/${CHIME[cue]}.ogg` : URL.createObjectURL(clip));
+    if (word) spokenLog.current.push({ text: word, at: Date.now() });
     a.volume = Number(earconVol);
     await new Promise<void>((done) => {
       a.onended = () => done();
       a.play().catch(() => done());
     });
+    speechEndedAt.current = Date.now();
   }
 
   /** On-device en-US when Chrome has it; downloadable starts the install and uses the cloud meanwhile. */
@@ -338,7 +352,8 @@ export function App() {
     // not starting and never opened the mic: the grey light after every reply (real Chrome test 2026-10-06).
     await Promise.resolve();
     const snap = actor.getSnapshot();
-    if (!snap.matches({ speech: 'playing' }) && !snap.context.auto) await playEarcon('listen-open');
+    startStage.current = 'cue';
+    if (!snap.matches({ speech: 'playing' }) && !snap.context.auto) await playCue('listen');
     // Paused, or the listen ended, during the chime: the mic must not start.
     const stillStarting = () => actor.getSnapshot().matches({ mic: { live: 'starting' } });
     if (!stillStarting()) return;
@@ -355,8 +370,10 @@ export function App() {
       send({ type: 'MIC_ERROR' });
       return;
     }
+    startStage.current = 'on-device check';
     local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
+    startStage.current = 'getUserMedia';
     const stream = await navigator.mediaDevices
       .getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, ...(mic === 'default' ? {} : { deviceId: mic }) },
@@ -448,6 +465,7 @@ export function App() {
     rec.current = r;
     const track = stream?.getAudioTracks()[0];
     try {
+      startStage.current = 'recogniser start (no onstart yet)';
       if (track) r.start(track);
       else r.start();
     } catch {
@@ -561,7 +579,7 @@ export function App() {
     return () => s2.unsubscribe();
   }, [actor]);
 
-  // Earcon once per state change (the listen-open chime plays in startMic).
+  // Cues on state changes (the listen cue plays in startMic, the spoken Stop in sendTurn).
   const lastTurn = useRef<Turn>(turn);
   useEffect(() => {
     if (lastTurn.current === turn) return;
@@ -569,8 +587,8 @@ export function App() {
     // The light's every change in the log, so a wrong colour can be traced to its event.
     log(`light ${turn}`);
     if (turn === 'speakNow') post({ type: 'listening' });
-    const name = EARCON[turn];
-    if (name && name !== 'listen-open') void playEarcon(name);
+    if (turn === 'heard' && cues === 'chime') void playCue('captured');
+    if (turn === 'background') void playCue('background');
   });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; runs on each mute change.
@@ -805,10 +823,19 @@ export function App() {
                   </SelectContent>
                 </Select>
               </Row>
-              <Row label="Earcons">
-                <Switch checked={earcons === '1'} onCheckedChange={(c) => setEarcons(c ? '1' : '0')} />
+              <Row label="Turn cues">
+                <Select value={cues} onValueChange={(v) => v && setCues(String(v))}>
+                  <SelectTrigger className="w-40 max-w-full" aria-label="Turn cues">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="words">Spoken words</SelectItem>
+                    <SelectItem value="chime">Chime</SelectItem>
+                    <SelectItem value="off">Off</SelectItem>
+                  </SelectContent>
+                </Select>
               </Row>
-              <Row label="Earcon volume">
+              <Row label="Cue volume">
                 <Slider
                   className="w-40 max-w-full"
                   min={0}

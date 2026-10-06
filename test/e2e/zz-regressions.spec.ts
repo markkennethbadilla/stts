@@ -75,7 +75,7 @@ test('an automatic mic restart plays no chime', async ({ voice, request }) => {
     if (r.url().includes('/earcon/listen-open')) chimes.push(r.url());
   });
   // The fixture turns earcons off in an init script; a later one turns them back on.
-  await voice.addInitScript(() => localStorage.setItem('__stts__earcons', '1'));
+  await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'chime'));
   await voice.reload();
   const reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();
@@ -118,6 +118,67 @@ test('a fragment of the long sentence being spoken is echo, not a barge', async 
     for (const send of held.splice(0)) send();
     piper.close();
   }
+});
+
+test('spoken cues: Speak when the listen opens, Stop when the turn is sent, nothing on a restart', async ({
+  voice,
+  request,
+}) => {
+  const said: string[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      said.push((JSON.parse(body) as { text: string }).text);
+      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
+    await voice.reload();
+    // This test's Piper is already up: answer and listen without the helper's own.
+    const reply = ask(request, { kind: 'tts', text: 'Okay.' }).then(() => ask(request, { kind: 'stt' }));
+    await expect(voice.getByLabel('speakNow')).toBeVisible();
+    await expect.poll(() => said.filter((t) => t === 'Speak.').length).toBe(1);
+    await voice.evaluate(() =>
+      (globalThis as unknown as { __rec: { onerror: (e: unknown) => void } }).__rec.onerror({ error: 'network' }),
+    );
+    await voice.clock.fastForward(3000);
+    await expect.poll(daemonLog).toMatch(/mic restart #\d+: mic error/);
+    expect(said.filter((t) => t === 'Speak.').length).toBe(1);
+    await say(voice, 'that is all for now');
+    await voice.clock.fastForward(1500);
+    expect(await (await reply).text()).toMatch(/that is all for now$/);
+    await expect.poll(() => said.includes('Stop.')).toBe(true);
+  } finally {
+    piper.close();
+  }
+});
+
+test('every header button has a tooltip and responds', async ({ voice }) => {
+  for (const label of [
+    'Switch to keyboard input',
+    'Mute',
+    'Stop',
+    'Skip to listening (Esc)',
+    'Settings',
+    'End conversation',
+  ]) {
+    await expect(voice.getByRole('button', { name: label })).toHaveAttribute('title', label);
+  }
+  await voice.getByRole('button', { name: 'Mute' }).click();
+  await expect(voice.getByRole('button', { name: 'Unmute' })).toBeVisible();
+  await voice.getByRole('button', { name: 'Unmute' }).click();
+  await voice.getByRole('button', { name: 'Switch to keyboard input' }).click();
+  await expect(voice.getByLabel('Message')).toBeVisible();
+  await expect(voice.getByRole('button', { name: 'Send' })).toHaveAttribute('title', 'Send');
+  await voice.getByRole('button', { name: 'Settings' }).click();
+  await expect(voice.getByLabel('Theme')).toBeVisible();
+  await expect(voice.getByLabel('Turn cues')).toBeVisible();
 });
 
 // Last: End stops the daemon.

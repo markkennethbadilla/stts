@@ -20,7 +20,7 @@ export const test = base.extend<{ voice: Page }>({
     });
     await page.clock.install();
     await page.addInitScript(() => {
-      localStorage.setItem('__stts__earcons', '0');
+      localStorage.setItem('__stts__cues', 'off');
       type Handler = ((e?: unknown) => void) | null;
       const g = globalThis as unknown as Record<string, unknown>;
       class FakeRecognition {

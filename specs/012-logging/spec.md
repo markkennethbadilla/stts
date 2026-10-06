@@ -26,7 +26,8 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |
 | `page live update: reloading for the new version` | the window reloads onto the new code |
 | `page mic start` | mic opened |
-| `page mic start timed out` | a recogniser start reported nothing within 5 s and was restarted |
+| `page mic start timed out at STAGE` | a recogniser start reported nothing within 5 s and was restarted; STAGE is where it waited (cue, on-device check, getUserMedia, recogniser start) |
+| `window closed` | the Chrome window closed; the daemon stays up |
 | `page heard held for the next listen` | speech with no listen open, kept for the next one |
 | `page skipped by Mark` | Skip or Esc stopped the speech |
 | `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |

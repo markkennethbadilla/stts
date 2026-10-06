@@ -82,7 +82,7 @@ export const deps = {
     });
     // chrome-launcher can hand back no process (Chrome handed off to a running instance).
     if (!chrome?.process) throw new Error('no chrome process');
-    chrome.process.on('exit', () => deps.exit(0));
+    chrome.process.on('exit', () => deps.log('window closed'));
   },
   exit(code: number): void {
     piper?.kill();
@@ -234,7 +234,6 @@ const adopted = process.env['STTS_ADOPT'] === '1';
 const PAGE_GRACE_MS = 8000;
 let pageGoneAt = Date.now();
 let graceTimer: ReturnType<typeof setTimeout> | undefined;
-let goneTimer: ReturnType<typeof setTimeout> | undefined;
 /** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
 export const WINDOW_OPEN_MS = 15000;
 let held: Heard | null = null; // a typed message sent while no listen was open, for the next listen
@@ -384,13 +383,11 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
   page = sendToPage;
   windowOpening = false;
   clearTimeout(windowTimer);
-  clearTimeout(goneTimer);
   const detach = (): void => {
     if (page !== sendToPage) return;
     page = null;
     pageGoneAt = Date.now();
     // An adopted daemon holds no Chrome handle: the window closing shows as the page not coming back.
-    if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 15_000);
   };
   const onMessage = (raw: string): void => {
     const m = parseMessage(PageMessage, raw);
@@ -469,7 +466,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, CONVERSATION_ENDED);
         // Exit after the reply is out: exiting at once made the waiting call fail with
         // "fetch failed" and its client respawn a daemon that reopened the window.
-        if (m.type !== 'cancel') setTimeout(() => deps.exit(0), 500);
+        // No exit: the newest daemon keeps the port (see the note above app).
         return;
     }
   };
@@ -496,6 +493,9 @@ export async function loadText(file?: string, url?: string): Promise<string> {
   return /markdown/i.test(type) || /\.(md|markdown)(\?|#|$)/i.test(url) ? removeMarkdown(raw) : raw;
 }
 
+// The newest daemon never gives up the port (Mark 2026-10-06 10:04): an agent session keeps the
+// MCP client it began with, and when no daemon answered that old client started its own, older
+// daemon, so the window came back on an old build. A closed window or an End leaves it idle.
 export const app = new Hono();
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
@@ -737,7 +737,7 @@ export function start(p: number = port): void {
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;
   // Adopted with no window coming back (closed during the hand-off): exit like a closed window.
-  if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 20_000);
+
   let tries = 0;
   server.on('error', (e: NodeJS.ErrnoException) => {
     if (e.code !== 'EADDRINUSE') throw e;

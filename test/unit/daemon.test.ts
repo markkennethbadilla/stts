@@ -198,8 +198,8 @@ describe('daemon', () => {
     await tick();
     page.onMessage(JSON.stringify({ type: 'ended' }));
     expect(await (await r).text()).toBe(CONVERSATION_ENDED);
-    await new Promise((res) => setTimeout(res, 600)); // the exit waits for the reply to go out
-    expect(exits).toEqual([0]);
+    await new Promise((res) => setTimeout(res, 600));
+    expect(exits).toEqual([]); // the daemon keeps the port: an older client must not start its own
     // End is final: later calls, a Stop and a window that comes back all stay ended, opening nothing.
     const opened: number[] = [];
     deps.openWindow = async () => void opened.push(1);

@@ -16991,7 +16991,7 @@ const deps = {
 			userDataDir: profileDir
 		});
 		if (!chrome?.process) throw new Error("no chrome process");
-		chrome.process.on("exit", () => deps.exit(0));
+		chrome.process.on("exit", () => deps.log("window closed"));
 	},
 	exit(code) {
 		piper?.kill();
@@ -17129,7 +17129,6 @@ const adopted = process.env["STTS_ADOPT"] === "1";
 const PAGE_GRACE_MS = 8e3;
 let pageGoneAt = Date.now();
 let graceTimer;
-let goneTimer;
 /** Chrome started but no page connected in this long: clear the flag so the next send relaunches. */
 const WINDOW_OPEN_MS = 15e3;
 let held = null;
@@ -17275,12 +17274,10 @@ function attachPage(sendToPage) {
 	page = sendToPage;
 	windowOpening = false;
 	clearTimeout(windowTimer);
-	clearTimeout(goneTimer);
 	const detach = () => {
 		if (page !== sendToPage) return;
 		page = null;
 		pageGoneAt = Date.now();
-		if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 15e3);
 	};
 	const onMessage = (raw) => {
 		const m = parseMessage(PageMessage, raw);
@@ -17354,7 +17351,6 @@ function attachPage(sendToPage) {
 			case "ended":
 				if (m.type === "ended") setEnded(true);
 				settle(200, CONVERSATION_ENDED);
-				if (m.type !== "cancel") setTimeout(() => deps.exit(0), 500);
 				return;
 		}
 	};
@@ -17590,7 +17586,6 @@ function start(p = port) {
 	}, () => deps.log(`daemon start pid ${process.pid}`));
 	injectWebSocket(server);
 	httpServer = server;
-	if (adopted) goneTimer = setTimeout(() => !page && deps.exit(0), 2e4);
 	let tries = 0;
 	server.on("error", (e) => {
 		if (e.code !== "EADDRINUSE") throw e;
