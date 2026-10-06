@@ -134,6 +134,8 @@ export function App() {
   // room's noise floor. Auto-send waits while it is recent.
   const voiceAt = useRef(0);
   const levelStop = useRef<(() => void) | null>(null);
+  // The echo-cancelled mic stream, opened once and reused by every recogniser start.
+  const aec = useRef<{ stream: MediaStream; mic: string } | null>(null);
   function watchLevel(stream: MediaStream): void {
     levelStop.current?.();
     const ctx = new AudioContext();
@@ -268,7 +270,15 @@ export function App() {
           setSaid(text);
           setInterim('');
           setTurnNo((n) => n + 1);
-          post({ type: 'complete', text, startAt: heard.current.startAt, endAt: Date.now() });
+          // A turn always has a real start: 0 (no speechstart) printed as a bogus clock time, and a start
+          // kept from the last turn dated this one minutes early (Mark 2026-10-07: "07:30:00 to 04:03:28").
+          post({
+            type: 'complete',
+            text,
+            startAt: heard.current.startAt || context.resultAt || Date.now(),
+            endAt: Date.now(),
+          });
+          heard.current.startAt = 0;
           heard.current.final = '';
           liveWords.current = '';
         },
@@ -429,27 +439,28 @@ export function App() {
     if (recognizer !== 'device') local.current = false;
     else local.current ??= await pickLocal(Ctor as unknown as RecognitionStatics);
     if (!stillStarting()) return;
-    // The default mic goes to the recogniser as the old stts did: r.start() with no track, Chrome's own
-    // capture, nothing awaited first. Opening our own stream before every start put getUserMedia in
-    // the gap, which timed out and lost the first words of his turns (Mark 2026-10-07). The level
-    // meter gets its own stream, opened once, off the start path. A chosen mic still needs the track.
-    let stream: MediaStream | null = null;
-    if (mic !== 'default') {
+    // One echo-cancelled stream, opened once and reused by every start: the agent's voice is removed
+    // before the recogniser hears it. Chrome's own capture (start() with no track) has no echo
+    // cancellation and the agent's reply came back as his turn (Mark 2026-10-07); opening a new stream
+    // before every start put getUserMedia in the gap and lost his first words. Reopened only when the
+    // track died or the chosen mic changed.
+    const cur = aec.current;
+    if (!cur || cur.mic !== mic || cur.stream.getAudioTracks()[0]?.readyState !== 'live') {
       startStage.current = 'getUserMedia';
-      stream = await navigator.mediaDevices
-        .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, deviceId: mic } })
+      for (const t of cur?.stream.getTracks() ?? []) t.stop();
+      aec.current = null;
+      const s = await navigator.mediaDevices
+        .getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, ...(mic === 'default' ? {} : { deviceId: mic }) },
+        })
         .catch(() => null);
-      if (!stillStarting()) {
-        for (const t of stream?.getTracks() ?? []) t.stop();
-        return;
+      if (s) {
+        aec.current = { stream: s, mic };
+        watchLevel(s);
       }
-      if (stream) watchLevel(stream);
-    } else if (!levelStop.current) {
-      void navigator.mediaDevices
-        .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-        .then(watchLevel)
-        .catch(() => {});
+      if (!stillStarting()) return;
     }
+    const stream = aec.current?.stream ?? null;
     const r = new Ctor();
     consumed.current = 0;
     resultsSeen.current = 0;
@@ -526,6 +537,7 @@ export function App() {
         liveWords.current = '';
         return;
       }
+      heard.current.startAt ||= Date.now();
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       liveWords.current = live;
       const shown = `${heard.current.final} ${live}`.trim();
