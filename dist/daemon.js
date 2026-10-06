@@ -16717,6 +16717,8 @@ function superRefine(fn, params) {
 //#endregion
 //#region src/asr.ts
 const SAMPLE_RATE = 16e3;
+const PRE_ROLL = 4800;
+const KEEP = 352e3;
 const MODEL = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 const WINDOW = 512;
 const asrPaths = (dataDir) => ({
@@ -16754,6 +16756,13 @@ function load(dataDir) {
 	});
 	return sherpa;
 }
+/** Loads the model once at daemon start: loaded on the first connection, it blocked the daemon for
+* 8 to 14 s just as he started speaking. A missing engine is reported per connection instead. */
+function preload(dataDir) {
+	try {
+		load(dataDir);
+	} catch {}
+}
 /** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
 function createEngine(dataDir, emit) {
 	let vad;
@@ -16779,11 +16788,27 @@ function createEngine(dataDir, emit) {
 	}
 	let pending = /* @__PURE__ */ new Float32Array(0);
 	let speaking = false;
+	const kept = [];
+	let fedTotal = 0;
+	const before = (start) => {
+		const from = Math.max(0, start - PRE_ROLL);
+		const out = new Float32Array(start - from);
+		for (const c of kept) {
+			const a = Math.max(from, c.at);
+			const b = Math.min(start, c.at + c.s.length);
+			if (a < b) out.set(c.s.subarray(a - c.at, b - c.at), a - from);
+		}
+		return out;
+	};
 	let chain = Promise.resolve();
 	const drain = () => {
 		while (!vad.isEmpty()) {
-			const samples = vad.front().samples;
+			const seg = vad.front();
 			vad.pop();
+			const pre = before(seg.start);
+			const samples = new Float32Array(pre.length + seg.samples.length);
+			samples.set(pre);
+			samples.set(seg.samples, pre.length);
 			chain = chain.then(async () => {
 				const st = recognizer?.createStream();
 				if (!st || !recognizer) return;
@@ -16805,6 +16830,12 @@ function createEngine(dataDir, emit) {
 		all.set(s, pending.length);
 		let i = 0;
 		for (; i + WINDOW <= all.length; i += WINDOW) vad.acceptWaveform(all.subarray(i, i + WINDOW));
+		kept.push({
+			at: fedTotal,
+			s: all.slice(0, i)
+		});
+		fedTotal += i;
+		while (kept.length && (kept[0]?.at ?? 0) < fedTotal - KEEP) kept.shift();
 		pending = all.slice(i);
 		const now = vad.isDetected();
 		if (now && !speaking) emit({ type: "speechstart" });
@@ -17705,7 +17736,10 @@ function start(p = port) {
 		fetch: app.fetch,
 		port: p,
 		hostname: "127.0.0.1"
-	}, () => deps.log(`daemon start pid ${process.pid}`));
+	}, () => {
+		deps.log(`daemon start pid ${process.pid}`);
+		setTimeout(() => preload(dataDir), 0);
+	});
 	injectWebSocket(server);
 	httpServer = server;
 	let tries = 0;

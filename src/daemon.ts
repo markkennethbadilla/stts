@@ -16,7 +16,7 @@ import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
 import { z } from 'zod';
-import { createEngine } from './asr.js';
+import { createEngine, preload } from './asr.js';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -766,9 +766,11 @@ export async function exitCodeWhenTaken(p: number): Promise<0 | 1> {
 }
 
 export function start(p: number = port): void {
-  const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () =>
-    deps.log(`daemon start pid ${process.pid}`),
-  );
+  const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
+    deps.log(`daemon start pid ${process.pid}`);
+    // The speech engine loads now, before any window or speech (spec 014).
+    setTimeout(() => preload(dataDir), 0);
+  });
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;
   // Adopted with no window coming back (closed during the hand-off): exit like a closed window.

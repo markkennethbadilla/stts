@@ -4,6 +4,10 @@
 // for the page, not for one recogniser: a restart never stops the audio, and text that lands
 // while no recogniser is started waits for the next one. Nothing he says is dropped.
 
+import workletSrc from './pcm-worklet.js?raw';
+
+const workletUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'text/javascript' }));
+
 type AsrEvent = { type: 'speechstart' } | { type: 'final'; text: string } | { type: 'error'; error: string };
 type Result = ArrayLike<{ transcript: string }> & { isFinal: boolean };
 
@@ -37,7 +41,7 @@ export async function feed(stream: MediaStream): Promise<void> {
   fed = stream;
   if (!sock) connect();
   const ctx = new AudioContext({ sampleRate: 16000 });
-  await ctx.audioWorklet.addModule('/pcm-worklet.js');
+  await ctx.audioWorklet.addModule(workletUrl);
   const node = new AudioWorkletNode(ctx, 'pcm');
   node.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
     if (fed !== stream) return;

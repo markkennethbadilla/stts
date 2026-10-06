@@ -101,7 +101,12 @@ test('a file is read in parts and resumed', async ({ voice, request }) => {
   try {
     mkdirSync(dataRoot, { recursive: true });
     const file = join(dataRoot, 'read.txt');
-    writeFileSync(file, 'This is a sentence that the voice reads out loud for the test. '.repeat(40));
+    // Distinct sentences: clips are cached by text, so a repeated sentence made one request, the hold
+    // never engaged, and a slow runner read all three parts before Stop landed (CI, 2026-10-07).
+    writeFileSync(
+      file,
+      Array.from({ length: 40 }, (_, i) => `This is sentence number ${i} that the voice reads out loud.`).join(' '),
+    );
     const first = ask(request, { kind: 'tts', file });
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await expect.poll(() => clips).toBeGreaterThan(0);

@@ -9,6 +9,10 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 export const SAMPLE_RATE = 16000;
+// 0.3 s of audio before each segment (a segment ends after 0.5 s of silence, so this never reaches
+// the previous one); audio is kept a little longer than the longest segment (20 s).
+const PRE_ROLL = 0.3 * 16000;
+const KEEP = 22 * 16000;
 export const MODEL = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8';
 const WINDOW = 512; // Silero's window at 16 kHz
 
@@ -27,7 +31,7 @@ type Sherpa = {
   ) => {
     acceptWaveform(s: Float32Array): void;
     isEmpty(): boolean;
-    front(): { samples: Float32Array };
+    front(): { samples: Float32Array; start: number };
     pop(): void;
     isDetected(): boolean;
     flush(): void;
@@ -66,6 +70,14 @@ function load(dataDir: string): Sherpa {
   return sherpa;
 }
 
+/** Loads the model once at daemon start: loaded on the first connection, it blocked the daemon for
+ * 8 to 14 s just as he started speaking. A missing engine is reported per connection instead. */
+export function preload(dataDir: string): void {
+  try {
+    load(dataDir);
+  } catch {}
+}
+
 /** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
 export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { push(s: Float32Array): void } {
   let vad: InstanceType<Sherpa['Vad']>;
@@ -95,12 +107,31 @@ export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { pu
   }
   let pending = new Float32Array(0);
   let speaking = false;
+  // Recent audio by absolute sample index, for the pre-roll: Silero marks a segment's start just
+  // after the first word begins, and the second half of a paused sentence came back without its
+  // first word ("colour", live test 2026-10-07).
+  const kept: { at: number; s: Float32Array }[] = [];
+  let fedTotal = 0;
+  const before = (start: number): Float32Array => {
+    const from = Math.max(0, start - PRE_ROLL);
+    const out = new Float32Array(start - from);
+    for (const c of kept) {
+      const a = Math.max(from, c.at);
+      const b = Math.min(start, c.at + c.s.length);
+      if (a < b) out.set(c.s.subarray(a - c.at, b - c.at), a - from);
+    }
+    return out;
+  };
   // Decodes run one after another, so finals arrive in the order he spoke them.
   let chain = Promise.resolve();
   const drain = (): void => {
     while (!vad.isEmpty()) {
-      const samples = vad.front().samples;
+      const seg = vad.front();
       vad.pop();
+      const pre = before(seg.start);
+      const samples = new Float32Array(pre.length + seg.samples.length);
+      samples.set(pre);
+      samples.set(seg.samples, pre.length);
       chain = chain.then(async () => {
         const st = recognizer?.createStream();
         if (!st || !recognizer) return;
@@ -117,6 +148,9 @@ export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { pu
       all.set(s, pending.length);
       let i = 0;
       for (; i + WINDOW <= all.length; i += WINDOW) vad.acceptWaveform(all.subarray(i, i + WINDOW));
+      kept.push({ at: fedTotal, s: all.slice(0, i) });
+      fedTotal += i;
+      while (kept.length && (kept[0]?.at ?? 0) < fedTotal - KEEP) kept.shift();
       pending = all.slice(i);
       const now = vad.isDetected();
       if (now && !speaking) emit({ type: 'speechstart' });

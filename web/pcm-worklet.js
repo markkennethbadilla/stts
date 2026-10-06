@@ -1,3 +1,6 @@
+// Bundled into the page (imported raw, loaded from a Blob URL), so capture never waits on the
+// daemon: fetched from it, the module waited out the engine's first load and the start of his
+// speech was lost (live test 2026-10-07).
 // Posts the mic's samples to the page in 100 ms blocks (spec 014). The AudioContext runs at
 // 16 kHz, so the browser resamples; nothing here touches the audio.
 class Pcm extends AudioWorkletProcessor {
