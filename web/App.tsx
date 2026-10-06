@@ -315,7 +315,11 @@ export function App() {
   async function playCue(cue: Cue): Promise<void> {
     if (cues === 'off') return;
     const word = cues === 'words' ? WORD[cue] : undefined;
-    const clip = word ? await fetchClip(word) : '';
+    // Never hold the mic for the word: if Piper is not ready within 1.5 s the chime plays instead
+    // (a dead Piper held every start for 17 s, log 2026-10-06 02:19 UTC).
+    const clip = word
+      ? await Promise.race([fetchClip(word), new Promise<string>((r) => setTimeout(() => r('cue timeout'), 1500))])
+      : '';
     if (word && typeof clip === 'string') clipCache.current.delete(word); // retry Piper next time
     const a = new Audio(typeof clip === 'string' || !word ? `/earcon/${CHIME[cue]}.ogg` : URL.createObjectURL(clip));
     if (word) spokenLog.current.push({ text: word, at: Date.now() });
