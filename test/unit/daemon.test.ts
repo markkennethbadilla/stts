@@ -201,6 +201,16 @@ describe('daemon', () => {
     expect(req?.type === 'request' && req.body.close).toBe(false);
     speak('');
     await r;
+    expect(sent.some((m) => m.type === 'close')).toBe(false);
+  });
+
+  it('a session tts with close shuts the window once it has spoken', async () => {
+    const r = post('/request', { kind: 'tts', text: 'bye', close: true });
+    await tick();
+    expect(sent.some((m) => m.type === 'close')).toBe(false);
+    speak('');
+    await r;
+    expect(sent.at(-1)).toEqual({ type: 'close' });
   });
 
   it('page ended answers the conversation-ended sentinel', async () => {
@@ -208,6 +218,7 @@ describe('daemon', () => {
     await tick();
     page.onMessage(JSON.stringify({ type: 'ended' }));
     expect(await (await r).text()).toBe(CONVERSATION_ENDED);
+    expect(sent.at(-1)).toEqual({ type: 'close' }); // End shuts the window (Mark 2026-10-10)
     await new Promise((res) => setTimeout(res, 600));
     expect(exits).toEqual([]); // the daemon keeps the port: an older client must not start its own
     // An End reaches exactly one reply: a stale press never ends a later session (2026-10-07).

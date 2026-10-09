@@ -230,6 +230,8 @@ export type PageMessage = z.infer<typeof PageMessage>;
 export const DaemonMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('request'), id: z.number().int(), body: RequestBody }),
   z.object({ type: z.literal('released'), reason: z.enum(['superseded', 'timeout', 'background']) }),
+  // Shut the window: after End, or after a tts with close=true has spoken.
+  z.object({ type: z.literal('close') }),
 ]);
 export type DaemonMessage = z.infer<typeof DaemonMessage>;
 

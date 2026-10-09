@@ -563,6 +563,11 @@ export function App() {
       const m = parseMessage(DaemonMessage, String(e.data));
       if (!m) return;
       clearTimeout(listen.current.idleTimer);
+      if (m.type === 'close') {
+        dead = true; // no reconnect from a closing window
+        window.close();
+        return;
+      }
       if (m.type === 'released') {
         actor.send({ type: m.reason === 'background' ? 'NOTIFY' : 'LISTEN_DONE', text: '' });
         return;
@@ -776,6 +781,7 @@ export function App() {
   return (
     // A click anywhere that is not a control puts the cursor in the message box (Mark 2026-10-10).
     // DOM containment, not the React tree: the settings popover is portalled outside main.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: a mouse convenience; the keyboard reaches the box with Tab.
     <main
       className="@container relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background text-foreground"
       onClick={(e) => {

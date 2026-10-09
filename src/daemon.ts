@@ -451,7 +451,9 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
           }
           // The stopped speech's own complete while a barge turn is still joining: not the end of the tts.
           if (barge) return;
+          const close = slot.body.close === true;
           settle(200, readNotes.spoken);
+          if (close) sendToPage({ type: 'close' });
           return;
         }
         // An empty complete is the page finishing a tts this listen superseded: not a turn.
@@ -477,8 +479,10 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'ended':
         // Written first so a press with no call open (mid-speech, between calls) is never lost;
         // an open call takes it at once. No exit: the newest daemon keeps the port (note above app).
+        // Then the window shuts (Mark 2026-10-10: pressing End left it open).
         setEnded(true);
         if (slot && takeEnded()) settle(200, CONVERSATION_ENDED);
+        sendToPage({ type: 'close' });
         return;
     }
   };

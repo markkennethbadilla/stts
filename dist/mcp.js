@@ -21665,18 +21665,22 @@ discriminatedUnion("type", [
 		settings: record(string(), unknown())
 	})
 ]);
-discriminatedUnion("type", [object({
-	type: literal("request"),
-	id: number().int(),
-	body: RequestBody
-}), object({
-	type: literal("released"),
-	reason: _enum([
-		"superseded",
-		"timeout",
-		"background"
-	])
-})]);
+discriminatedUnion("type", [
+	object({
+		type: literal("request"),
+		id: number().int(),
+		body: RequestBody
+	}),
+	object({
+		type: literal("released"),
+		reason: _enum([
+			"superseded",
+			"timeout",
+			"background"
+		])
+	}),
+	object({ type: literal("close") })
+]);
 //#endregion
 //#region src/client.ts
 const daemonUrl = (port = Number(process.env["STTS_PORT"] ?? 15986)) => `http://127.0.0.1:${port}`;

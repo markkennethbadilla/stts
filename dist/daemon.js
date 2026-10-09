@@ -16941,18 +16941,22 @@ const PageMessage = discriminatedUnion("type", [
 		settings: record(string(), unknown())
 	})
 ]);
-discriminatedUnion("type", [object({
-	type: literal("request"),
-	id: number().int(),
-	body: RequestBody
-}), object({
-	type: literal("released"),
-	reason: _enum([
-		"superseded",
-		"timeout",
-		"background"
-	])
-})]);
+discriminatedUnion("type", [
+	object({
+		type: literal("request"),
+		id: number().int(),
+		body: RequestBody
+	}),
+	object({
+		type: literal("released"),
+		reason: _enum([
+			"superseded",
+			"timeout",
+			"background"
+		])
+	}),
+	object({ type: literal("close") })
+]);
 const BAD_MESSAGE_LOG = "ws bad message";
 function parseMessage(schema, raw) {
 	let json;
@@ -17465,7 +17469,9 @@ function attachPage(sendToPage) {
 						return;
 					}
 					if (barge) return;
+					const close = slot.body.close === true;
 					settle(200, readNotes.spoken);
+					if (close) sendToPage({ type: "close" });
 					return;
 				}
 				if (!said) return;
@@ -17487,6 +17493,7 @@ function attachPage(sendToPage) {
 			case "ended":
 				setEnded(true);
 				if (slot && takeEnded()) settle(200, CONVERSATION_ENDED);
+				sendToPage({ type: "close" });
 				return;
 		}
 	};

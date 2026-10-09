@@ -279,13 +279,7 @@ test('30 s of continuous speech is one turn, even when the recogniser goes quiet
 });
 
 test('every header button has a tooltip and responds', async ({ voice }) => {
-  for (const label of [
-    'Mute',
-    'Stop',
-    'Skip to listening (Esc)',
-    'Settings',
-    'End conversation',
-  ]) {
+  for (const label of ['Mute', 'Stop', 'Skip to listening (Esc)', 'Settings', 'End conversation']) {
     await expect(voice.getByRole('button', { name: label })).toHaveAttribute('title', label);
   }
   await voice.getByRole('button', { name: 'Mute' }).click();
@@ -306,12 +300,19 @@ test('every header button has a tooltip and responds', async ({ voice }) => {
   await expect(voice.getByLabel('Turn cues')).toBeVisible();
 });
 
-// Last: End stops the daemon.
+// Last: End shuts the window.
 test('End reaches the open listen once; the next call carries on', async ({ voice, request }) => {
   const reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();
+  // A test tab is not script-closable (it navigated), so record the call; the real --app window
+  // closes (checked live, spec 003).
+  await voice.evaluate(() => {
+    window.close = () => document.body.setAttribute('data-closed', '');
+  });
   await voice.getByLabel('End conversation').click();
   expect(await (await reply).text()).toBe(CONVERSATION_ENDED);
+  // End shuts the window (Mark 2026-10-10).
+  await expect(voice.locator('body[data-closed]')).toHaveCount(1);
   const next = ask(request, { kind: 'stt', idleSec: 1 });
   await voice.clock.fastForward(1500);
   expect(await (await next).text()).not.toBe(CONVERSATION_ENDED);
