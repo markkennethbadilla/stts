@@ -16,7 +16,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
 import { toParts } from '../src/sentences.ts';
 import { Button } from './components/ui/button.tsx';
@@ -764,6 +764,17 @@ export function App() {
   };
 
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
+  // Lyrics view (Mark 2026-10-10, like Spotify's): one line per clip, the clip playing now lit and
+  // the rest dimmed, scrolled to the middle once per clip. No word timings: Piper gives none.
+  const lines = useMemo(() => toParts(shown, CLIP_CHARS), [shown]);
+  const now = turn === 'agentSpeaking' && !interim && !browse && spoken.of > 0 ? spoken.done : -1;
+  const words = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const pane = words.current;
+    const line = pane?.querySelector<HTMLElement>(`[data-line="${now}"]`);
+    if (pane && line)
+      pane.scrollTo({ top: line.offsetTop - (pane.clientHeight - line.offsetHeight) / 2, behavior: 'smooth' });
+  }, [now]);
   const micFailed = state.matches({ mic: { live: 'failed' } });
   const StatusIcon = micFailed
     ? CircleAlert
@@ -957,8 +968,9 @@ export function App() {
       <div className="flex min-h-0 flex-1 flex-col @min-[1200px]:flex-row">
         {/* The orb has its own row (a column at 1200 px and up) and shrinks to fit it: nothing overlaps. */}
         <div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden [container-type:size] [mask-image:radial-gradient(circle,black_40%,transparent_75%)]">
-          {turn === 'speakNow' && <Ripple mainCircleSize={260} className="opacity-70" />}
-          <div data-orb className="relative aspect-square size-[min(100cqw,100cqh)]">
+          {turn === 'speakNow' && <Ripple mainCircleSize={140} className="opacity-70" />}
+          {/* Small (Mark 2026-10-10): a third of the space at most, never over 12rem; the words get the rest. */}
+          <div data-orb className="relative aspect-square size-[min(100cqw,100cqh,12rem)]">
             <Orb className="absolute inset-[12%]" colors={TINT[turn]} agentState={ORB_STATE[turn]} />
             <svg
               className="pointer-events-none absolute inset-[8%] -rotate-90"
@@ -982,13 +994,27 @@ export function App() {
             </svg>
           </div>
         </div>
-        <section className="relative max-h-[50%] shrink-0 overflow-y-auto px-[clamp(0.5rem,4cqw,1.5rem)] text-center @min-[1200px]:my-auto @min-[1200px]:max-h-full @min-[1200px]:w-[32cqw] @min-[1200px]:text-left">
+        <section
+          ref={words}
+          className="relative min-h-0 flex-[2] overflow-y-auto px-[clamp(0.5rem,4cqw,1.5rem)] text-center [mask-image:linear-gradient(transparent,black_12%,black_88%,transparent)] @min-[1200px]:text-left"
+        >
           {interim && !browse ? (
             <TextShimmer className="text-[clamp(1rem,0.85rem+1.6cqw,1.75rem)] font-medium [--base-color:var(--muted-foreground)] [--base-gradient-color:var(--foreground)]">
               {interim}
             </TextShimmer>
           ) : (
-            <p className="text-[clamp(1rem,0.85rem+1.6cqw,1.75rem)] font-medium text-foreground/90">{shown}</p>
+            <div className="py-[3em] text-[clamp(1rem,0.85rem+1.6cqw,1.75rem)] font-bold">
+              {lines.map((line, i) => (
+                <p
+                  // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional; a repeated line is its own line.
+                  key={i}
+                  data-line={i}
+                  className={`mb-[0.4em] transition-colors duration-300 ${now < 0 || i === now ? 'text-foreground' : 'text-foreground/35'}`}
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
           )}
         </section>
       </div>

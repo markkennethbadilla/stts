@@ -67,7 +67,9 @@ for (const [name, width, height, theme = 'dark'] of [
   await page.waitForTimeout(4000);
   await page.screenshot({ path: `${out}${name}-idle.png` });
   send({ type: 'request', id: 1, body: { kind: 'stt', who: 'session' } });
-  await page.waitForTimeout(2500);
+  // Wait for the mic to open: a fixed 2.5 s ran out on a busy machine (2026-10-10).
+  await page.waitForFunction(() => '__rec' in globalThis, null, { timeout: 20_000 });
+  await page.waitForTimeout(1000);
   await page.screenshot({ path: `${out}${name}-listening.png` });
   await page.evaluate(() => {
     const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
@@ -91,6 +93,16 @@ for (const [name, width, height, theme = 'dark'] of [
   send({ type: 'request', id: 2, body: { kind: 'tts', text: long, who: 'session' } });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}${name}-speaking.png` });
+  // Lyrics view: two clips later the third line is lit and scrolled into the words pane.
+  await page.waitForTimeout(4500);
+  await page.screenshot({ path: `${out}${name}-speaking-later.png` });
+  const lit = await page.evaluate(() => {
+    const pane = document.querySelector('section')?.getBoundingClientRect();
+    const line = document.querySelector('[data-line="2"]')?.getBoundingClientRect();
+    const mid = pane ? (pane.top + pane.bottom) / 2 : 0;
+    return pane && line ? line.top <= mid && line.bottom >= mid : false;
+  });
+  if (!lit) errors.push(`${name} the playing line is not in view`);
   // Header, orb, words and wave: no two may overlap at any size (Mark, 2026-10-06).
   const clash = await page.evaluate(() => {
     const boxes = (['header', '[data-orb]', 'section', '[data-wave]'] as const).map((q) => {
