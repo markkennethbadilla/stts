@@ -151,6 +151,17 @@ describe('daemon', () => {
     expect(sent).toContainEqual({ type: 'released', reason: 'background' });
   });
 
+  it('/notify?delayMs releases the listen only after the delay', async () => {
+    const listen = post('/request', { kind: 'stt' });
+    await tick();
+    expect(await (await post('/notify?delayMs=300')).text()).toBe('ok');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(slotId()).not.toBeNull();
+    expect(await (await listen).text()).toBe(BACKGROUND_RESULT);
+    await post('/notify?delayMs=junk'); // a bad value means at once; nothing is open, so nothing happens
+    expect(slotId()).toBeNull();
+  });
+
   it('/notify with no listen open changes nothing', async () => {
     const speech = post('/request', { kind: 'tts', text: 'hi' });
     await tick();

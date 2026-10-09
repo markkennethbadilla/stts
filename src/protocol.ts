@@ -3,7 +3,7 @@
 import { z } from 'zod';
 
 // Daemon routes on 127.0.0.1:${STTS_PORT ?? 15986}: GET / (the page), GET /api/ping (ok + X-Stts-Dir),
-// POST /request, POST /api/shutdown, GET /barge ({text:'', open}), POST /notify,
+// POST /request, POST /api/shutdown, GET /barge ({text:'', open}), POST /notify[?delayMs=N],
 // GET /earcon/:name.ogg, POST /voice/clip ({text, voice, rate} -> audio/wav from Piper; the page's
 // speech source, kept so the page needs one origin), and the WebSocket /ws.
 // /request answers plain text: 200 is the reply, any other status is the error text.

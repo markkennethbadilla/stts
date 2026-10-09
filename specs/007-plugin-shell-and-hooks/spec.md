@@ -29,7 +29,7 @@ sequenceDiagram
 
 The hook always exits 0, even when the daemon is down or slow. With no open listen, `/notify` does nothing; nothing is latched for a later listen.
 
-The hook skips an agent that runs inside a Workflow (`agent_type` `workflow-subagent`, or a transcript under `subagents/workflows/`). The session gets a task-notification only when the whole workflow finishes, not per inner agent, so releasing the listen for each one made the loop spin on `__STTS_BACKGROUND_RESULT__` with nothing to relay (2026-10-09, seven releases in one workflow). Claude Code fires no hook when a workflow itself finishes, so its result is relayed at the next return of the listen, not at once.
+The hook skips an agent that runs inside a Workflow (`agent_type` `workflow-subagent`, or a transcript under `subagents/workflows/`). The session gets a task-notification only when the whole workflow finishes, not per inner agent, so releasing the listen for each one made the loop spin on `__STTS_BACKGROUND_RESULT__` with nothing to relay (2026-10-09, seven releases in one workflow). Claude Code fires no hook when a workflow itself finishes, so a workflow run during voice signals its own end: its last step is one agent that runs `curl -s -m 5 -X POST "http://127.0.0.1:15986/notify?delayMs=5000"`. A workflow script has no `fetch`, so the call needs an agent. That agent pings before the workflow returns. With no delay, the listen came back about a second before the task-notification, and the session had nothing to relay (measured 2026-10-10). `delayMs` (0 to 30000; a bad value means 0) makes the daemon release whatever listen is open that many milliseconds later. Five seconds covers the agent's last reply and the workflow's return.
 
 ## What it reads and writes
 
@@ -37,4 +37,4 @@ The hook reads the `SubagentStop` payload on stdin and `STTS_PORT`, and makes at
 
 ## How to run, check and hand over
 
-`test/unit/hook.test.ts` proves the hook exits 0 with the daemon down, and that a workflow agent's stop does not reach `/notify` while a top-level agent's stop does. After an install, run `/stts` in Claude Code and check the window opens.
+`test/unit/hook.test.ts` proves the hook exits 0 with the daemon down, and that a workflow agent's stop does not reach `/notify` while a top-level agent's stop does. `test/unit/daemon.test.ts` proves `/notify?delayMs` holds the release for the delay. After an install, run `/stts` in Claude Code and check the window opens.

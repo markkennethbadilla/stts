@@ -548,12 +548,19 @@ app.post('/api/shutdown', (c) => {
 
 app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 
+// ?delayMs=N (at most 30 s) releases whatever listen is open N ms later. A Workflow pings from its last
+// agent, before the workflow returns, so the release waits for the session's task-notification (spec 007).
 app.post('/notify', (c) => {
-  if (slot && isListen(slot.body)) {
-    release('background');
-    turns.send({ type: 'background' });
-    settle(200, BACKGROUND_RESULT);
-  }
+  const notify = () => {
+    if (slot && isListen(slot.body)) {
+      release('background');
+      turns.send({ type: 'background' });
+      settle(200, BACKGROUND_RESULT);
+    }
+  };
+  const delay = Math.min(Math.max(Number(c.req.query('delayMs')) || 0, 0), 30_000);
+  if (delay) setTimeout(notify, delay);
+  else notify();
   return c.text('ok');
 });
 

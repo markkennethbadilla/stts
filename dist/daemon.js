@@ -17546,11 +17546,16 @@ app.get("/barge", (c) => c.json({
 	open: page !== null
 }));
 app.post("/notify", (c) => {
-	if (slot && isListen(slot.body)) {
-		release("background");
-		turns.send({ type: "background" });
-		settle(200, BACKGROUND_RESULT);
-	}
+	const notify = () => {
+		if (slot && isListen(slot.body)) {
+			release("background");
+			turns.send({ type: "background" });
+			settle(200, BACKGROUND_RESULT);
+		}
+	};
+	const delay = Math.min(Math.max(Number(c.req.query("delayMs")) || 0, 0), 3e4);
+	if (delay) setTimeout(notify, delay);
+	else notify();
 	return c.text("ok");
 });
 app.post("/request", async (c) => {
