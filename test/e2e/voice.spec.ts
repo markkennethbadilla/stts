@@ -200,3 +200,65 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     piper.close();
   }
 });
+
+test('Repeat replays the last reply from the page alone; Stop over it leaves the listen open', async ({
+  voice,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  let clips = 0;
+  let hold = false;
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      clips++;
+      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+      if (hold) held.push(send);
+      else send();
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  const press = async (label: string) => {
+    await voice.getByLabel(label).focus();
+    await voice.keyboard.press('Enter');
+  };
+  try {
+    // Nothing spoken yet: nothing to repeat.
+    await expect(voice.getByLabel('Repeat last reply')).toBeDisabled();
+    const long = Array.from({ length: 12 }, (_, i) => `Sentence ${i} of the long reply is read again.`).join(' ');
+    await (await ask(request, { kind: 'tts', text: long })).text();
+    const spoken = clips;
+    expect(spoken).toBeGreaterThan(1);
+    // A listen is open; Repeat plays every clip again and the listen stays open.
+    const reply = ask(request, { kind: 'stt' });
+    await expect(voice.getByLabel('speakNow')).toBeVisible();
+    await press('Repeat last reply');
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect(voice.getByLabel('Repeat last reply')).toBeDisabled();
+    await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 60_000 });
+    expect(clips).toBeGreaterThanOrEqual(spoken * 2);
+    expect(daemonLog()).toContain('page repeat by Mark');
+    // Stop during a repeat silences it only: the same listen still returns his words, with no barge line.
+    hold = true;
+    await press('Repeat last reply');
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await press('Stop');
+    await expect(voice.getByLabel('speakNow')).toBeVisible();
+    await voice.evaluate(() => (globalThis as unknown as { __say: (t: string) => void }).__say('after the repeat'));
+    await voice.clock.fastForward(1500);
+    const text = await (await reply).text();
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] after the repeat$/);
+    expect(text).not.toContain(STOPPED);
+    // A new reply arriving during a repeat cuts it short and still returns as spoken.
+    for (const send of held.splice(0)) send();
+    hold = false;
+    await press('Repeat last reply');
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    expect(await (await ask(request, { kind: 'tts', text: 'A brand new reply.' })).text()).toBe(readNotes.spoken);
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});

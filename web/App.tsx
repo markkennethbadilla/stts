@@ -11,6 +11,7 @@ import {
   Mic,
   MicOff,
   PhoneOff,
+  Repeat,
   SendHorizontal,
   Settings2,
   SkipForward,
@@ -183,6 +184,9 @@ export function App() {
     }
   };
   const audio = useRef<HTMLAudioElement | null>(null);
+  // A Repeat is playing: page-only speech the daemon never asked for, so its end, Stop or barge
+  // answers nothing (no complete, no stopped, no barge line) and an open listen stays open.
+  const replaying = useRef(false);
   // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
   const clipCache = useRef(new Map<string, Promise<Blob | string>>());
   const [interim, setInterim] = useState('');
@@ -269,8 +273,10 @@ export function App() {
           heard.current.final = '';
           liveWords.current = '';
         },
-        deliver: (_, { text, source, interrupted }) => {
+        deliver: (_, { text, source, interrupted: cut }) => {
           clearTimeout(listen.current.idleTimer);
+          // Words over a Repeat are a plain turn: no agent speech was cut off.
+          const interrupted = replaying.current ? null : cut;
           ls.push('history_prompts', text);
           setSaid(text);
           setInterim('');
@@ -565,6 +571,13 @@ export function App() {
         return;
       }
       const b = m.body;
+      // A new tts cuts a Repeat short; its end (consumed below) must not answer the new tts.
+      if (b.kind !== 'stt' && replaying.current) {
+        audio.current?.pause();
+        speechSynthesis.cancel();
+        actor.send({ type: 'STOP' });
+        clearTimeout(listen.current.idleTimer);
+      }
       listen.current.part = b.part ?? 1;
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
@@ -601,7 +614,16 @@ export function App() {
       if (wasPlaying && !playing) {
         speechEndedAt.current = Date.now();
         setSpoken({ done: 0, of: 0 });
-        if (listen.current.after) {
+        if (replaying.current) {
+          // A Repeat ended (or was stopped): answer nothing; an open listen lights green again with a
+          // fresh no-speech timer.
+          replaying.current = false;
+          clearTimeout(listen.current.idleTimer);
+          if (s.context.wantListen) {
+            actor.send({ type: 'REQUEST', kind: 'listen' });
+            armIdle(listen.current.idleSec);
+          }
+        } else if (listen.current.after) {
           actor.send({ type: 'REQUEST', kind: 'listen' });
           // The listen after a tts gets the same no-speech timer as an stt.
           armIdle(listen.current.idleSec);
@@ -680,6 +702,21 @@ export function App() {
     speechSynthesis.cancel();
     send({ type: 'STOP' });
     log('skipped by Mark');
+  };
+
+  // Repeat: the last reply plays again from the page alone (Mark 2026-10-10: "without having to go
+  // through you so we save tokens"). Re-synthesised by the same local Piper (played clips leave the
+  // cache); the daemon is never told, so no turn and no agent call.
+  const lastReply = ls.list('history_responses').findLast((t) => t.trim() !== '') ?? '';
+  const replay = (): void => {
+    if (!lastReply || actor.getSnapshot().matches({ speech: 'playing' })) return;
+    clearTimeout(listen.current.idleTimer);
+    replaying.current = true;
+    const clips = toParts(lastReply, CLIP_CHARS);
+    setSaid(lastReply);
+    setSpoken({ done: 0, of: clips.length });
+    log('repeat by Mark');
+    actor.send({ type: 'ENQUEUE', clips });
   };
 
   // Ctrl+M / Ctrl+R toggle the mic; Alt+Up/Down walk the history; Esc skips the speech.
@@ -775,6 +812,8 @@ export function App() {
             aria-label="Stop"
             onClick={(e) => {
               if (!e.nativeEvent.isTrusted) return;
+              // Stop over a Repeat silences it only: the agent's reply and listen are untouched.
+              if (replaying.current) return skip();
               audio.current?.pause();
               listen.current.after = false;
               send({ type: 'STOP' });
@@ -786,6 +825,15 @@ export function App() {
           </Button>
           <Button variant="ghost" size="icon" aria-label="Skip to listening (Esc)" onClick={skip}>
             <SkipForward />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Repeat last reply"
+            disabled={!lastReply || state.matches({ speech: 'playing' })}
+            onClick={replay}
+          >
+            <Repeat />
           </Button>
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Settings" />}>
