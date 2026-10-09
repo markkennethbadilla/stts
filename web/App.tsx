@@ -2,12 +2,10 @@
 // web/machine.ts. The machine decides; this file only supplies its side effects.
 import { useMachine } from '@xstate/react';
 import {
-  AudioLines,
   Bell,
   CircleAlert,
   CircleStop,
   Ear,
-  Keyboard,
   Mic,
   MicOff,
   PhoneOff,
@@ -205,7 +203,6 @@ export function App() {
   // in the real-Chrome test; the cloud heard every turn there.
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
-  const [inputMode, setInputMode] = useSetting('input_mode', 'mic');
   const [theme, setTheme] = useSetting('theme', 'system');
   useEffect(() => {
     const os = matchMedia('(prefers-color-scheme: dark)');
@@ -743,10 +740,11 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // History browsing fills the box in keyboard mode, so an old prompt can be sent again.
+  // History browsing fills the box, so an old prompt can be sent again.
   useEffect(() => {
-    if (browse?.side === 'prompts' && inputMode === 'keyboard') setDraft(ls.list('history_prompts')[browse.i] ?? '');
-  }, [browse, inputMode]);
+    if (browse?.side === 'prompts') setDraft(ls.list('history_prompts')[browse.i] ?? '');
+  }, [browse]);
+  const box = useRef<HTMLTextAreaElement | null>(null);
 
   const typeDraft = (text: string): void => {
     setDraft(text);
@@ -776,7 +774,17 @@ export function App() {
   const holdSec = holdMs(state.context) / 1000;
 
   return (
-    <main className="@container relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background text-foreground">
+    // A click anywhere that is not a control puts the cursor in the message box (Mark 2026-10-10).
+    // DOM containment, not the React tree: the settings popover is portalled outside main.
+    <main
+      className="@container relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background text-foreground"
+      onClick={(e) => {
+        const t = e.target as Element;
+        // A drag that selected words to copy keeps its selection.
+        if (getSelection()?.toString()) return;
+        if (e.currentTarget.contains(t) && !t.closest('button,a,input,textarea,select,[role]')) box.current?.focus();
+      }}
+    >
       <header className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 p-[clamp(0.25rem,2cqw,1rem)]">
         <span
           className="rounded-full px-3 py-1 font-mono text-sm font-semibold text-neutral-950"
@@ -790,14 +798,6 @@ export function App() {
           style={{ color: micFailed ? '#ef4444' : TINT[turn][0] }}
         />
         <div className="ml-auto flex flex-wrap justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={inputMode === 'keyboard' ? 'Switch to mic input' : 'Switch to keyboard input'}
-            onClick={() => setInputMode(inputMode === 'keyboard' ? 'mic' : 'keyboard')}
-          >
-            {inputMode === 'keyboard' ? <AudioLines /> : <Keyboard />}
-          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -999,39 +999,38 @@ export function App() {
         )}
       </div>
 
-      {inputMode === 'keyboard' && (
-        <form
-          className="relative mx-2 mb-2 flex shrink-0 flex-col items-stretch gap-2 @min-[360px]:flex-row @min-[360px]:items-end"
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendDraft();
+      <form
+        className="relative mx-2 mb-2 flex shrink-0 flex-col items-stretch gap-2 @min-[360px]:flex-row @min-[360px]:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          sendDraft();
+        }}
+      >
+        <Textarea
+          aria-label="Message"
+          placeholder="Message (Enter sends)"
+          className="max-h-40 min-w-0 bg-card/80 text-[clamp(0.875rem,0.8rem+0.6cqw,1rem)] placeholder:truncate"
+          autoFocus
+          ref={box}
+          value={draft}
+          onChange={(e) => typeDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              sendDraft();
+            }
           }}
+        />
+        <Button
+          type="submit"
+          size="icon"
+          aria-label="Send"
+          disabled={!draft.trim()}
+          className="w-full @min-[360px]:w-9"
         >
-          <Textarea
-            aria-label="Message"
-            placeholder="Message (Enter sends)"
-            className="max-h-40 min-w-0 bg-card/80 text-[clamp(0.875rem,0.8rem+0.6cqw,1rem)] placeholder:truncate"
-            autoFocus
-            value={draft}
-            onChange={(e) => typeDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                sendDraft();
-              }
-            }}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            aria-label="Send"
-            disabled={!draft.trim()}
-            className="w-full @min-[360px]:w-9"
-          >
-            <SendHorizontal />
-          </Button>
-        </form>
-      )}
+          <SendHorizontal />
+        </Button>
+      </form>
     </main>
   );
 }

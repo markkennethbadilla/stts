@@ -60,8 +60,6 @@ async function listen(request: APIRequestContext) {
 
 test('at a narrow width the Send button sits under the box, and the box keeps the row', async ({ voice }) => {
   await voice.setViewportSize({ width: 300, height: 700 });
-  await voice.getByLabel('Switch to keyboard input').focus();
-  await voice.keyboard.press('Enter');
   const box = await voice.getByLabel('Message').boundingBox();
   const send = await voice.getByLabel('Send').boundingBox();
   expect(box && send && send.y >= box.y + box.height - 1).toBe(true);
@@ -282,7 +280,6 @@ test('30 s of continuous speech is one turn, even when the recogniser goes quiet
 
 test('every header button has a tooltip and responds', async ({ voice }) => {
   for (const label of [
-    'Switch to keyboard input',
     'Mute',
     'Stop',
     'Skip to listening (Esc)',
@@ -294,8 +291,15 @@ test('every header button has a tooltip and responds', async ({ voice }) => {
   await voice.getByRole('button', { name: 'Mute' }).click();
   await expect(voice.getByRole('button', { name: 'Unmute' })).toBeVisible();
   await voice.getByRole('button', { name: 'Unmute' }).click();
-  await voice.getByRole('button', { name: 'Switch to keyboard input' }).click();
+  await expect(voice.getByRole('button', { name: 'Switch to keyboard input' })).toHaveCount(0);
   await expect(voice.getByLabel('Message')).toBeVisible();
+  // A click anywhere off a control puts the cursor in the box; a button click still acts.
+  await voice.getByLabel('Message').blur();
+  await voice.locator('[data-orb]').click({ force: true });
+  await expect(voice.getByLabel('Message')).toBeFocused();
+  await voice.getByRole('button', { name: 'Mute' }).click();
+  await expect(voice.getByRole('button', { name: 'Unmute' })).toBeVisible();
+  await voice.getByRole('button', { name: 'Unmute' }).click();
   await expect(voice.getByRole('button', { name: 'Send' })).toHaveAttribute('title', 'Send');
   await voice.getByRole('button', { name: 'Settings' }).click();
   await expect(voice.getByLabel('Theme')).toBeVisible();

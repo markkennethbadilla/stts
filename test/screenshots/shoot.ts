@@ -25,6 +25,8 @@ for (const [name, width, height, theme = 'dark'] of [
   page.on('pageerror', (e) => errors.push(`${name} pageerror ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && errors.push(`${name} console ${m.text()}`));
   let send: (m: object) => void = () => {};
+  // The mic's audio feed to the daemon's speech engine (spec 014): accepted and dropped.
+  await page.routeWebSocket('**/asr', () => {});
   await page.routeWebSocket('**/ws', (ws) => {
     send = (m) => ws.send(JSON.stringify(m));
   });
@@ -58,7 +60,8 @@ for (const [name, width, height, theme = 'dark'] of [
       stop() {}
       abort() {}
     }
-    (globalThis as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeRec;
+    // The page takes its recogniser from __sttsRecognition (spec 014); SpeechRecognition is no longer read.
+    (globalThis as unknown as { __sttsRecognition: unknown }).__sttsRecognition = FakeRec;
   });
   await page.goto(url);
   await page.waitForTimeout(4000);
@@ -110,9 +113,8 @@ for (const [name, width, height, theme = 'dark'] of [
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${out}${name}-settings.png` });
-  // Keyboard mode: the box and the Send button fit, and the button drops under the box when narrow.
+  // The message box (always shown): it and the Send button fit, and the button drops under the box when narrow.
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Switch to keyboard input' }).click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${out}${name}-keyboard.png` });
   const kb = await page.evaluate(() => {

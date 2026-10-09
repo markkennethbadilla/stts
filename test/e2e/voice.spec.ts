@@ -127,9 +127,8 @@ test('a file is read in parts and resumed', async ({ voice, request }) => {
   }
 });
 
+// The message box is always shown (Mark 2026-10-10).
 const keyboardMode = async (voice: import('@playwright/test').Page) => {
-  await voice.getByLabel('Switch to keyboard input').focus();
-  await voice.keyboard.press('Enter');
   await expect(voice.getByLabel('Message')).toBeVisible();
 };
 
