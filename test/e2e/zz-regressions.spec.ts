@@ -347,6 +347,62 @@ test('every header button has a tooltip and responds', async ({ voice }) => {
 });
 
 // Last: End shuts the window.
+// Mark 2026-10-10: a mic plugged in after the window opened (the Iriun Webcam mic) never showed up.
+test('a mic plugged in later is listed, picking it switches the open mic, unplugging it falls back', async ({
+  voice,
+  request,
+}) => {
+  // A device list the test controls, and every getUserMedia device recorded.
+  await voice.addInitScript(() => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    const dev = (deviceId: string, label: string) => ({ deviceId, label, kind: 'audioinput', groupId: deviceId });
+    g['__devices'] = [dev('default', 'Default'), dev('laptop', 'Laptop Mic')];
+    g['__gum'] = [] as string[];
+    g['__plug'] = (on: boolean) => {
+      const list = (g['__devices'] as ReturnType<typeof dev>[]).filter((d) => d.deviceId !== 'iriun');
+      g['__devices'] = on ? [...list, dev('iriun', 'Iriun Webcam')] : list;
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    };
+    const md = navigator.mediaDevices;
+    md.enumerateDevices = async () => g['__devices'] as MediaDeviceInfo[];
+    const real = md.getUserMedia.bind(md);
+    md.getUserMedia = (c?: MediaStreamConstraints) => {
+      const a = c?.audio;
+      (g['__gum'] as string[]).push(typeof a === 'object' && a.deviceId ? String(a.deviceId) : 'default');
+      return real({ audio: true });
+    };
+  });
+  await reload(voice);
+  const reply = listen(request);
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  const gum = () => voice.evaluate(() => (globalThis as unknown as { __gum: string[] }).__gum);
+  const plug = (on: boolean) =>
+    voice.evaluate((x) => (globalThis as unknown as { __plug: (b: boolean) => void }).__plug(x), on);
+  await voice.getByLabel('Settings').click();
+  const micBox = voice.getByRole('combobox', { name: 'Mic' });
+  await micBox.click();
+  await expect(voice.getByRole('option', { name: 'Laptop Mic' })).toBeVisible();
+  await expect(voice.getByRole('option', { name: 'Iriun Webcam' })).toHaveCount(0);
+  await voice.keyboard.press('Escape');
+  // Plugged in while the window is open: it is listed at once.
+  await plug(true);
+  await micBox.click();
+  await voice.getByRole('option', { name: 'Iriun Webcam' }).click();
+  // Picked while the mic is open: the open mic moves to it, no reload, no new listen.
+  await expect.poll(gum).toContain('iriun');
+  await expect.poll(daemonLog).toContain('page mic switched to a new device');
+  // Unplugged: the setting falls back to the default and the open mic follows.
+  const before = (await gum()).length;
+  await plug(false);
+  await expect.poll(() => voice.evaluate(() => localStorage.getItem('__stts__mic'))).toBe('default');
+  await expect.poll(async () => (await gum()).slice(before)).toContain('default');
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await voice.keyboard.press('Escape');
+  await say(voice, 'the new mic works');
+  await voice.clock.fastForward(1500);
+  expect(await (await reply).text()).toMatch(/the new mic works$/);
+});
+
 test('End reaches the open listen once; the next call carries on', async ({ voice, request }) => {
   const reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();

@@ -221,6 +221,19 @@ export function App() {
   }, [theme]);
   const [draft, setDraft] = useState('');
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  function refreshMics(): void {
+    navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((d) => setMics(d.filter((x) => x.kind === 'audioinput' && x.deviceId && x.deviceId !== 'default')))
+      .catch(() => {});
+  }
+  // Drop the open mic stream and restart the recogniser: the restart opens the mic chosen now.
+  function switchMic(why: string): void {
+    for (const t of aec.current?.stream.getTracks() ?? []) t.stop();
+    aec.current = null;
+    log(why);
+    rec.current?.abort();
+  }
   const [localVoices, setLocalVoices] = useState<string[]>([]);
   const [piperVoices, setPiperVoices] = useState<string[]>([DEFAULT_PIPER]);
   // A saved voice that is not an installed Piper voice (an old Windows pick) still speaks with Piper.
@@ -437,6 +450,8 @@ export function App() {
       if (s) {
         aec.current = { stream: s, mic };
         watchLevel(s);
+        // Device names come only after a mic grant: list again now that the mic is open.
+        refreshMics();
       }
       if (!stillStarting()) return;
     }
@@ -693,12 +708,34 @@ export function App() {
     actor.send({ type: 'SET_HOLD', ms: hold ? Number(hold) : null });
   }, [actor, hold]);
 
+  // A mic plugged in or out while the window is open (Mark 2026-10-10: the Iriun mic never showed):
+  // list again, and a mic stream whose device went away is reopened.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener; refreshMics and switchMic read refs only.
+  useEffect(() => {
+    const md = navigator.mediaDevices;
+    const onChange = (): void => {
+      refreshMics();
+      if (aec.current && aec.current.stream.getAudioTracks()[0]?.readyState !== 'live') switchMic('mic device gone');
+    };
+    md?.addEventListener('devicechange', onChange);
+    return () => md?.removeEventListener('devicechange', onChange);
+  }, []);
+  // The chosen mic is no longer plugged in: back to the default. A list without it while device
+  // names are still hidden (no grant yet, ids empty) says nothing, so an empty list never resets it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setMic is a fresh function each render.
+  useEffect(() => {
+    if (mic !== 'default' && mics.length > 0 && !mics.some((m) => m.deviceId === mic)) setMic('default');
+  }, [mic, mics]);
+  // A new mic picked (or the default after an unplug) while the mic is open: switch to it now.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on a mic change only.
+  useEffect(() => {
+    if (aec.current && aec.current.mic !== mic)
+      switchMic(`mic switched to ${mic === 'default' ? 'default' : 'a new device'}`);
+  }, [mic]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once; the warm-up uses the voice saved at load.
   useEffect(() => {
-    navigator.mediaDevices
-      ?.enumerateDevices()
-      .then((d) => setMics(d.filter((x) => x.kind === 'audioinput' && x.deviceId)))
-      .catch(() => {});
+    refreshMics();
     const fill = () =>
       setLocalVoices(
         speechSynthesis
@@ -938,7 +975,7 @@ export function App() {
               </Row>
               <Row label="Mic">
                 <Select value={mic} onValueChange={(v) => v && setMic(String(v))}>
-                  <SelectTrigger className="w-40 max-w-full">
+                  <SelectTrigger className="w-40 max-w-full" aria-label="Mic">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
