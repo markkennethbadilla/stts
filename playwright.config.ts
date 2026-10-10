@@ -29,6 +29,7 @@ export default defineConfig({
       STTS_PIPER_PORT: String(testPort + 1),
       STTS_PIPER_HOME: join(dataRoot, 'no-piper'),
       STTS_LIVE_UPDATE: '0',
+      STTS_NO_WINDOW: '1',
       LOCALAPPDATA: dataRoot,
       HOME: dataRoot,
     },

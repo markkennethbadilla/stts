@@ -2,12 +2,12 @@ import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
-import { homedir } from "node:os";
+import { constants, homedir, setPriority } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "http";
-import { Http2ServerRequest, constants } from "http2";
+import { Http2ServerRequest, constants as constants$1 } from "http2";
 import { Readable } from "stream";
 import crypto from "crypto";
 import * as fs$1 from "fs";
@@ -350,7 +350,7 @@ var drainIncoming = (incoming) => {
 	incomingWithDrainState[incomingDraining] = true;
 	if (incoming instanceof Http2ServerRequest) {
 		try {
-			incoming.stream?.close?.(constants.NGHTTP2_NO_ERROR);
+			incoming.stream?.close?.(constants$1.NGHTTP2_NO_ERROR);
 		} catch {}
 		return;
 	}
@@ -17102,6 +17102,7 @@ const deps = {
 		appendFileSync(join(dataDir, "daemon.log"), `${(/* @__PURE__ */ new Date()).toISOString()} ${line}\n`);
 	},
 	async openWindow() {
+		if (process.env["STTS_NO_WINDOW"] === "1") return;
 		mkdirSync(profileDir, { recursive: true });
 		const chrome = await launch({
 			port: port + 100,
@@ -17301,6 +17302,8 @@ function resetTurns() {
 	held = null;
 	barge = null;
 	typedNext = false;
+	clearTimeout(reopenTimer);
+	reopenTries = 0;
 	watchTurns();
 }
 const slotId = () => slot?.id ?? null;
@@ -17320,6 +17323,18 @@ function release(reason) {
 		type: "released",
 		reason
 	});
+}
+let reopenTries = 0;
+let reopenTimer;
+const REOPEN_FIRST_MS = 2e3;
+function reopenSoon(why) {
+	if (!slot) return;
+	const wait = Math.min(6e4, REOPEN_FIRST_MS * 2 ** reopenTries++);
+	deps.log(`${why}: reopening the window in ${wait}ms`);
+	clearTimeout(reopenTimer);
+	reopenTimer = setTimeout(() => {
+		if (!page && slot) send();
+	}, wait);
 }
 function send() {
 	if (!slot) return;
@@ -17361,11 +17376,13 @@ function send() {
 			if (!windowOpening) return;
 			windowOpening = false;
 			deps.log("window open timed out");
+			reopenSoon("window did not open");
 		}, WINDOW_OPEN_MS);
 		Promise.resolve().then(() => deps.openWindow()).catch((e) => {
 			windowOpening = false;
 			clearTimeout(windowTimer);
 			deps.log(`chrome launch failed ${e instanceof Error ? e.message : String(e)}`);
+			reopenSoon("window did not open");
 		});
 	}
 }
@@ -17412,10 +17429,13 @@ function attachPage(sendToPage) {
 	page = sendToPage;
 	windowOpening = false;
 	clearTimeout(windowTimer);
+	const attachedAt = Date.now();
 	const detach = () => {
 		if (page !== sendToPage) return;
 		page = null;
 		pageGoneAt = Date.now();
+		if (Date.now() - attachedAt > 3e4) reopenTries = 0;
+		reopenSoon("window gone mid-call");
 	};
 	const onMessage = (raw) => {
 		const m = parseMessage(PageMessage, raw);
@@ -17744,6 +17764,9 @@ async function exitCodeWhenTaken(p) {
 	return r?.ok && await r.text() === "ok" ? 0 : 1;
 }
 function start(p = port) {
+	try {
+		setPriority(constants.priority.PRIORITY_NORMAL);
+	} catch {}
 	const server = serve({
 		fetch: app.fetch,
 		port: p,
@@ -17796,7 +17819,6 @@ function newer(dir) {
 */
 async function boot() {
 	if (!adopted && process.env["STTS_LIVE_UPDATE"] !== "0") {
-		if (process.env["STTS_LIVE_UPDATE"] !== "check") await Promise.race([deps.update(), setTimeout$1(3e4)]);
 		const to = installedDir();
 		if (to && !same(to, here)) {
 			if (newer(to)) {
@@ -17815,4 +17837,4 @@ async function boot() {
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
 //#endregion
-export { WINDOW_OPEN_MS, app, attachPage, boot, dataDir, deps, ended, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
+export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, dataDir, deps, ended, exitCodeWhenTaken, installedDir, isLatest, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };

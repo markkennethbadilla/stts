@@ -29,3 +29,22 @@ export function toParts(text: string, max = PART_CHARS): string[] {
   flush();
   return parts;
 }
+
+// The first spoken clip is short, so Piper renders it in about 0.1 s and he hears the first word
+// at once; the rest are clips of up to `max`, synthesised while it plays (Mark 2026-10-10).
+export const FIRST_CHARS = 40;
+
+/** Speech clips: the first sentence alone, or its first clause or words when longer than FIRST_CHARS. */
+export function toClips(text: string, max: number): string[] {
+  const t = text.replace(/\r\n?/g, '\n').trim();
+  let one = segmenter.segment(t).containing(0)?.segment.trimEnd() ?? '';
+  if (!one) return [];
+  // A longer first sentence: cut after its first clause (a comma, semicolon, colon or dash), else
+  // after the last whole word that fits, else hard at FIRST_CHARS.
+  if (one.length > FIRST_CHARS) {
+    const head = one.slice(0, FIRST_CHARS + 1);
+    const space = head.lastIndexOf(' ');
+    one = /^.{8,}?[,;:–—](?=\s)/.exec(head)?.[0] ?? (space > 0 ? head.slice(0, space) : head.slice(0, FIRST_CHARS));
+  }
+  return [one, ...toParts(t.slice(one.length), max)];
+}

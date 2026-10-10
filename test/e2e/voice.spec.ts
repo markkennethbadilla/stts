@@ -161,6 +161,8 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
     const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await voice.getByLabel('Message').fill('also check the logs');
+    // The page re-renders the box after the fill; Enter before that sent an empty box (busy machine, 2026-10-10).
+    await expect(voice.getByLabel('Message')).toHaveValue('also check the logs');
     await voice.getByLabel('Message').press('Enter');
     const text = await (await speech).text();
     expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] also check the logs\n/);

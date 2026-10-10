@@ -1,7 +1,16 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { app, attachPage, deps, exitCodeWhenTaken, resetTurns, slotId, WINDOW_OPEN_MS } from '../../src/daemon.ts';
+import {
+  app,
+  attachPage,
+  deps,
+  exitCodeWhenTaken,
+  REOPEN_FIRST_MS,
+  resetTurns,
+  slotId,
+  WINDOW_OPEN_MS,
+} from '../../src/daemon.ts';
 import {
   BACKGROUND_RESULT,
   bargeLine,
@@ -265,6 +274,80 @@ describe('daemon', () => {
     await tick();
     speak('reopened');
     expect(await (await next).text()).toMatch(/reopened$/);
+  });
+
+  // Mark 2026-10-10: a window closed by accident or crashed mid-listen came back only on the next call.
+  it('a window killed mid-listen reopens, the listen resumes, and a crash loop backs off', async () => {
+    vi.useFakeTimers();
+    let opens = 0;
+    deps.openWindow = async () => void opens++;
+    try {
+      const r = post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      page.detach(); // the window is killed
+      await vi.advanceTimersByTimeAsync(REOPEN_FIRST_MS - 1);
+      expect(opens).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(opens).toBe(1);
+      expect(logs).toContain(`window gone mid-call: reopening the window in ${REOPEN_FIRST_MS}ms`);
+      // It crashes again at once: the next reopen waits twice as long.
+      page = attachPage((m) => void sent.push(m));
+      page.detach();
+      await vi.advanceTimersByTimeAsync(2 * REOPEN_FIRST_MS - 1);
+      expect(opens).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(opens).toBe(2);
+      // This time it stays: its ready resends the open listen, and the call returns his words.
+      sent.length = 0;
+      page = attachPage((m) => void sent.push(m));
+      page.onMessage(JSON.stringify({ type: 'ready' }));
+      expect(sent.at(-1)).toMatchObject({ type: 'request', body: { kind: 'stt' } });
+      speak('still with you');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await (await r).text()).toMatch(/still with you$/);
+    } finally {
+      deps.openWindow = async () => {};
+      vi.useRealTimers();
+    }
+  });
+
+  it('End and close=true shut the window for good; a page reload never relaunches', async () => {
+    vi.useFakeTimers();
+    let opens = 0;
+    deps.openWindow = async () => void opens++;
+    try {
+      const r = post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      page.onMessage(JSON.stringify({ type: 'ended' }));
+      expect(await (await r).text()).toBe(CONVERSATION_ENDED);
+      page.detach();
+      const t = post('/request', { kind: 'tts', text: 'bye', close: true });
+      await vi.advanceTimersByTimeAsync(0);
+      // The End was taken by the first call; this tts opens a window as any new call does.
+      expect(opens).toBe(1);
+      page = attachPage((m) => void sent.push(m));
+      page.onMessage(JSON.stringify({ type: 'ready' }));
+      speak('');
+      await t;
+      expect(sent.at(-1)).toEqual({ type: 'close' });
+      page.detach();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(opens).toBe(1);
+      // A reload mid-listen: the page is back before the reopen fires, so nothing launches.
+      page = attachPage((m) => void sent.push(m));
+      const l = post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      page.detach();
+      page = attachPage((m) => void sent.push(m));
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(opens).toBe(1);
+      speak('after the reload');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await (await l).text()).toMatch(/after the reload$/);
+    } finally {
+      deps.openWindow = async () => {};
+      vi.useRealTimers();
+    }
   });
 
   it('a bad ws message is logged and dropped', () => {

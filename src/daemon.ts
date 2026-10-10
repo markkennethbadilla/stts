@@ -4,7 +4,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { constants, homedir, setPriority } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -58,6 +58,8 @@ export const deps = {
     appendFileSync(join(dataDir, 'daemon.log'), `${new Date().toISOString()} ${line}\n`);
   },
   async openWindow(): Promise<void> {
+    // The e2e daemon: its pages are Playwright's; a real window would take the page link from them.
+    if (process.env['STTS_NO_WINDOW'] === '1') return;
     mkdirSync(profileDir, { recursive: true }); // chrome-launcher writes chrome.pid into it
     const chrome = await launch({
       // The old install's flags (spec 039): chrome-launcher's defaults (muted audio among them) are off.
@@ -282,6 +284,8 @@ export function resetTurns(): void {
   held = null;
   barge = null;
   typedNext = false;
+  clearTimeout(reopenTimer);
+  reopenTries = 0;
   watchTurns();
 }
 
@@ -298,6 +302,23 @@ function settle(status: 200 | 504, text: string): void {
 
 function release(reason: 'superseded' | 'timeout' | 'background'): void {
   if (slot && isListen(slot.body)) page?.({ type: 'released', reason });
+}
+
+// Self-heal (Mark 2026-10-10): a window closed by accident or crashed while a call is open is
+// reopened and the call resumes (the new page's ready resends it). Only End and close=true shut it,
+// and both settle the call first, so no call is open when their window goes. The wait doubles from
+// 2 s to at most 60 s, so a crash loop never spins.
+let reopenTries = 0;
+let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+export const REOPEN_FIRST_MS = 2000;
+function reopenSoon(why: string): void {
+  if (!slot) return;
+  const wait = Math.min(60_000, REOPEN_FIRST_MS * 2 ** reopenTries++);
+  deps.log(`${why}: reopening the window in ${wait}ms`);
+  clearTimeout(reopenTimer);
+  reopenTimer = setTimeout(() => {
+    if (!page && slot) send();
+  }, wait);
 }
 
 function send(): void {
@@ -337,6 +358,7 @@ function send(): void {
       if (!windowOpening) return;
       windowOpening = false;
       deps.log('window open timed out');
+      reopenSoon('window did not open');
     }, WINDOW_OPEN_MS);
     // Promise.resolve().then: a synchronous throw lands in the same catch, never out of send.
     Promise.resolve()
@@ -345,6 +367,7 @@ function send(): void {
         windowOpening = false;
         clearTimeout(windowTimer);
         deps.log(`chrome launch failed ${e instanceof Error ? e.message : String(e)}`);
+        reopenSoon('window did not open');
       });
   }
 }
@@ -393,11 +416,15 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
   page = sendToPage;
   windowOpening = false;
   clearTimeout(windowTimer);
+  const attachedAt = Date.now();
   const detach = (): void => {
     if (page !== sendToPage) return;
     page = null;
     pageGoneAt = Date.now();
     // An adopted daemon holds no Chrome handle: the window closing shows as the page not coming back.
+    // A page that stayed up 30 s was not a crash loop: the next reopen waits the shortest time again.
+    if (Date.now() - attachedAt > 30_000) reopenTries = 0;
+    reopenSoon('window gone mid-call');
   };
   const onMessage = (raw: string): void => {
     const m = parseMessage(PageMessage, raw);
@@ -777,6 +804,11 @@ export async function exitCodeWhenTaken(p: number): Promise<0 | 1> {
 }
 
 export function start(p: number = port): void {
+  // Normal priority, whatever started it: an agent spawned the daemon below normal, and Piper and
+  // the window inherited that, so a busy machine held the first word for seconds (2026-10-10).
+  try {
+    setPriority(constants.priority.PRIORITY_NORMAL);
+  } catch {}
   const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
     deps.log(`daemon start pid ${process.pid}`);
     // The speech engine loads now, before any window or speech (spec 014).
@@ -832,8 +864,10 @@ export function newer(dir: string): boolean {
  * until a live update a minute later (Mark, 2026-10-06 09:23).
  */
 export async function boot(): Promise<void> {
+  // No plugin update here: it took about 11 s before the port opened, and the client's 5 s wait
+  // failed the call with "stts daemon did not start" (2026-10-10 23:46 UTC). The newest build
+  // already installed is a file read away; a newer one arrives through the minute's live update.
   if (!adopted && process.env['STTS_LIVE_UPDATE'] !== '0') {
-    if (process.env['STTS_LIVE_UPDATE'] !== 'check') await Promise.race([deps.update(), sleep(30_000)]);
     const to = installedDir();
     if (to && !same(to, here)) {
       if (newer(to)) {

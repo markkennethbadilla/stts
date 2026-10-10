@@ -18,9 +18,12 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `daemon exit pid N code C` | daemon stopped |
 | `ws bad message` | a WebSocket frame failed the check |
 | `chrome launch failed ...` | the window could not open |
+| `window gone mid-call: reopening the window in MSms` | the page disconnected while a call was open; the window reopens after MS (spec 003, self-heal) |
+| `window did not open: reopening the window in MSms` | a launch failed or no page connected in 15 s while a call was open; it is tried again after MS |
 | `piper start failed ...` | Piper could not start |
 | `piper clip ok VOICE BYTESB MSms "first 30 chars"` | a clip was made |
 | `piper clip failed VOICE MSms "first 30 chars"` | a clip failed |
+| `page first audio MSms after the tts, clip of N chars` | the first clip of a tts started playing, MS after the page got the tts |
 | `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
 | `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
 | `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |

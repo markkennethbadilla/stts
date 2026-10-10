@@ -18,7 +18,7 @@ import {
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
-import { toParts } from '../src/sentences.ts';
+import { toClips } from '../src/sentences.ts';
 import { Button } from './components/ui/button.tsx';
 import { LiveWaveform } from './components/ui/live-waveform.tsx';
 import { type AgentState, Orb } from './components/ui/orb.tsx';
@@ -182,11 +182,18 @@ export function App() {
     }
   };
   const audio = useRef<HTMLAudioElement | null>(null);
+  // When the last tts reached the page, for the "first audio" log line: how long he waited for the first word.
+  const ttsAt = useRef(0);
   // A Repeat is playing: page-only speech the daemon never asked for, so its end, Stop or barge
   // answers nothing (no complete, no stopped, no barge line) and an open listen stays open.
   const replaying = useRef(false);
   // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
   const clipCache = useRef(new Map<string, Promise<Blob | string>>());
+  // The end of the synthesis queue: prefetches start one at a time, after the clip playing now.
+  const synthTail = useRef<Promise<unknown>>(Promise.resolve());
+  // Clips queued for a prefetch and not yet asked for: one that already played, or was dropped by a
+  // Stop, is skipped, so Piper never renders it a second time.
+  const ahead = useRef(new Set<string>());
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
   const [turnNo, setTurnNo] = useState(0);
@@ -298,8 +305,15 @@ export function App() {
         },
         playClip: (_, { clip }) => void playClip(clip),
         // Clips ahead synthesise while the current one plays, so the next starts with no gap.
+        // One at a time, after the clip playing now: clips sent together share Piper's CPU, and the
+        // first one, the one he waits to hear, came back 2-3x slower (bench 2026-10-10: 391 ms alone,
+        // 941 ms beside three others).
         prefetchClips: (_, { clips }) => {
-          for (const c of clips) fetchClip(c);
+          for (const c of clips) {
+            if (clipCache.current.has(c) || ahead.current.has(c)) continue;
+            ahead.current.add(c);
+            synthTail.current = synthTail.current.then(() => (ahead.current.delete(c) ? fetchClip(c) : null));
+          }
         },
         log: (_, { line }) => log(line === 'mic start timed out' ? `${line} at ${startStage.current}` : line),
         speakFallback: (_, { clip }) => {
@@ -343,7 +357,11 @@ export function App() {
   }
 
   async function playClip(clip: string): Promise<void> {
-    const r = await fetchClip(clip);
+    // The clip to play now goes first; prefetches queue behind it.
+    ahead.current.delete(clip);
+    const p = fetchClip(clip);
+    synthTail.current = Promise.all([synthTail.current, p]);
+    const r = await p;
     clipCache.current.delete(clip);
     if (typeof r === 'string') {
       send({ type: 'CLIP_FAILED', reason: r });
@@ -351,6 +369,12 @@ export function App() {
     }
     const a = new Audio(URL.createObjectURL(r));
     audio.current = a;
+    if (ttsAt.current) {
+      const at = ttsAt.current;
+      ttsAt.current = 0;
+      a.onplaying = () =>
+        log(`first audio ${Math.round(performance.now() - at)}ms after the tts, clip of ${clip.length} chars`);
+    }
     a.onended = () => {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
       send({ type: 'CLIP_ENDED' });
@@ -589,12 +613,13 @@ export function App() {
       }
       // Short clips: Piper renders a whole clip before it plays, so a 1000-char first clip
       // held the first word 2-5 s (log, 2026-10-05). The rest synthesise ahead while it plays.
-      const clips = toParts(b.text ?? '', CLIP_CHARS);
+      const clips = toClips(b.text ?? '', CLIP_CHARS);
       ls.push('history_responses', b.text ?? '');
       setSaid(b.text ?? '');
       setSpoken({ done: 0, of: clips.length });
       setInterim('');
       listen.current.after = b.listen === true;
+      ttsAt.current = performance.now();
       listen.current.idleSec = b.idleSec ?? 200;
       actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
     };
@@ -614,6 +639,7 @@ export function App() {
     const s2 = actor.subscribe((s) => {
       const playing = s.matches({ speech: 'playing' });
       if (wasPlaying && !playing) {
+        ahead.current.clear(); // clips a Stop dropped are never rendered
         speechEndedAt.current = Date.now();
         setSpoken({ done: 0, of: 0 });
         if (replaying.current) {
@@ -714,7 +740,7 @@ export function App() {
     if (!lastReply || actor.getSnapshot().matches({ speech: 'playing' })) return;
     clearTimeout(listen.current.idleTimer);
     replaying.current = true;
-    const clips = toParts(lastReply, CLIP_CHARS);
+    const clips = toClips(lastReply, CLIP_CHARS);
     setSaid(lastReply);
     setSpoken({ done: 0, of: clips.length });
     log('repeat by Mark');
@@ -766,7 +792,7 @@ export function App() {
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
   // Lyrics view (Mark 2026-10-10, like Spotify's): one line per clip, the clip playing now lit and
   // the rest dimmed, scrolled to the middle once per clip. No word timings: Piper gives none.
-  const lines = useMemo(() => toParts(shown, CLIP_CHARS), [shown]);
+  const lines = useMemo(() => toClips(shown, CLIP_CHARS), [shown]);
   const now = turn === 'agentSpeaking' && !interim && !browse && spoken.of > 0 ? spoken.done : -1;
   const words = useRef<HTMLElement | null>(null);
   useEffect(() => {

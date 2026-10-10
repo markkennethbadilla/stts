@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { testPort } from '../../playwright.config.ts';
 import { CONVERSATION_ENDED } from '../../src/protocol.ts';
+import { toClips } from '../../src/sentences.ts';
 import { daemonLog, expect, test } from './fixtures.ts';
 
 const ask = (request: APIRequestContext, data: object) =>
@@ -157,6 +158,51 @@ test('a fragment of the long sentence being spoken is echo, not a barge', async 
     for (const send of held.splice(0)) send();
     await voice.getByLabel(/Skip/).click();
     expect(await (await speech).text()).not.toMatch(/\[turn/);
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});
+
+// Mark 2026-10-10: "could it be instantaneous?" The first clip is the short first sentence, and
+// Piper gets it alone: prefetches sent beside it shared the CPU and held the first word 2-3x longer.
+test('the first clip is short and synthesised alone; the rest follow one at a time, in order', async ({
+  voice,
+  request,
+}) => {
+  const said: string[] = [];
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      said.push((JSON.parse(body) as { text: string }).text);
+      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  const text =
+    'Good point. A helper is updating the rules so a phone push means asking you. ' +
+    'The vault note says the same thing, and nothing else changes today. That is all for now.';
+  try {
+    const speech = ask(request, { kind: 'tts', text });
+    await expect.poll(() => said.length).toBe(1);
+    expect(said[0]).toBe('Good point.');
+    // Clip one is still synthesising: no other clip may be asked for beside it.
+    await voice.waitForTimeout(300);
+    expect(said).toHaveLength(1);
+    for (let n = 1; n <= toClips(text, 120).length; n++) {
+      await expect.poll(() => said.length).toBe(n);
+      held.shift()?.();
+      // Each prefetch waits for the one before it.
+      expect(said).toHaveLength(n);
+    }
+    expect(said).toEqual(toClips(text, 120));
+    await speech;
+    expect(daemonLog()).toMatch(/first audio \d+ms after the tts, clip of 11 chars/);
   } finally {
     for (const send of held.splice(0)) send();
     piper.close();
