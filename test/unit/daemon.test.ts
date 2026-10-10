@@ -6,6 +6,7 @@ import {
   attachPage,
   deps,
   exitCodeWhenTaken,
+  giveUpSlot,
   REOPEN_FIRST_MS,
   resetTurns,
   slotId,
@@ -305,6 +306,27 @@ describe('daemon', () => {
       speak('still with you');
       await vi.advanceTimersByTimeAsync(5000);
       expect(await (await r).text()).toMatch(/still with you$/);
+    } finally {
+      deps.openWindow = async () => {};
+      vi.useRealTimers();
+    }
+  });
+
+  // Live 2026-10-10 01:13 UTC: the old daemon kept the call through a hand-off and relaunched Chrome
+  // every few seconds, a new window each time, until the forwarded listen ended.
+  it('a daemon that handed its call off never reopens the window when its page goes', async () => {
+    vi.useFakeTimers();
+    let opens = 0;
+    deps.openWindow = async () => void opens++;
+    try {
+      void post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(giveUpSlot()).not.toBeNull();
+      expect(slotId()).toBeNull();
+      page.detach(); // the hand-off closes this daemon's page
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(opens).toBe(0);
+      expect(logs.some((l) => l.includes('reopening'))).toBe(false);
     } finally {
       deps.openWindow = async () => {};
       vi.useRealTimers();

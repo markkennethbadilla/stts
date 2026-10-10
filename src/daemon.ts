@@ -158,6 +158,18 @@ let closePage: (() => void) | null = null;
  * agent's client respawn its own older daemon, which won the port and handed off again every
  * minute (log 2026-10-06 22:53 and 23:07 UTC).
  */
+/**
+ * The open call moves to the new daemon: this one keeps no slot, so its page closing never starts
+ * the self-heal. Holding it, the old daemon relaunched Chrome every few seconds until the forwarded
+ * listen ended, and each launch opened another window (live 2026-10-10 01:13 UTC).
+ */
+export function giveUpSlot(): Slot | null {
+  const s = slot;
+  slot = null;
+  if (s) clearTimeout(s.timer);
+  return s;
+}
+
 async function handOver(to: string): Promise<void> {
   deps.log(`live update: handing off to ${to}`);
   httpServer?.close();
@@ -172,10 +184,9 @@ async function handOver(to: string): Promise<void> {
     const r = await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
     if (r?.ok && same(r.headers.get('X-Stts-Dir') ?? '', to)) break;
   }
+  const s = giveUpSlot();
   closePage?.();
-  const s = slot;
   if (s) {
-    clearTimeout(s.timer);
     const r = await fetch(`http://127.0.0.1:${port}/request`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
