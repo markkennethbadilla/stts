@@ -63,21 +63,25 @@ describe('toClips', () => {
     expect(c[0]).toBe('Okay, I am on it,');
     expect(joined(c)).toBe(squash(t));
   });
-  it('no clause: cut after the last whole word under the limit, then clips in order', () => {
+  it('no clause: the first sentence stays whole, never cut at a bare space', () => {
     const t = `Both Windows accounts now join the work tailnet at sign in and the check runs first. ${'More words here. '.repeat(20)}`;
     const c = toClips(t, 120);
-    expect(c[0]).toBe('Both Windows accounts now join the work');
-    expect(c[0]?.length).toBeLessThanOrEqual(FIRST_CHARS);
+    expect(c[0]).toBe('Both Windows accounts now join the work tailnet at sign in and the check runs first.');
+    expect(c[0]?.length).toBeGreaterThan(FIRST_CHARS);
     for (const x of c.slice(1)) expect(x.length).toBeLessThanOrEqual(120);
     expect(joined(c)).toBe(squash(t));
   });
-  it('a token with no spaces is hard-cut at the limit', () => {
-    expect(toClips('x'.repeat(300), 120).map((x) => x.length)).toEqual([
-      FIRST_CHARS,
-      120,
-      120,
-      300 - FIRST_CHARS - 240,
-    ]);
+  it('a long sentence is cut only at a clause mark (Mark 2026-10-12)', () => {
+    const t =
+      'Which of the following is a threat detection service that continuously monitors for malicious activity and unauthorized behavior to protect AWS accounts and workloads, and can be connected to AWS Network Firewall to also block malicious traffic?\n\nOption 1. Amazon Macie';
+    const c = toClips(t, 120);
+    expect(c[0]?.endsWith('accounts and workloads,')).toBe(true);
+    expect(c[1]?.startsWith('and can be connected')).toBe(true);
+    expect(joined(c)).toBe(squash(t));
+  });
+  it('a token with no spaces stays whole up to the part limit', () => {
+    expect(toClips('x'.repeat(300), 120).map((x) => x.length)).toEqual([300]);
+    expect(toClips('x'.repeat(2500), 120).map((x) => x.length)).toEqual([1000, 1000, 500]);
   });
   it('CRLF and a Windows path lose nothing', () => {
     const t = 'Open C:\\Users\\Mark\\AppData\\Local\\cc-gc-stts\\daemon.log and read the tail.\r\nThen stop.';
@@ -86,7 +90,7 @@ describe('toClips', () => {
   it('5 MB keeps every character and the limits', () => {
     const t = 'The quick brown fox jumps over the lazy dog. '.repeat(Math.ceil((5 * 1024 * 1024) / 45));
     const c = toClips(t, 120);
-    expect(c[0]).toBe('The quick brown fox jumps over the lazy');
+    expect(c[0]).toBe('The quick brown fox jumps over the lazy dog.');
     for (const x of c.slice(1)) expect(x.length).toBeLessThanOrEqual(120);
     expect(joined(c)).toBe(squash(t));
   });

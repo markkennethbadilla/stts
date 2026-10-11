@@ -25,7 +25,7 @@ flowchart TD
   I -->|listen=true| J[listen and return his words plus the note]
 ```
 
-- `src/sentences.ts` cuts at sentence ends with the built-in `Intl.Segmenter`, packing sentences into parts of at most 1000 characters. A longer sentence is cut at a space, or hard-cut if it has none. The callbot imports this file.
+- `src/sentences.ts` cuts at sentence ends with the built-in `Intl.Segmenter`, packing sentences into parts of at most 1000 characters. A sentence longer than the limit is cut only at a clause mark (a comma, semicolon, colon or dash after at least 8 characters): the last one within the limit, else the first one past it; with none it stays whole up to 1000 characters, and only past that is it cut at a space, or hard-cut if it has none. Each clip is its own Piper render, so a cut at a bare space put a pause and a falling tone mid-phrase (Mark 2026-10-12: "a threat ... detection service"). The callbot imports this file.
 - Markdown (`.md`, `.markdown`, `.mdx`, or a markdown content type or URL) has its markup removed. Plain text is left alone. An HTML page is refused.
 - `part=N` starts at part N; a part past the end is refused with the part count.
 - No new part starts after half the budget (spec 003). The reply notes keep their exact text: `Read parts A to B of N. To go on, call tts again with the same file and part=B+1.`, `He stopped it during part P of N. To resume there, call tts with the same file and part=P.`, `Read to the end (part N of N).`
