@@ -1,6 +1,6 @@
 // Read-aloud parts: sentence boundaries from Intl.Segmenter, packed into parts of at
 // most PART_CHARS (about a minute of speech). A sentence longer than the limit is cut only
-// at a clause mark (see cutAt), so speech never pauses mid-phrase. The callbot imports this file.
+// at a clause mark (see cutAt), so speech never pauses mid-phrase. The callbot (weassist-callbot server.mjs) carries a copy of cutAt: change both.
 export const PART_CHARS = 1000;
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
