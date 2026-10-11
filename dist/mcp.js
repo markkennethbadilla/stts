@@ -21724,7 +21724,7 @@ async function ensureDaemon() {
 		signal: AbortSignal.timeout(2e3)
 	}).catch(() => {});
 	spawnDaemon();
-	for (let i = 0; i < 50; i++) {
+	for (let i = 0; i < 200; i++) {
 		await setTimeout$1(100);
 		const now = await ping();
 		if (now === "ours" || now === "busy") return;

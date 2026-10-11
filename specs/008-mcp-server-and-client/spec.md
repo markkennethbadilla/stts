@@ -21,7 +21,7 @@ flowchart TD
   B -->|other install, window open| E
   B -->|other install, no window| C[POST /api/shutdown then start ours]
   B -->|nothing answers| D[start daemon]
-  C --> W[wait up to 5 s for ping]
+  C --> W[wait up to 20 s for ping]
   D --> W
   W --> E
   E -->|ECONNRESET, ECONNREFUSED or EPIPE| F[start daemon, retry once]
@@ -29,7 +29,7 @@ flowchart TD
   E -->|other status| H[tool error with the body text]
 ```
 
-The daemon is started detached and hidden (`node dist/daemon.js`). The request waits the budget plus 5 seconds.
+The daemon is started detached and hidden (`node dist/daemon.js`), and the client waits up to 20 seconds for it to answer a ping before failing with `stts daemon did not start`: a cold start after a long idle, redirected to the newest install (two node launches), took over 5 seconds and failed the call (2026-10-11 22:32 UTC). The request waits the budget plus 5 seconds.
 
 ## What it reads and writes
 

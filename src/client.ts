@@ -51,7 +51,9 @@ export async function ensureDaemon(): Promise<void> {
     await fetch(`${daemonUrl()}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(2000) }).catch(() => {});
   }
   spawnDaemon();
-  for (let i = 0; i < 50; i++) {
+  // 20 s: a cold start after a long idle (two node launches when the start is redirected) took
+  // over 5 s and failed the call (2026-10-11 22:32 UTC).
+  for (let i = 0; i < 200; i++) {
     await sleep(100);
     const now = await ping();
     if (now === 'ours' || now === 'busy') return;
