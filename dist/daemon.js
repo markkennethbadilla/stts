@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { constants, homedir, setPriority } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "http";
@@ -17177,6 +17177,26 @@ const deps = {
 			], done));
 		});
 	},
+	remoteHead() {
+		return new Promise((done) => {
+			const repo = process.env["STTS_REPO"] ?? "https://github.com/markkennethbadilla/stts.git";
+			const p = spawn("git", [
+				"ls-remote",
+				repo,
+				"refs/heads/main"
+			], { windowsHide: true });
+			let out = "";
+			p.stdout?.on("data", (d) => {
+				out += d.toString();
+			});
+			const t = setTimeout(() => p.kill(), 15e3);
+			p.on("error", () => done(""));
+			p.on("close", () => {
+				clearTimeout(t);
+				done(/^[0-9a-f]{40}/.exec(out)?.[0] ?? "");
+			});
+		});
+	},
 	handoff: (to) => handOver(to)
 };
 const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
@@ -17284,6 +17304,19 @@ async function liveUpdate(skipUpdate = false) {
 	}
 	await deps.handoff(to);
 	return true;
+}
+/**
+* The 10 s check (Mark 2026-10-12: "apply it immediately on finish ... always"): when main has a
+* commit the installed plugin is not (its cache folder is named after the commit), pull it now,
+* then hand off at the first safe moment. Before, the pull ran only while a listen was open,
+* once a minute, so a push waited for the agent's next listen and then up to a minute more.
+*/
+async function checkForUpdate() {
+	const inst = installedDir();
+	const sha = inst ? basename(dirname(inst)) : "";
+	const head = /^[0-9a-f]{7,40}$/.test(sha) ? await deps.remoteHead() : "";
+	if (head && !head.startsWith(sha)) await deps.update();
+	return liveUpdate(true);
 }
 let slot = null;
 let seq = 0;
@@ -17819,13 +17852,13 @@ function start(p = port) {
 		setInterval(() => {
 			if (busy) return;
 			busy = true;
-			liveUpdate().finally(() => {
+			checkForUpdate().finally(() => {
 				busy = false;
 			});
 		}, LIVE_UPDATE_MS).unref();
 	}
 }
-const LIVE_UPDATE_MS = Number(process.env["STTS_LIVE_UPDATE_MS"] ?? 6e4);
+const LIVE_UPDATE_MS = Number(process.env["STTS_LIVE_UPDATE_MS"] ?? 1e4);
 /** A daemon built after this one: never hand off or redirect to an older install. */
 function newer(dir) {
 	const at = (d) => {
@@ -17865,4 +17898,4 @@ async function boot() {
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
 //#endregion
-export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
+export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };

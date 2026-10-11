@@ -5,7 +5,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { constants, homedir, setPriority } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -108,6 +108,23 @@ export const deps = {
       run(['plugin', 'marketplace', 'update', 'stts-marketplace'], () =>
         run(['plugin', 'update', 'stts@stts-marketplace'], done),
       );
+    });
+  },
+  // The commit at the tip of main, '' when git or the network fails. git ls-remote has no API rate limit.
+  remoteHead(): Promise<string> {
+    return new Promise((done) => {
+      const repo = process.env['STTS_REPO'] ?? 'https://github.com/markkennethbadilla/stts.git';
+      const p = spawn('git', ['ls-remote', repo, 'refs/heads/main'], { windowsHide: true });
+      let out = '';
+      p.stdout?.on('data', (d: Buffer) => {
+        out += d.toString();
+      });
+      const t = setTimeout(() => p.kill(), 15_000);
+      p.on('error', () => done(''));
+      p.on('close', () => {
+        clearTimeout(t);
+        done(/^[0-9a-f]{40}/.exec(out)?.[0] ?? '');
+      });
     });
   },
   // Hands the port, the window and the open listen to the newer install, then exits.
@@ -231,6 +248,20 @@ export async function liveUpdate(skipUpdate = false): Promise<boolean> {
   }
   await deps.handoff(to);
   return true;
+}
+
+/**
+ * The 10 s check (Mark 2026-10-12: "apply it immediately on finish ... always"): when main has a
+ * commit the installed plugin is not (its cache folder is named after the commit), pull it now,
+ * then hand off at the first safe moment. Before, the pull ran only while a listen was open,
+ * once a minute, so a push waited for the agent's next listen and then up to a minute more.
+ */
+export async function checkForUpdate(): Promise<boolean> {
+  const inst = installedDir();
+  const sha = inst ? basename(dirname(inst)) : '';
+  const head = /^[0-9a-f]{7,40}$/.test(sha) ? await deps.remoteHead() : '';
+  if (head && !head.startsWith(sha)) await deps.update();
+  return liveUpdate(true);
 }
 
 type Reply = { status: 200 | 504; text: string };
@@ -844,14 +875,14 @@ export function start(p: number = port): void {
     setInterval(() => {
       if (busy) return;
       busy = true;
-      void liveUpdate().finally(() => {
+      void checkForUpdate().finally(() => {
         busy = false;
       });
     }, LIVE_UPDATE_MS).unref();
   }
 }
 
-const LIVE_UPDATE_MS = Number(process.env['STTS_LIVE_UPDATE_MS'] ?? 60_000);
+const LIVE_UPDATE_MS = Number(process.env['STTS_LIVE_UPDATE_MS'] ?? 10_000);
 
 /** A daemon built after this one: never hand off or redirect to an older install. */
 export function newer(dir: string): boolean {
