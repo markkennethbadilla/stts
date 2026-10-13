@@ -7,6 +7,14 @@
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/notify-listen.mjs\"", "timeout": 5 }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/notify-listen.mjs\"", "timeout": 5 }
+        ]
+      }
     ]
   }
 }

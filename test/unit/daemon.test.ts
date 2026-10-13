@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -161,16 +164,21 @@ describe('daemon', () => {
     expect(sent).toContainEqual({ type: 'released', reason: 'background' });
   });
 
-  it('/notify?delayMs releases the listen only after the delay', async () => {
+  it('/notify?watch releases the listen once the workflow state file says completed', async () => {
+    // A resumed run reuses a file that still says killed; only a later write counts (wf_e0902567-376, 2026-10-14).
+    const dir = join(mkdtempSync(join(tmpdir(), 'stts-wf-')), 'workflows');
+    mkdirSync(dir);
+    const file = join(dir, 'wf_e0902567-376.json');
+    writeFileSync(file, JSON.stringify({ runId: 'wf_e0902567-376', status: 'killed' }));
+    expect((await post('/notify?watch=C:/x/notes.json')).status).toBe(400);
     const listen = post('/request', { kind: 'stt' });
     await tick();
-    expect(await (await post('/notify?delayMs=300')).text()).toBe('ok');
-    await new Promise((r) => setTimeout(r, 100));
+    expect(await (await post(`/notify?watch=${encodeURIComponent(file)}`)).text()).toBe('ok');
+    await new Promise((r) => setTimeout(r, 1200));
     expect(slotId()).not.toBeNull();
+    writeFileSync(file, JSON.stringify({ runId: 'wf_e0902567-376', status: 'completed' }));
     expect(await (await listen).text()).toBe(BACKGROUND_RESULT);
-    await post('/notify?delayMs=junk'); // a bad value means at once; nothing is open, so nothing happens
-    expect(slotId()).toBeNull();
-  });
+  }, 10_000);
 
   it('/notify with no listen open changes nothing', async () => {
     const speech = post('/request', { kind: 'tts', text: 'hi' });

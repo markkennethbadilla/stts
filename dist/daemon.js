@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { constants, homedir, setPriority } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -17626,6 +17626,7 @@ app.get("/barge", (c) => c.json({
 	text: "",
 	open: page !== null
 }));
+const watched = /* @__PURE__ */ new Set();
 app.post("/notify", (c) => {
 	const notify = () => {
 		if (slot && isListen(slot.body)) {
@@ -17634,9 +17635,31 @@ app.post("/notify", (c) => {
 			settle(200, BACKGROUND_RESULT);
 		}
 	};
-	const delay = Math.min(Math.max(Number(c.req.query("delayMs")) || 0, 0), 3e4);
-	if (delay) setTimeout(notify, delay);
-	else notify();
+	const file = c.req.query("watch");
+	if (file === void 0) {
+		notify();
+		return c.text("ok");
+	}
+	if (!/[\\/]workflows[\\/]wf_[\w-]+\.json$/.test(file)) return c.text("not a workflow state file", 400);
+	if (watched.has(file)) return c.text("ok");
+	watched.add(file);
+	const stop = () => {
+		unwatchFile(file, check);
+		watched.delete(file);
+	};
+	const check = (cur, prev) => {
+		if (cur.mtimeMs === prev.mtimeMs) return;
+		let status;
+		try {
+			status = JSON.parse(readFileSync(file, "utf8")).status;
+		} catch {
+			return;
+		}
+		if (status === "completed" || status === "failed") setTimeout(notify, 1e3);
+		if (status === "completed" || status === "failed" || status === "killed") stop();
+	};
+	watchFile(file, { interval: 500 }, check);
+	setTimeout(stop, 864e5).unref();
 	return c.text("ok");
 });
 app.post("/request", async (c) => {

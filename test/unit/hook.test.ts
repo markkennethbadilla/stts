@@ -33,9 +33,11 @@ const base = 'C:\\Users\\Work\\.claude\\projects\\p\\cec2b5e7';
 
 test('only a stop that reaches the session as a task-notification pokes the daemon', async () => {
   let hits = 0;
+  const urls: string[] = [];
   const { createServer: http } = await import('node:http');
-  const srv = http((_q, r) => {
+  const srv = http((q, r) => {
     hits++;
+    urls.push(decodeURIComponent(q.url ?? ''));
     r.end('ok');
   });
   const port = await new Promise<number>((res) =>
@@ -58,6 +60,25 @@ test('only a stop that reaches the session as a task-notification pokes the daem
   expect(hits).toBe(1);
   expect(await run('not json')).toBe(0);
   expect(hits).toBe(2);
+  // A Workflow launch hands the daemon its state file; the launch result shape is from session 2d6e02ce.
+  const launch = (toolName: string) =>
+    JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      tool_name: toolName,
+      transcript_path: 'C:\\Users\\Work\\.claude\\projects\\p\\2d6e02ce.jsonl',
+      tool_response: {
+        status: 'async_launched',
+        taskId: 'w8byhpdcp',
+        taskType: 'local_workflow',
+        runId: 'wf_e0902567-376',
+        transcriptDir: 'C:\\Users\\Work\\.claude\\projects\\p\\2d6e02ce\\subagents\\workflows\\wf_e0902567-376',
+      },
+    });
+  expect(await run(launch('Workflow'))).toBe(0);
+  expect(hits).toBe(3);
+  expect(urls[2]).toBe('/notify?watch=C:\\Users\\Work\\.claude\\projects\\p\\2d6e02ce/workflows/wf_e0902567-376.json');
+  expect(await run(JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'no run here' }))).toBe(0);
+  expect(hits).toBe(3);
   srv.close();
 });
 
@@ -70,6 +91,8 @@ test('plugin manifest has the fields Claude Code needs and no version', () => {
   expect(m.plugins[0].source).toBe('./');
   const h = JSON.parse(readFileSync('hooks/hooks.json', 'utf8'));
   expect(h.hooks.SubagentStop[0].hooks[0].command).toContain('notify-listen.mjs');
+  expect(h.hooks.PostToolUse[0].matcher).toBe('Workflow');
+  expect(h.hooks.PostToolUse[0].hooks[0].command).toContain('notify-listen.mjs');
 });
 
 test('/stts command text carries every sentinel', () => {

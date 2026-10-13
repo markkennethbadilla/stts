@@ -2,7 +2,18 @@
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 
 import { type ChildProcess, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  type Stats,
+  statSync,
+  unwatchFile,
+  watchFile,
+  writeFileSync,
+} from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { constants, homedir, setPriority } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -617,8 +628,10 @@ app.post('/api/shutdown', (c) => {
 
 app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 
-// ?delayMs=N (at most 30 s) releases whatever listen is open N ms later. A Workflow pings from its last
-// agent, before the workflow returns, so the release waits for the session's task-notification (spec 007).
+// POST /notify releases an open listen now (SubagentStop hook). ?watch=<session>/workflows/wf_*.json
+// (PostToolUse hook on Workflow) releases it when that run's state file turns completed or failed: Claude
+// Code fires no hook when a workflow ends, and writes that file just before the task-notification (spec 007).
+const watched = new Set<string>();
 app.post('/notify', (c) => {
   const notify = () => {
     if (slot && isListen(slot.body)) {
@@ -627,9 +640,32 @@ app.post('/notify', (c) => {
       settle(200, BACKGROUND_RESULT);
     }
   };
-  const delay = Math.min(Math.max(Number(c.req.query('delayMs')) || 0, 0), 30_000);
-  if (delay) setTimeout(notify, delay);
-  else notify();
+  const file = c.req.query('watch');
+  if (file === undefined) {
+    notify();
+    return c.text('ok');
+  }
+  if (!/[\\/]workflows[\\/]wf_[\w-]+\.json$/.test(file)) return c.text('not a workflow state file', 400);
+  if (watched.has(file)) return c.text('ok');
+  watched.add(file);
+  const stop = () => {
+    unwatchFile(file, check);
+    watched.delete(file);
+  };
+  // A resumed run reuses its file, so only a write after this call counts. killed: the session stopped it.
+  const check = (cur: Stats, prev: Stats) => {
+    if (cur.mtimeMs === prev.mtimeMs) return;
+    let status: unknown;
+    try {
+      status = JSON.parse(readFileSync(file, 'utf8')).status;
+    } catch {
+      return; // half-written; the next poll reads it whole
+    }
+    if (status === 'completed' || status === 'failed') setTimeout(notify, 1000);
+    if (status === 'completed' || status === 'failed' || status === 'killed') stop();
+  };
+  watchFile(file, { interval: 500 }, check);
+  setTimeout(stop, 86_400_000).unref(); // ponytail: a run that never ends stops being watched after a day
   return c.text('ok');
 });
 
