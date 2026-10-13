@@ -588,7 +588,7 @@ export function App() {
       dir = d ?? '';
     });
     const connect = (): void => {
-      const sock = new WebSocket(`ws://${location.host}/ws`);
+      const sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
       ws.current = sock;
       sock.onopen = () => sock.send(JSON.stringify({ type: 'ready' }));
       sock.onmessage = onMessage;

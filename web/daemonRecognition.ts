@@ -19,7 +19,7 @@ let sock: WebSocket | null = null;
 const unsent: Float32Array<ArrayBuffer>[] = [];
 
 function connect(): void {
-  const s = new WebSocket(`ws://${location.host}/asr`);
+  const s = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/asr`);
   s.binaryType = 'arraybuffer';
   s.onopen = () => {
     for (const f of unsent.splice(0)) s.send(f);
