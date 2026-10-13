@@ -585,8 +585,15 @@ export function App() {
       }
       connect();
       if (dir && d !== dir) {
-        log('live update: reloading for the new version');
-        reloadWhenQuiet();
+        // Logged once the new socket is open: sent before that, the line was dropped (2026-10-13).
+        ws.current?.addEventListener(
+          'open',
+          () => {
+            log('live update: reloading for the new version');
+            reloadWhenQuiet();
+          },
+          { once: true },
+        );
       }
     };
     void daemonDir().then((d) => {
