@@ -22,6 +22,7 @@ flowchart LR
 - The gateway entry lives in mkb-agentops and points at `dist/mcp.js` with `STTS_WHO=agent`, so a helper agent cannot close Mark's window.
 - Both paths share one daemon, so only one conversation is ever live.
 - The callbot imports `src/sentences.ts`. Its `turn.mjs` keeps the same `readsUnfinished` word list; a parity test checks they match.
+- The barge-in toggle (spec 006) is stts only: in a meeting her voice is a separate participant and never reaches his stream, so the callbot has nothing to mute. Recorded in the callbot's spec 004 parity table.
 
 ## What it reads and writes
 

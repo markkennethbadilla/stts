@@ -315,6 +315,29 @@ describe('page machine', () => {
     expect(actor.getSnapshot().matches({ mic: { live: 'idle' }, turn: 'notListening' })).toBe(true);
   });
 
+  it('barge-in off: no mic while the agent speaks, the listen opens after it', () => {
+    const { actor, startMic } = start();
+    actor.send({ type: 'SET_BARGE', on: false });
+    // An open listen, then a reply arrives: the mic goes off for the speech.
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    expect(startMic).toHaveBeenCalledTimes(1);
+    actor.send({ type: 'ENQUEUE', clips: ['a', 'b'], listen: true });
+    expect(actor.getSnapshot().matches({ speech: 'playing', mic: { live: 'idle' } })).toBe(true);
+    vi.advanceTimersByTime(20000);
+    actor.send({ type: 'CLIP_ENDED' });
+    expect(startMic).toHaveBeenCalledTimes(1);
+    actor.send({ type: 'CLIP_ENDED' });
+    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'starting' } })).toBe(true);
+    expect(startMic).toHaveBeenCalledTimes(2);
+    // Turned back on mid-speech: the mic runs at once (headset mode).
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'ENQUEUE', clips: ['c'] });
+    expect(actor.getSnapshot().matches({ mic: { live: 'idle' } })).toBe(true);
+    actor.send({ type: 'SET_BARGE', on: true });
+    expect(actor.getSnapshot().matches({ mic: { live: 'starting' } })).toBe(true);
+  });
+
   it('paused stays paused through speech: no mic during playback', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'PAUSE', trusted: true });

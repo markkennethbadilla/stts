@@ -6,6 +6,8 @@ import {
   CircleAlert,
   CircleStop,
   Ear,
+  HeadphoneOff,
+  Headphones,
   Mic,
   MicOff,
   PhoneOff,
@@ -210,6 +212,9 @@ export function App() {
   // in the real-Chrome test; the cloud heard every turn there.
   const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
   const [raise, setRaise] = useSetting('raise', '0');
+  // Barge-in (Mark 2026-10-13): on, the mic runs while the agent speaks (a headset); off, it is
+  // muted during speech so a phone speaker's echo never comes back as his turn.
+  const [barge, setBarge] = useSetting('barge', '1');
   const [theme, setTheme] = useSetting('theme', 'system');
   useEffect(() => {
     const os = matchMedia('(prefers-color-scheme: dark)');
@@ -708,6 +713,17 @@ export function App() {
     actor.send({ type: 'SET_HOLD', ms: hold ? Number(hold) : null });
   }, [actor, hold]);
 
+  useEffect(() => {
+    actor.send({ type: 'SET_BARGE', on: barge === '1' });
+  }, [actor, barge]);
+
+  // Barge-in off: the mic track itself is muted while the agent speaks. The audio pipe outlives the
+  // recogniser (spec 014), so a stopped recogniser alone would still queue the echo for the next one.
+  const muteForSpeech = barge !== '1' && state.matches({ speech: 'playing' });
+  useEffect(() => {
+    for (const t of aec.current?.stream.getAudioTracks() ?? []) t.enabled = !muteForSpeech;
+  }, [muteForSpeech]);
+
   // A mic plugged in or out while the window is open (Mark 2026-10-10: the Iriun mic never showed):
   // list again, and a mic stream whose device went away is reopened.
   // biome-ignore lint/correctness/useExhaustiveDependencies: one listener; refreshMics and switchMic read refs only.
@@ -915,6 +931,15 @@ export function App() {
           >
             <Repeat />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={barge === '1' ? 'Barge-in on (headset)' : 'Barge-in off (mic muted while the agent speaks)'}
+            aria-pressed={barge === '1'}
+            onClick={() => setBarge(barge === '1' ? '0' : '1')}
+          >
+            {barge === '1' ? <Headphones /> : <HeadphoneOff />}
+          </Button>
           <Popover>
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Settings" />}>
               <Settings2 />
@@ -1008,6 +1033,13 @@ export function App() {
                   step={0.05}
                   value={[Number(earconVol)]}
                   onValueChange={(v) => setEarconVol(String(first(v)))}
+                />
+              </Row>
+              <Row label="Barge-in (headset)">
+                <Switch
+                  aria-label="Barge-in"
+                  checked={barge === '1'}
+                  onCheckedChange={(c) => setBarge(c ? '1' : '0')}
                 />
               </Row>
               <Row label="Raise on request">

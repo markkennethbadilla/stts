@@ -63,6 +63,8 @@ const sharesEnd = (a: string[], b: string[]): boolean =>
  * Is heard speech the agent's own voice? Checked against every sentence spoken in the last 30 s,
  * normalised (lowercase, no punctuation): echo when the Levenshtein similarity is at least 0.5, or
  * when it is under 60% of the sentence's length and shares its first or last three words.
+ * The sentences are also checked joined in order: on a phone speaker the echo runs on with no
+ * pause, so one heard segment spans several clips and matched none of them alone (2026-10-13).
  * ponytail: text distance against what was said; an echo garbled past half still slips through
  * and a barge that repeats the sentence is dropped. Upgrade: compare against the played audio.
  */
@@ -70,7 +72,7 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
   const hw = words(final);
   const h = hw.join(' ');
   if (!h) return false;
-  return spoken.some((clip) => {
+  return [...spoken, spoken.join(' ')].some((clip) => {
     const sw = words(clip);
     const s = sw.join(' ');
     if (!s) return false;
@@ -138,13 +140,16 @@ export type PageEvent =
   | { type: 'TYPED'; text: string; part: number }
   // Final heard words while the agent is speaking: they cut the speech off.
   | { type: 'BARGE'; text: string; part: number }
-  | { type: 'SET_TYPING'; on: boolean };
+  | { type: 'SET_TYPING'; on: boolean }
+  | { type: 'SET_BARGE'; on: boolean };
 
 export type Interrupted = { part: number; sentence: number };
 export type Delivery = { text: string; source: 'typed' | 'heard'; interrupted: Interrupted | null };
 
 export interface PageContext {
   autosend: boolean;
+  // Barge-in (Mark 2026-10-13): the mic runs while the agent speaks. Off, it is muted during speech.
+  bargeIn: boolean;
   // The hold_ms setting; null keeps the defaults (0.7 s, or 1 s when the words read unfinished).
   holdMs: number | null;
   wantListen: boolean;
@@ -181,8 +186,10 @@ const cut = ({ context, event }: { context: PageContext; event: PageEvent }): In
 const live = not(stateIn({ mic: 'paused' }));
 const quiet = stateIn({ speech: 'idle' });
 const playing = stateIn({ speech: 'playing' });
-// The mic runs during a listen and while the agent speaks (so speaking over it barges in).
-const wantMic = or([({ context }: { context: PageContext }) => context.wantListen, playing]);
+// The mic runs during a listen and while the agent speaks (so speaking over it barges in). With
+// barge-in off it never runs during speech: a phone speaker's echo cannot come back as his turn.
+const listenOrSpeech = or([({ context }: { context: PageContext }) => context.wantListen, playing]);
+const bargeOrQuiet = or([({ context }: { context: PageContext }) => context.bargeIn, not(playing)]);
 const now = () => Date.now();
 
 export const pageMachine = setup({
@@ -203,8 +210,8 @@ export const pageMachine = setup({
   },
   guards: {
     trusted: ({ event }) => 'trusted' in event && event.trusted,
-    canStart: and([live, wantMic]),
-    wantMic,
+    canStart: and([live, listenOrSpeech, bargeOrQuiet]),
+    wantMic: and([listenOrSpeech, bargeOrQuiet]),
     watchdogTrips: ({ context }) => watchdogVerdict({ ...context, now: now() }) !== null,
     // During speech only a dead mic restarts; no words is expected.
     deadMic: ({ context }) => watchdogVerdict({ ...context, now: now(), playing: true }) !== null,
@@ -227,6 +234,7 @@ export const pageMachine = setup({
   type: 'parallel',
   context: {
     autosend: true,
+    bargeIn: true,
     holdMs: null,
     wantListen: false,
     transcript: '',
@@ -249,6 +257,7 @@ export const pageMachine = setup({
   on: {
     SET_TYPING: { actions: assign({ typing: ({ event }) => event.on }) },
     SET_AUTOSEND: { actions: assign({ autosend: ({ event }) => event.on }) },
+    SET_BARGE: { actions: assign({ bargeIn: ({ event }) => event.on }) },
     SET_HOLD: { actions: assign({ holdMs: ({ event }) => event.ms }) },
     // A listen request is remembered even while paused; only a trusted resume acts on it.
     REQUEST: { guard: ({ event }) => event.kind === 'listen', actions: assign({ wantListen: true }) },

@@ -46,6 +46,18 @@ test('pause survives 3 listens and the watchdog', async ({ voice, request }) => 
   expect(after).not.toContain('mic start');
 });
 
+test('the barge-in button toggles, is saved, and matches the settings switch', async ({ voice }) => {
+  await voice.getByRole('button', { name: 'Barge-in on (headset)' }).click();
+  const off = voice.getByRole('button', { name: 'Barge-in off (mic muted while the agent speaks)' });
+  await expect(off).toHaveAttribute('aria-pressed', 'false');
+  expect(await voice.evaluate(() => localStorage.getItem('__stts__barge'))).toBe('0');
+  await voice.getByLabel('Settings').click();
+  await expect(voice.getByRole('switch', { name: 'Barge-in' })).not.toBeChecked();
+  await voice.getByRole('switch', { name: 'Barge-in' }).click();
+  await voice.keyboard.press('Escape');
+  await expect(voice.getByRole('button', { name: 'Barge-in on (headset)' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('an untrusted End click is ignored', async ({ voice, request }) => {
   await voice.evaluate(() => document.querySelector<HTMLElement>('[aria-label="End conversation"]')?.click());
   await voice.waitForTimeout(300);
