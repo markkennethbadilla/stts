@@ -35,8 +35,11 @@ Tests use their own ports and fakes; they do not touch the live daemon on 15986.
 
 `npm run check` runs biome, tsc, the spec lint and the unit tests; `npm test` runs the spec lint, the unit tests, the build and the Playwright tests, and is the check before every push: CI ran the browser suite but sat red on main for six commits (2026-10-06 to 07) because nobody ran it before pushing. `npm run e2e` runs the Playwright tests alone.
 
-## CI speed budgets (agentops spec 097)
+**CI speed budgets (agentops spec 097).** Every job's `timeout-minutes` is its
+speed budget: about 1.5 times its worst time in the last 10 green runs (minimum
+2), measured 2026-10-14, recorded in mkb-agentops `ci-budgets.json`. Over budget
+the job goes red. Budgets only go down.
 
-Every job's `timeout-minutes` is its speed budget: about 1.5 times its worst time in the last 10 green runs (minimum 2), measured 2026-10-14, recorded in mkb-agentops `ci-budgets.json`. Over budget the job goes red. Budgets only go down.
-
-- ci check 3 (worst 110 s, was 15). Playwright is 60 to 80 s of it and every other step is under 15 s, so splitting into parallel jobs would save little against the extra npm ci per job; kept as one job.
+- ci check 3 (worst 110 s, was 15). Playwright is 60 to 80 s of it and every
+  other step is under 15 s, so splitting into parallel jobs would save little
+  against the extra npm ci per job; kept as one job.
