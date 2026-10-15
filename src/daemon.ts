@@ -285,6 +285,8 @@ type Slot = {
   sent?: boolean;
   // The page reported its speech done and the listen open.
   listening?: boolean;
+  // A background result arrived while this tts was still speaking: returned once the speech ends.
+  background?: boolean;
 };
 
 let slot: Slot | null = null;
@@ -492,6 +494,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       // Unmute: the page lost track of an open listen; resend only a listen, never a tts (a replay).
       case 'listening':
         if (slot) slot.listening = true;
+        if (slot?.background) backgroundResult();
         return;
       case 'relisten':
         if (slot && isListen(slot.body)) send();
@@ -632,13 +635,21 @@ app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 // (PostToolUse hook on Workflow) releases it when that run's state file turns completed or failed: Claude
 // Code fires no hook when a workflow ends, and writes that file just before the task-notification (spec 007).
 const watched = new Set<string>();
+function backgroundResult(): void {
+  release('background');
+  turns.send({ type: 'background' });
+  settle(200, BACKGROUND_RESULT);
+}
 app.post('/notify', (c) => {
   const notify = () => {
-    if (slot && isListen(slot.body)) {
-      release('background');
-      turns.send({ type: 'background' });
-      settle(200, BACKGROUND_RESULT);
+    if (!slot || !isListen(slot.body)) return;
+    // A tts still speaking is never cut short (Mark 2026-10-15: the call returned mid-speech and the
+    // agent's next tts was highlighted over the old audio). The result waits for its listen to open.
+    if (slot.body.kind === 'tts' && !slot.listening) {
+      slot.background = true;
+      return;
     }
+    backgroundResult();
   };
   const file = c.req.query('watch');
   if (file === undefined) {

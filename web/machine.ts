@@ -95,6 +95,8 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
 
 /** A final this soon after its clip started is the clip's own echo, never a barge. */
 export const BARGE_MIN_MS = 600;
+/** Speech paused at his voice's start resumes after this long with no final (a cough, a door). */
+export const BARGE_HOLD_MS = 2500;
 
 /**
  * A final heard while the agent speaks: 'barge' cuts the speech off; 'short' (under 3 words) and

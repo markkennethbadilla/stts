@@ -33,7 +33,7 @@ import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed } from './daemonRecognition.ts';
-import { bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
+import { BARGE_HOLD_MS, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -189,6 +189,17 @@ export function App() {
   // A Repeat is playing: page-only speech the daemon never asked for, so its end, Stop or barge
   // answers nothing (no complete, no stopped, no barge line) and an open listen stays open.
   const replaying = useRef(false);
+  // A new tts cut the old speech off: that stop answers nothing (the daemon already moved on).
+  const superseding = useRef(false);
+  // The clip paused the moment his voice started over it, until his final says barge or not.
+  const ducked = useRef<HTMLAudioElement | null>(null);
+  const duckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const unduck = (): void => {
+    clearTimeout(duckTimer.current);
+    const a = ducked.current;
+    ducked.current = null;
+    if (a && a === audio.current && actor.getSnapshot().matches({ speech: 'playing' })) void a.play().catch(() => {});
+  };
   // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
   const clipCache = useRef(new Map<string, Promise<Blob | string>>());
   // The end of the synthesis queue: prefetches start one at a time, after the clip playing now.
@@ -489,6 +500,16 @@ export function App() {
       if (!mine()) return;
       heard.current.startAt ||= Date.now();
       send({ type: 'SPEECH_START' });
+      // Barge latency (Mark 2026-10-15): the speech used to stop only on his final (end of his
+      // sentence plus decode). It pauses the moment his voice starts; the final then decides: a
+      // barge stops it, an echo or a short sound resumes it, and no final within BARGE_HOLD_MS resumes it.
+      const a = audio.current;
+      if (actor.getSnapshot().matches({ speech: 'playing' }) && !fallbackVoice.current && a && !a.paused) {
+        a.pause();
+        ducked.current = a;
+        clearTimeout(duckTimer.current);
+        duckTimer.current = setTimeout(unduck, BARGE_HOLD_MS);
+      }
     };
     r.onspeechend = () => mine() && send({ type: 'SPEECH_END', text: heard.current.final });
     r.onresult = (e) => {
@@ -513,8 +534,14 @@ export function App() {
         const clip = snap.context.queue[0] ?? '';
         const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
         const v = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
-        if (v === 'barge') send({ type: 'BARGE', text: final, part: listen.current.part });
-        else if (v === 'echo' && echoLogged.current !== clip) {
+        if (v === 'barge') {
+          clearTimeout(duckTimer.current);
+          ducked.current = null;
+          send({ type: 'BARGE', text: final, part: listen.current.part });
+          return;
+        }
+        unduck();
+        if (v === 'echo' && echoLogged.current !== clip) {
           echoLogged.current = clip;
           log('echo discarded');
         }
@@ -631,6 +658,15 @@ export function App() {
         actor.send({ type: 'STOP' });
         clearTimeout(listen.current.idleTimer);
       }
+      // A new tts while the last one still plays cuts it off cleanly (Mark 2026-10-15): appended, the
+      // old audio played on while the highlight followed the new text.
+      if (b.kind !== 'stt' && actor.getSnapshot().matches({ speech: 'playing' })) {
+        audio.current?.pause();
+        speechSynthesis.cancel();
+        superseding.current = true;
+        actor.send({ type: 'STOP' });
+        superseding.current = false;
+      }
       listen.current.part = b.part ?? 1;
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
@@ -669,7 +705,9 @@ export function App() {
         ahead.current.clear(); // clips a Stop dropped are never rendered
         speechEndedAt.current = Date.now();
         setSpoken({ done: 0, of: 0 });
-        if (replaying.current) {
+        if (superseding.current) {
+          // Cut off by a new tts: no listen, no complete; the new tts plays next.
+        } else if (replaying.current) {
           // A Repeat ended (or was stopped): answer nothing; an open listen lights green again with a
           // fresh no-speech timer.
           replaying.current = false;

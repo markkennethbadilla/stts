@@ -180,6 +180,18 @@ describe('daemon', () => {
     expect(await (await listen).text()).toBe(BACKGROUND_RESULT);
   }, 10_000);
 
+  it('/notify during a tts with listen waits for the speech to end, never returns mid-speech', async () => {
+    const reply = post('/request', { kind: 'tts', text: 'a long reply', listen: true });
+    await tick();
+    await post('/notify');
+    await tick();
+    expect(slotId()).not.toBeNull();
+    expect(sent.some((m) => m.type === 'released')).toBe(false);
+    page.onMessage(JSON.stringify({ type: 'listening' }));
+    expect(await (await reply).text()).toBe(BACKGROUND_RESULT);
+    expect(sent).toContainEqual({ type: 'released', reason: 'background' });
+  });
+
   it('/notify with no listen open changes nothing', async () => {
     const speech = post('/request', { kind: 'tts', text: 'hi' });
     await tick();

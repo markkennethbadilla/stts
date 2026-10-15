@@ -27,7 +27,7 @@ sequenceDiagram
   A->>D: tts listen=true with the result
 ```
 
-The hook always exits 0, even when the daemon is down or slow. With no open listen, `/notify` does nothing; nothing is latched for a later listen.
+The hook always exits 0, even when the daemon is down or slow. With no open listen, `/notify` does nothing; nothing is latched for a later listen. A tts with listen whose speech is still playing is never cut short: the background result is held on that call and returned the moment its speech ends and its listen opens (the page sends `listening`). It used to return mid-speech, so the agent sent its next tts over the old audio (Mark 2026-10-15).
 
 The hook skips an agent that runs inside a Workflow (`agent_type` `workflow-subagent`, or a transcript under `subagents/workflows/`). The session gets a task-notification only when the whole workflow finishes, not per inner agent, so releasing the listen for each one made the loop spin on `__STTS_BACKGROUND_RESULT__` with nothing to relay (2026-10-09, seven releases in one workflow).
 

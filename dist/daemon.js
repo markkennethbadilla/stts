@@ -17510,6 +17510,7 @@ function attachPage(sendToPage) {
 				return;
 			case "listening":
 				if (slot) slot.listening = true;
+				if (slot?.background) backgroundResult();
 				return;
 			case "relisten":
 				if (slot && isListen(slot.body)) send();
@@ -17627,13 +17628,19 @@ app.get("/barge", (c) => c.json({
 	open: page !== null
 }));
 const watched = /* @__PURE__ */ new Set();
+function backgroundResult() {
+	release("background");
+	turns.send({ type: "background" });
+	settle(200, BACKGROUND_RESULT);
+}
 app.post("/notify", (c) => {
 	const notify = () => {
-		if (slot && isListen(slot.body)) {
-			release("background");
-			turns.send({ type: "background" });
-			settle(200, BACKGROUND_RESULT);
+		if (!slot || !isListen(slot.body)) return;
+		if (slot.body.kind === "tts" && !slot.listening) {
+			slot.background = true;
+			return;
 		}
+		backgroundResult();
 	};
 	const file = c.req.query("watch");
 	if (file === void 0) {

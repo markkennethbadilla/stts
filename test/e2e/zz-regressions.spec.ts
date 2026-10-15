@@ -164,6 +164,97 @@ test('a fragment of the long sentence being spoken is echo, not a barge', async 
   }
 });
 
+// Mark 2026-10-15: a new tts arrived while the last one still spoke; the old audio played on while the
+// highlight followed the new text. The new tts cuts the old one off: no old clip is asked for again.
+test('a new tts mid-speech cuts the old speech off; only the new clips follow', async ({ voice, request }) => {
+  const said: string[] = [];
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      said.push((JSON.parse(body) as { text: string }).text);
+      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  const old = 'Old one. Old two is here. Old three is here. Old four is here.';
+  const next = 'New one. New two is here.';
+  try {
+    const first = ask(request, { kind: 'tts', text: old, listen: true });
+    await expect.poll(() => said.length).toBe(1);
+    held.shift()?.();
+    await expect.poll(() => said.length).toBe(2); // old two prefetching while old one plays
+    const second = ask(request, { kind: 'tts', text: next });
+    expect(await (await first).text()).not.toMatch(/\[turn/);
+    await expect.poll(() => said.includes('New one.')).toBe(true);
+    for (let i = 0; i < 20 && said.at(-1) !== 'New two is here.'; i++) {
+      for (const send of held.splice(0)) send();
+      await voice.waitForTimeout(100);
+    }
+    for (const send of held.splice(0)) send();
+    await second;
+    const from = said.indexOf('New one.');
+    expect(said.slice(from)).toEqual(['New one.', 'New two is here.']);
+    expect(said.slice(0, from).every((s) => s.startsWith('Old'))).toBe(true);
+    expect(said).not.toContain('Old three is here.');
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});
+
+// Mark 2026-10-15: barge-in was slow; speech stopped only after his whole sentence was decoded.
+// It now pauses the moment his voice starts, and resumes if the final turns out to be echo.
+test('his voice starting over the speech pauses it at once; an echo final resumes it', async ({ voice, request }) => {
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  await voice.evaluate(() => {
+    const g = globalThis as unknown as Record<string, number>;
+    g['__pauses'] = 0;
+    g['__plays'] = 0;
+    const p = HTMLMediaElement.prototype;
+    const pause = p.pause;
+    const play = p.play;
+    p.pause = function (this: HTMLMediaElement) {
+      g['__pauses'] = (g['__pauses'] ?? 0) + 1;
+      return pause.call(this);
+    };
+    p.play = function (this: HTMLMediaElement) {
+      g['__plays'] = (g['__plays'] ?? 0) + 1;
+      return play.call(this);
+    };
+  });
+  const count = (k: string) => voice.evaluate((x) => (globalThis as unknown as Record<string, number>)[x], k);
+  try {
+    const speech = ask(request, {
+      kind: 'tts',
+      text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
+    });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await expect.poll(() => count('__plays')).toBeGreaterThan(0);
+    const plays = (await count('__plays')) ?? 0;
+    await voice.evaluate(() =>
+      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
+    );
+    expect(await count('__pauses')).toBe(1);
+    await say(voice, 'our conversations carry on');
+    await expect.poll(() => count('__plays')).toBe(plays + 1);
+    await voice.getByLabel(/Skip/).click();
+    expect(await (await speech).text()).not.toMatch(/\[turn/);
+  } finally {
+    piper.close();
+  }
+});
+
 // Mark 2026-10-10: "could it be instantaneous?" The first clip is the short first sentence, and
 // Piper gets it alone: prefetches sent beside it shared the CPU and held the first word 2-3x longer.
 test('the first clip is short and synthesised alone; the rest follow one at a time, in order', async ({
