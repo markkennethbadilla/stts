@@ -207,6 +207,48 @@ test('a new tts mid-speech cuts the old speech off; only the new clips follow', 
   }
 });
 
+// Mark 2026-10-16 08:15 ("you were talking over yourself"): a clip still synthesising when its speech
+// was cut off played anyway, on top of the next tts. A cut-off speech's late clip never plays.
+test('a clip that arrives after its speech was cut off never plays over the new tts', async ({ voice, request }) => {
+  const said: string[] = [];
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      said.push((JSON.parse(body) as { text: string }).text);
+      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    await voice.evaluate(() => {
+      const g = globalThis as { __plays?: number };
+      g.__plays = 0;
+      const orig = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+        if (this.src.startsWith('blob:')) g.__plays = (g.__plays ?? 0) + 1;
+        return orig.call(this);
+      };
+    });
+    const first = ask(request, { kind: 'tts', text: 'Old one.' });
+    await expect.poll(() => said.length).toBe(1);
+    const second = ask(request, { kind: 'tts', text: 'New one.' });
+    expect(await (await first).text()).not.toMatch(/\[turn/);
+    await expect.poll(() => said.includes('New one.')).toBe(true);
+    // The old clip lands only now, after the new tts cut its speech off.
+    for (const send of held.splice(0)) send();
+    await second;
+    expect(await voice.evaluate(() => (globalThis as { __plays?: number }).__plays)).toBe(1);
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});
+
 // Mark 2026-10-15: barge-in was slow; speech stopped only after his whole sentence was decoded.
 // It now pauses the moment his voice starts, and resumes if the final turns out to be echo.
 test('his voice starting over the speech pauses it at once; an echo final resumes it', async ({ voice, request }) => {

@@ -33,7 +33,7 @@ import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed } from './daemonRecognition.ts';
-import { BARGE_HOLD_MS, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
+import { BARGE_HOLD_MS, bargeText, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -194,6 +194,18 @@ export function App() {
   // The clip paused the moment his voice started over it, until his final says barge or not.
   const ducked = useRef<HTMLAudioElement | null>(null);
   const duckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Bumped every time speech is cut off: a clip still synthesising, or a ducked clip whose resume
+  // timer is pending, belongs to the old speech and never plays over the new one (Mark 2026-10-16
+  // 08:15: after a barge the next tts played over the old one).
+  const speechGen = useRef(0);
+  const cutSpeech = (): void => {
+    speechGen.current++;
+    clearTimeout(duckTimer.current);
+    ducked.current = null;
+    audio.current?.pause();
+    audio.current = null;
+    speechSynthesis.cancel();
+  };
   const unduck = (): void => {
     clearTimeout(duckTimer.current);
     const a = ducked.current;
@@ -328,10 +340,7 @@ export function App() {
             ...(interrupted ? { interrupted } : {}),
           });
         },
-        stopAudio: () => {
-          audio.current?.pause();
-          speechSynthesis.cancel();
-        },
+        stopAudio: () => cutSpeech(),
         playClip: (_, { clip }) => void playClip(clip),
         // Clips ahead synthesise while the current one plays, so the next starts with no gap.
         // One at a time, after the clip playing now: clips sent together share Piper's CPU, and the
@@ -388,10 +397,13 @@ export function App() {
   async function playClip(clip: string): Promise<void> {
     // The clip to play now goes first; prefetches queue behind it.
     ahead.current.delete(clip);
+    const gen = speechGen.current;
     const p = fetchClip(clip);
     synthTail.current = Promise.all([synthTail.current, p]);
     const r = await p;
     clipCache.current.delete(clip);
+    // The speech this clip belonged to was cut off while it synthesised: it must not play.
+    if (gen !== speechGen.current) return;
     if (typeof r === 'string') {
       send({ type: 'CLIP_FAILED', reason: r });
       return;
@@ -537,8 +549,15 @@ export function App() {
         if (v === 'barge') {
           clearTimeout(duckTimer.current);
           ducked.current = null;
-          send({ type: 'BARGE', text: final, part: listen.current.part });
+          // The barge carries every word heard before it: words said before the speech started and
+          // short finals said over it (Mark 2026-10-16 08:06: only the last fragment came through).
+          send({ type: 'BARGE', text: bargeText(heard.current.final, final), part: listen.current.part });
           return;
+        }
+        // A short final that is not the agent's echo is his: kept for the barge or the next turn.
+        if (v === 'short' && !isEcho(final, [clip, ...recentSpoken()])) {
+          heard.current.startAt ||= Date.now();
+          heard.current.final = bargeText(heard.current.final, final);
         }
         unduck();
         if (v === 'echo' && echoLogged.current !== clip) {
@@ -652,17 +671,16 @@ export function App() {
       }
       const b = m.body;
       // A new tts cuts a Repeat short; its end (consumed below) must not answer the new tts.
+      // Every tts cuts off whatever speech is left first, playing, ducked or still synthesising, so two
+      // never overlap (Mark 2026-10-16 08:15).
+      if (b.kind !== 'stt') cutSpeech();
       if (b.kind !== 'stt' && replaying.current) {
-        audio.current?.pause();
-        speechSynthesis.cancel();
         actor.send({ type: 'STOP' });
         clearTimeout(listen.current.idleTimer);
       }
       // A new tts while the last one still plays cuts it off cleanly (Mark 2026-10-15): appended, the
       // old audio played on while the highlight followed the new text.
       if (b.kind !== 'stt' && actor.getSnapshot().matches({ speech: 'playing' })) {
-        audio.current?.pause();
-        speechSynthesis.cancel();
         superseding.current = true;
         actor.send({ type: 'STOP' });
         superseding.current = false;
@@ -824,8 +842,7 @@ export function App() {
   // opens the listen; a plain tts returns). Unlike Stop, it does not end a read-aloud or the listen.
   const skip = (): void => {
     if (!actor.getSnapshot().matches({ speech: 'playing' })) return;
-    audio.current?.pause();
-    speechSynthesis.cancel();
+    cutSpeech();
     send({ type: 'STOP' });
     log('skipped by Mark');
   };
@@ -955,10 +972,9 @@ export function App() {
               if (!e.nativeEvent.isTrusted) return;
               // Stop over a Repeat silences it only: the agent's reply and listen are untouched.
               if (replaying.current) return skip();
-              audio.current?.pause();
+              cutSpeech();
               listen.current.after = false;
               send({ type: 'STOP' });
-              speechSynthesis.cancel();
               post({ type: 'stopped', part: listen.current.part });
             }}
           >

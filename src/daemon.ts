@@ -454,6 +454,11 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
   return result;
 }
 
+/** Words held for the next listen, then later words: one turn from the first start to the last end. */
+export function joinHeld(a: Heard, b: Heard): Heard {
+  return { ...a, text: `${a.text.trim()} ${b.text.trim()}`.trim(), endAt: b.endAt };
+}
+
 // Words for the turns machine. A turn that finishes at once settles the slot inside this call.
 function hear(h: Heard, typed: boolean): void {
   const text = `${carry} ${h.text}`.trim();
@@ -509,15 +514,20 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         const typed = m.source === 'typed';
         const h = { text: m.text, startAt: m.startAt, endAt: m.endAt };
         // A barge: his message cut the agent's speech off. The tts call returns it as the next turn.
+        // Words held from before it (said while no listen was open) lead it, so the turn is whole
+        // (Mark 2026-10-16 08:06: only the barge's last fragment came through).
         if (slot && m.interrupted && said) {
           barge = bargeLine(m.interrupted.part, m.interrupted.sentence);
-          hear(h, typed);
+          const before = held;
+          held = null;
+          hear(before ? joinHeld(before, h) : h, typed);
           return;
         }
         if (!slot || !isListen(slot.body)) {
-          // Typed with no listen open: held for the next listen, never dropped.
+          // Typed with no listen open: held for the next listen, never dropped, and added to words
+          // already held instead of replacing them (they were lost, Mark 2026-10-16).
           if (typed && said) {
-            held = h;
+            held = held ? joinHeld(held, h) : h;
             deps.log('page typed held for the next listen');
             return;
           }
@@ -527,7 +537,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
           if (!slot || said) {
             if (keepCarry) carry = `${carry} ${m.text}`.trim();
             else if (said) {
-              held = held ? { ...held, text: `${held.text} ${said}`, endAt: m.endAt } : h;
+              held = held ? joinHeld(held, h) : h;
               deps.log('page heard held for the next listen');
             }
             return;

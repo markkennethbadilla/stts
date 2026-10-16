@@ -107,6 +107,11 @@ export function bargeVerdict(final: string, spoken: readonly string[], msIntoCli
   return isEcho(final, spoken) || msIntoClip < BARGE_MIN_MS ? 'echo' : 'barge';
 }
 
+/** A barge's text: the words already heard for this turn, then the final that cut the speech off. */
+export function bargeText(held: string, final: string): string {
+  return `${held} ${final}`.trim();
+}
+
 /** Why the mic is restarting, for the "mic restart #N: reason" log line. */
 export function restartReason(event: { type: string }, c: PageContext): string {
   if (event.type === 'MIC_ERROR') return 'mic error';
@@ -320,8 +325,9 @@ export const pageMachine = setup({
                 SPEECH_START: { actions: assign({ speechAt: now, heardAt: now }) },
                 RESULT: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
                 INTERIM: { actions: assign({ resultAt: now, heardAt: now, backoff: null }) },
-                LISTEN_DONE: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
-                TYPED: { target: 'idle', actions: ['stopMic', assign({ wantListen: false })] },
+                // A listen released (timeout, superseded, background) leaves the mic on: what he says while
+                // the agent works goes to the daemon, which holds it for the next listen (Mark 2026-10-16
+                // 08:24: "as you're typing you cannot hear what I'm saying").
               },
             },
             restarting: {
@@ -496,7 +502,10 @@ export const pageMachine = setup({
             },
             TYPED: {
               actions: [
-                assign({ interrupted: null }),
+                // The mic stays on after a typed turn, like after a heard one: words he says next are held
+                // by the daemon for the next listen (Mark 2026-10-16: the mic went off at a typed send and
+                // the start of his next sentence was never heard).
+                assign({ interrupted: null, wantListen: true }),
                 { type: 'deliver', params: ({ event }) => ({ text: event.text, source: 'typed', interrupted: null }) },
               ],
             },
@@ -529,7 +538,9 @@ export const pageMachine = setup({
             TYPED: {
               target: 'idle',
               actions: [
-                assign({ interrupted: cut, wantListen: false }),
+                // The mic keeps running after a barge or typed cut: he is usually still talking (Mark
+                // 2026-10-16 08:06: the mic went off at the barge and 7 s of his speech was lost).
+                assign({ interrupted: cut, wantListen: true }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({
@@ -545,7 +556,9 @@ export const pageMachine = setup({
             BARGE: {
               target: 'idle',
               actions: [
-                assign({ interrupted: cut, wantListen: false }),
+                // The mic keeps running after a barge or typed cut: he is usually still talking (Mark
+                // 2026-10-16 08:06: the mic went off at the barge and 7 s of his speech was lost).
+                assign({ interrupted: cut, wantListen: true }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({

@@ -218,6 +218,22 @@ describe('daemon', () => {
     expect(await (await post('/request', { kind: 'stt' })).text()).toMatch(/\] sent while no one listened$/);
   });
 
+  // Regression, Mark 2026-10-16 ("I don't want to repeat myself"): held speech was replaced by a later
+  // typed message, and a barge returned only its own fragment while the start of the sentence stayed held.
+  it('regression 2026-10-16: held words are never replaced, and a barge carries them', async () => {
+    speak('what HR modules does WSOS have');
+    typed('compared to');
+    expect(await (await post('/request', { kind: 'stt' })).text()).toMatch(
+      /\] what HR modules does WSOS have compared to$/,
+    );
+    const speech = post('/request', { kind: 'tts', text: 'a long answer' });
+    await tick();
+    speak('what about payroll');
+    typed('the HR module of Frappe', { interrupted: { part: 1, sentence: 1 } });
+    speak('');
+    expect(await (await speech).text()).toContain('what about payroll the HR module of Frappe');
+  });
+
   it('a barge cuts the tts off and returns the turn with the barge note', async () => {
     const speech = post('/request', { kind: 'tts', text: 'a long answer' });
     await tick();

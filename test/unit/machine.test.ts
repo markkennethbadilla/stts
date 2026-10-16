@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
-import { bargeVerdict, isEcho, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
+import { bargeText, bargeVerdict, isEcho, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
 
 function start(talking: () => boolean = () => false) {
   const startMic = vi.fn();
@@ -306,13 +306,39 @@ describe('page machine', () => {
       source: 'heard',
       interrupted: { part: 1, sentence: 1 },
     });
-    // No listen wanted after the barge: the mic goes off.
-    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'idle' } })).toBe(true);
+    // Regression (Mark 2026-10-16 08:06): the mic stays on after a barge, with no restart, so what
+    // he says next is heard and held for the next listen instead of lost.
+    expect(actor.getSnapshot().matches({ speech: 'idle', mic: { live: 'listening' } })).toBe(true);
     expect(startMic).toHaveBeenCalledTimes(1);
-    actor.send({ type: 'ENQUEUE', clips: ['x'] });
+  });
+
+  it('regression 2026-10-16: a released listen keeps the mic on and his words still go out', () => {
+    const { actor, startMic, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
-    actor.send({ type: 'CLIP_ENDED' });
-    expect(actor.getSnapshot().matches({ mic: { live: 'idle' }, turn: 'notListening' })).toBe(true);
+    actor.send({ type: 'LISTEN_DONE' });
+    expect(actor.getSnapshot().matches({ mic: { live: 'listening' } })).toBe(true);
+    actor.send({ type: 'RESULT', text: 'said while you were typing' });
+    vi.advanceTimersByTime(5000);
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'said while you were typing', keep: false });
+    expect(startMic).toHaveBeenCalledTimes(1);
+  });
+
+  it('regression 2026-10-16: a typed turn keeps the mic on', () => {
+    const { actor, startMic } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'TYPED', text: 'hi', part: 1 });
+    expect(actor.getSnapshot().matches({ mic: { live: 'listening' } })).toBe(true);
+    expect(actor.getSnapshot().context.wantListen).toBe(true);
+    expect(startMic).toHaveBeenCalledTimes(1);
+  });
+
+  it('regression 2026-10-16: a barge carries the words heard before it', () => {
+    expect(bargeText('what HR modules does WSOS have compared to', 'the HR module of Frappe')).toBe(
+      'what HR modules does WSOS have compared to the HR module of Frappe',
+    );
+    expect(bargeText('', 'stop and check')).toBe('stop and check');
   });
 
   it('barge-in off: no mic while the agent speaks, the listen opens after it', () => {

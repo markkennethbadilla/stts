@@ -206,7 +206,8 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await say('use the other repo please');
     const text = await (await speech).text();
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] use the other repo please\n/);
+    // The short "wait" does not cut the speech off, but it is his and rides with the barge (2026-10-16).
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] wait use the other repo please\n/);
     expect(text).toContain(bargeLine(1, 1));
   } finally {
     for (const send of held.splice(0)) send();
