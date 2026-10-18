@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 const sockets: FakeSocket[] = [];
 class FakeSocket {
   static OPEN = 1;
+  static CONNECTING = 0;
   readyState = 1;
   sent: unknown[] = [];
   closed = false;
@@ -34,6 +35,7 @@ vi.stubGlobal(
   'AudioContext',
   class {
     audioWorklet = { addModule: async () => {} };
+    state = 'running';
     createMediaStreamSource() {
       return { connect() {} };
     }
@@ -88,5 +90,34 @@ describe('mute gate', () => {
     await Promise.resolve();
     second.say('after unmute');
     expect(heard).toEqual(['after unmute']);
+  });
+
+  // Mark 2026-10-18 21:28 and 21:34: "I unmuted and spoke and it never registered".
+  it('unmute opens a socket at once; speech before it is open is sent when it opens; a stall rebuilds', async () => {
+    vi.useFakeTimers();
+    const { setMuted } = await import('../../web/daemonRecognition.ts');
+    setMuted(true);
+    const before = sockets.length;
+    const stalls: string[] = [];
+    setMuted(false, undefined, (why) => stalls.push(why));
+    // The socket opens on unmute, not on the first frame.
+    expect(sockets).toHaveLength(before + 1);
+    const s = sockets.at(-1) as FakeSocket;
+    s.readyState = 0;
+    // He speaks at once, before the socket is open: the audio waits, then is sent first thing.
+    frame?.({ data: new Float32Array(4) });
+    frame?.({ data: new Float32Array(4) });
+    expect(s.sent).toHaveLength(0);
+    s.readyState = 1;
+    s.onopen?.();
+    expect(s.sent).toHaveLength(2);
+    vi.advanceTimersByTime(3000);
+    expect(stalls).toEqual([]);
+    // No mic audio after an unmute: the mic is reopened.
+    setMuted(true);
+    setMuted(false, undefined, (why) => stalls.push(why));
+    vi.advanceTimersByTime(3000);
+    expect(stalls).toHaveLength(1);
+    vi.useRealTimers();
   });
 });

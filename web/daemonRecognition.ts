@@ -26,6 +26,18 @@ let sock: WebSocket | null = null;
 // Audio captured while the socket is down is sent when it reconnects.
 const unsent: Float32Array<ArrayBuffer>[] = [];
 let muted = false;
+let ctx: AudioContext | null = null;
+// Mic frames that reached the page, for the unmute stall check below.
+let frames = 0;
+let log: (line: string) => void = () => {};
+/** Where this module's diagnostics go (the daemon log, through the page). */
+export function setAsrLog(f: (line: string) => void): void {
+  log = f;
+}
+
+// After an unmute the mic must be sending and the socket open within this long, or the pipe is
+// rebuilt (Mark 2026-10-18 21:28 and 21:34: unmuted, spoke, nothing registered until a second unmute).
+export const UNMUTE_CHECK_MS = 2500;
 
 // Longest wait for the daemon to decode the utterance cut off by a mute.
 export const FLUSH_GRACE_MS = 1500;
@@ -35,9 +47,12 @@ export const FLUSH_GRACE_MS = 1500;
  * the utterance in flight, and every final from before the mute (the backlog too) goes to `onFlushed`
  * once, within FLUSH_GRACE_MS. Then the socket closes; nothing from it reaches a later recogniser.
  */
-export function setMuted(m: boolean, onFlushed?: (finals: string[]) => void): void {
+export function setMuted(m: boolean, onFlushed?: (finals: string[]) => void, onStall?: (why: string) => void): void {
   muted = m;
-  if (!m) return;
+  if (!m) {
+    unmuted(onStall);
+    return;
+  }
   const finals = backlog.flatMap((e) => (e.type === 'final' ? [e.text] : []));
   backlog.length = 0;
   const s = sock;
@@ -65,10 +80,39 @@ export function setMuted(m: boolean, onFlushed?: (finals: string[]) => void): vo
   s.send('flush');
 }
 
+/**
+ * Unmute: a fresh socket opens now, not on the first frame, and frames wait in `unsent` until it is
+ * open; the audio context is resumed. If no frame or no open socket follows within UNMUTE_CHECK_MS,
+ * the socket is rebuilt and `onStall` reopens the mic, so speech right after an unmute is never lost.
+ */
+function unmuted(onStall?: (why: string) => void): void {
+  const at = Date.now();
+  const seen = frames;
+  if (!sock || sock.readyState > WebSocket.OPEN) connect();
+  if (ctx && ctx.state !== 'running') void ctx.resume().catch(() => {});
+  setTimeout(() => {
+    if (muted) return;
+    const open = sock?.readyState === WebSocket.OPEN;
+    const audio = frames > seen;
+    if (open && audio) return;
+    const why = `asr unmute stall after ${Date.now() - at}ms:${audio ? '' : ' no mic audio'}${open ? '' : ' socket not open'}`;
+    log(why);
+    if (!open) {
+      const old = sock;
+      sock = null;
+      old?.close();
+      connect();
+    }
+    if (!audio) onStall?.(why);
+  }, UNMUTE_CHECK_MS);
+}
+
 function connect(): void {
   const s = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/asr`);
   s.binaryType = 'arraybuffer';
+  const at = Date.now();
   s.onopen = () => {
+    log(`asr socket open in ${Date.now() - at}ms, ${unsent.length} frames waiting`);
     for (const f of unsent.splice(0)) s.send(f);
   };
   s.onmessage = (e) => {
@@ -79,6 +123,7 @@ function connect(): void {
     else backlog.push(ev);
   };
   s.onclose = () => {
+    if (sock === s) log('asr socket closed, reconnecting');
     if (sock === s) setTimeout(connect, 500);
   };
   sock = s;
@@ -89,16 +134,19 @@ export async function feed(stream: MediaStream): Promise<void> {
   if (fed === stream) return;
   fed = stream;
   if (!sock) connect();
-  const ctx = new AudioContext({ sampleRate: 16000 });
-  await ctx.audioWorklet.addModule(workletUrl);
-  const node = new AudioWorkletNode(ctx, 'pcm');
+  const c = new AudioContext({ sampleRate: 16000 });
+  ctx = c;
+  await c.audioWorklet.addModule(workletUrl);
+  const node = new AudioWorkletNode(c, 'pcm');
   node.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
     if (fed !== stream || muted) return;
-    if (!sock) connect();
+    frames++;
+    // A socket closed under us is replaced; its frames wait in `unsent` for the new one.
+    if (!sock || sock.readyState > WebSocket.OPEN) connect();
     if (sock?.readyState === WebSocket.OPEN) sock.send(e.data);
     else unsent.push(e.data);
   };
-  ctx.createMediaStreamSource(stream).connect(node);
+  c.createMediaStreamSource(stream).connect(node);
 }
 
 export class DaemonRecognition {

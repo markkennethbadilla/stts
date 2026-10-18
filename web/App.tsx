@@ -32,7 +32,7 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { DaemonRecognition, feed, setMuted } from './daemonRecognition.ts';
+import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
 import { BARGE_HOLD_MS, bargeText, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
@@ -766,7 +766,9 @@ export function App() {
     document.title = paused ? 'stts (muted)' : 'stts';
     // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
     if (!paused) {
-      setMuted(false);
+      setAsrLog(log);
+      // No mic frames after unmute: switchMic drops the stream and the restart reopens it.
+      setMuted(false, undefined, (why) => switchMic(why));
       post({ type: 'relisten' });
       return;
     }
