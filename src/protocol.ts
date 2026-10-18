@@ -21,7 +21,7 @@ export const SENTINELS = [CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPP
 
 // Tool-description notes. The text is the contract agents read; keep it word for word.
 export const ENDED_NOTE =
-  ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the ` +
+  ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation, or the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result: the ` +
   'window has already shut down, so do not speak, do not call stt or tts again, and stop. ' +
   'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.';
 

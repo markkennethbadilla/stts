@@ -239,6 +239,11 @@ export function App() {
   // muted during speech so a phone speaker's echo never comes back as his turn.
   const [barge, setBarge] = useSetting('barge', '1');
   const [theme, setTheme] = useSetting('theme', 'system');
+  // Idle end (Mark 2026-10-19: "stts should auto end on some time of silence because it's wasteful"):
+  // this many minutes with no turn from him (spoken or typed) and no background result ends the
+  // conversation like the End button. 0 is never.
+  const [idleMin, setIdleMin] = useSetting('idle_end_min', '15');
+  const activeAt = useRef(Date.now());
   useEffect(() => {
     const os = matchMedia('(prefers-color-scheme: dark)');
     const apply = () =>
@@ -268,6 +273,7 @@ export function App() {
   const clipVoice = piperVoices.includes(voice) ? voice : DEFAULT_PIPER;
 
   const post = (m: PageMessage): void => {
+    if (m.type === 'complete' && m.text.trim()) activeAt.current = Date.now();
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m));
   };
   const log = (line: string): void => post({ type: 'log', line });
@@ -666,6 +672,7 @@ export function App() {
         return;
       }
       if (m.type === 'released') {
+        if (m.reason === 'background') activeAt.current = Date.now();
         actor.send({ type: m.reason === 'background' ? 'NOTIFY' : 'LISTEN_DONE', text: '' });
         return;
       }
@@ -760,6 +767,30 @@ export function App() {
     if (turn === 'heard' && cues === 'chime') void playCue('captured');
     if (turn === 'background') void playCue('background');
   });
+
+  // Idle end: checked every 15 s; never while the agent speaks. The notice is spoken, then the page
+  // posts ended exactly as the End button does (bounded at 8 s if the voice never reports its end).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; restarts on a setting change.
+  useEffect(() => {
+    const min = Number(idleMin);
+    if (!(min > 0)) return;
+    activeAt.current = Date.now();
+    let ending = false;
+    const t = setInterval(() => {
+      if (ending || lastTurn.current === 'agentSpeaking' || Date.now() - activeAt.current < min * 60_000) return;
+      ending = true;
+      log(`idle end after ${min} min`);
+      const end = (): void => post({ type: 'ended' });
+      const bound = setTimeout(end, 8000);
+      const u = new SpeechSynthesisUtterance(`Ending voice after ${min} minutes of silence.`);
+      u.onend = () => {
+        clearTimeout(bound);
+        end();
+      };
+      speechSynthesis.speak(u);
+    }, 15_000);
+    return () => clearInterval(t);
+  }, [idleMin]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; runs on each mute change.
   useEffect(() => {
@@ -1127,6 +1158,17 @@ export function App() {
               </Row>
               <Row label="Raise on request">
                 <Switch checked={raise === '1'} onCheckedChange={(c) => setRaise(c ? '1' : '0')} />
+              </Row>
+              <Row label={Number(idleMin) > 0 ? `Idle end ${idleMin} min` : 'Idle end never'}>
+                <Slider
+                  className="w-40 max-w-full"
+                  aria-label="Idle end minutes (0 is never)"
+                  min={0}
+                  max={60}
+                  step={5}
+                  value={[Number(idleMin)]}
+                  onValueChange={(v) => setIdleMin(String(first(v)))}
+                />
               </Row>
             </PopoverContent>
           </Popover>

@@ -24,6 +24,7 @@ flowchart LR
 - The callbot imports `src/sentences.ts`. Its `turn.mjs` keeps the same `readsUnfinished` word list; a parity test checks they match.
 - Mic mute (spec 005) is stts only: muting drops every word heard or held, and only speech after unmute counts. The callbot has no mute; Mark mutes in the meeting, so it never receives his stream. Recorded in the callbot's spec 004 parity table.
 - The barge-in toggle (spec 006) is stts only: in a meeting her voice is a separate participant and never reaches his stream, so the callbot has nothing to mute. Recorded in the callbot's spec 004 parity table.
+- Idle end (spec 005) is stts only: a meeting has long quiet stretches by design, so the callbot never leaves on silence; it leaves when the meeting ends or Mark tells it to. Recorded in the callbot's spec 004 parity table.
 
 ## What it reads and writes
 
