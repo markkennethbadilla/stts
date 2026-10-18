@@ -32,7 +32,7 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { DaemonRecognition, feed } from './daemonRecognition.ts';
+import { DaemonRecognition, feed, setMuted } from './daemonRecognition.ts';
 import { BARGE_HOLD_MS, bargeText, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
@@ -765,6 +765,7 @@ export function App() {
   useEffect(() => {
     document.title = paused ? 'stts (muted)' : 'stts';
     // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
+    setMuted(paused);
     if (!paused) post({ type: 'relisten' });
     else {
       // Mute is absolute (Mark 2026-10-18: everything said before and during mute was sent at unmute):
