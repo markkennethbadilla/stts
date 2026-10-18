@@ -504,13 +504,6 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'relisten':
         if (slot && isListen(slot.body)) send();
         return;
-      // Mute is absolute (Mark 2026-10-18): nothing said before or during it reaches the next listen.
-      case 'muted':
-        if (held || carry) deps.log('page mute dropped held words');
-        held = null;
-        carry = '';
-        keepCarry = false;
-        return;
       case 'log':
         deps.log(`page ${m.line}`);
         return;
@@ -886,7 +879,10 @@ app.get(
       },
       onMessage: (e) => {
         const d = e.data;
-        if (typeof d === 'string') return;
+        if (typeof d === 'string') {
+          if (d === 'flush') engine?.flush();
+          return;
+        }
         const u8 = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array((d as Blob & Uint8Array).buffer);
         engine?.push(new Float32Array(u8.slice().buffer));
       },

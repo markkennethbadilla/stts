@@ -204,8 +204,6 @@ export type RequestBody = z.infer<typeof RequestBody>;
 export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
   z.object({ type: z.literal('relisten') }),
-  // Mark muted: words held or carried for the next listen are dropped (spec 005).
-  z.object({ type: z.literal('muted') }),
   // The light went green: the speech of a tts with listen has played and only its listen is left.
   z.object({ type: z.literal('listening') }),
   z.object({

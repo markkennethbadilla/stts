@@ -16,7 +16,12 @@ const KEEP = 22 * 16000;
 export const MODEL = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8';
 const WINDOW = 512; // Silero's window at 16 kHz
 
-export type AsrEvent = { type: 'speechstart' } | { type: 'final'; text: string } | { type: 'error'; error: string };
+export type AsrEvent =
+  | { type: 'speechstart' }
+  | { type: 'final'; text: string }
+  | { type: 'error'; error: string }
+  // Every final for the audio pushed before a flush has been sent (spec 005: mute keeps pre-mute speech).
+  | { type: 'flushed' };
 
 type Sherpa = {
   OfflineRecognizer: new (
@@ -79,7 +84,10 @@ export function preload(dataDir: string): void {
 }
 
 /** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
-export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { push(s: Float32Array): void } {
+export function createEngine(
+  dataDir: string,
+  emit: (e: AsrEvent) => void,
+): { push(s: Float32Array): void; flush(): void } {
   let vad: InstanceType<Sherpa['Vad']>;
   try {
     const s = load(dataDir);
@@ -103,7 +111,7 @@ export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { pu
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     emit({ type: 'error', error });
-    return { push: () => {} };
+    return { push: () => {}, flush: () => emit({ type: 'flushed' }) };
   }
   let pending = new Float32Array(0);
   let speaking = false;
@@ -156,6 +164,13 @@ export function createEngine(dataDir: string, emit: (e: AsrEvent) => void): { pu
       if (now && !speaking) emit({ type: 'speechstart' });
       speaking = now;
       drain();
+    },
+    // Mute: the utterance still in the VAD is cut off where the audio stopped and decoded now.
+    flush() {
+      vad.flush();
+      speaking = false;
+      drain();
+      chain = chain.then(() => emit({ type: 'flushed' }));
     },
   };
 }

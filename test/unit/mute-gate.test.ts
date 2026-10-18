@@ -52,17 +52,29 @@ vi.stubGlobal(
 URL.createObjectURL = () => 'blob:x';
 
 describe('mute gate', () => {
-  it('drops speech heard before and during mute; only speech after unmute is a turn', async () => {
+  // Mark 2026-10-18: "after I say something and mute right after, it never sends it".
+  it('sends speech from before the mute, drops speech during it; only after unmute is a turn', async () => {
     const { DaemonRecognition, feed, setMuted } = await import('../../web/daemonRecognition.ts');
     await feed({} as MediaStream);
     const first = sockets[0] as FakeSocket;
-    // No recogniser running (listen ended): this final would wait in the backlog.
+    // No recogniser running (listen ended): this final waits in the backlog.
     first.say('said before mute');
-    setMuted(true);
-    expect(first.closed).toBe(true);
-    // Late text on the old socket, and mic audio while muted, go nowhere.
-    first.say('I am speaking while muted');
+    let flushed: string[] | null = null;
+    setMuted(true, (f) => {
+      flushed = f;
+    });
+    // The daemon is asked to decode the utterance cut off by the mute; the socket stays for it.
+    expect(first.sent.at(-1)).toBe('flush');
+    expect(first.closed).toBe(false);
+    // Mic audio while muted goes nowhere.
     frame?.({ data: new Float32Array(4) });
+    expect(first.sent.at(-1)).toBe('flush');
+    first.say('and the words in flight');
+    first.onmessage?.({ data: JSON.stringify({ type: 'flushed' }) });
+    expect(flushed).toEqual(['said before mute', 'and the words in flight']);
+    expect(first.closed).toBe(true);
+    // Late text on the old socket goes nowhere.
+    first.say('I am speaking while muted');
     expect(sockets).toHaveLength(1);
     setMuted(false);
     frame?.({ data: new Float32Array(4) });

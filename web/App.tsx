@@ -765,17 +765,27 @@ export function App() {
   useEffect(() => {
     document.title = paused ? 'stts (muted)' : 'stts';
     // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
-    setMuted(paused);
-    if (!paused) post({ type: 'relisten' });
-    else {
-      // Mute is absolute (Mark 2026-10-18: everything said before and during mute was sent at unmute):
-      // the words heard so far are dropped here and in the daemon; only speech after unmute counts.
-      heard.current.final = '';
-      heard.current.startAt = 0;
-      liveWords.current = '';
-      setInterim('');
-      post({ type: 'muted' });
+    if (!paused) {
+      setMuted(false);
+      post({ type: 'relisten' });
+      return;
     }
+    // Mute (spec 005, Mark 2026-10-18): what he said before the mute, finals and the words in flight,
+    // is his turn (or held by the daemon for the next listen); only audio while muted is dropped.
+    const before = `${heard.current.final} ${liveWords.current}`.trim();
+    const startAt = heard.current.startAt || Date.now();
+    heard.current.final = '';
+    heard.current.startAt = 0;
+    liveWords.current = '';
+    setInterim('');
+    setMuted(true, (flushed) => {
+      const text = [before, ...flushed].join(' ').trim();
+      if (!text) return;
+      log(`mute sent the words before it, ${text.split(/\s+/).length} words`);
+      ls.push('history_prompts', text);
+      setSaid(text);
+      post({ type: 'complete', text, startAt, endAt: Date.now() });
+    });
   }, [paused]);
 
   useEffect(() => {

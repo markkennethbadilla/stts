@@ -3,16 +3,20 @@
 // the shape of Chrome's SpeechRecognition, so the page machine is unchanged. The audio pipe lives
 // for the page, not for one recogniser: a restart never stops the audio, and text that lands
 // while no recogniser is started waits for the next one. Nothing he says is dropped, except while
-// muted: mute is absolute (spec 005, Mark 2026-10-18). Muted audio never leaves the page, and the
-// socket (with the daemon's half-heard utterance), the backlog and unsent audio are thrown away at
-// mute. Before this, muted speech reached the daemon, its final waited in the backlog, and the
-// recogniser started at unmute replayed it as his turn (2026-10-18 19:30:59).
+// muted (spec 005, Mark 2026-10-18): muted audio never leaves the page. At mute the daemon flushes
+// the audio already sent, and those finals go back as his words from before the mute; the socket
+// then closes. Before this, muted speech reached the daemon and replayed at unmute (19:30:59), and
+// then speech just before a mute was thrown away with it.
 
 import workletSrc from './pcm-worklet.js?raw';
 
 const workletUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'text/javascript' }));
 
-type AsrEvent = { type: 'speechstart' } | { type: 'final'; text: string } | { type: 'error'; error: string };
+type AsrEvent =
+  | { type: 'speechstart' }
+  | { type: 'final'; text: string }
+  | { type: 'error'; error: string }
+  | { type: 'flushed' };
 type Result = ArrayLike<{ transcript: string }> & { isFinal: boolean };
 
 let active: DaemonRecognition | null = null;
@@ -23,15 +27,42 @@ let sock: WebSocket | null = null;
 const unsent: Float32Array<ArrayBuffer>[] = [];
 let muted = false;
 
-/** Mute gate: muted, no audio leaves the page and no text from before or during mute survives. */
-export function setMuted(m: boolean): void {
+// Longest wait for the daemon to decode the utterance cut off by a mute.
+export const FLUSH_GRACE_MS = 1500;
+
+/**
+ * Mute gate. Muted, no audio leaves the page. The audio already sent is flushed: the daemon decodes
+ * the utterance in flight, and every final from before the mute (the backlog too) goes to `onFlushed`
+ * once, within FLUSH_GRACE_MS. Then the socket closes; nothing from it reaches a later recogniser.
+ */
+export function setMuted(m: boolean, onFlushed?: (finals: string[]) => void): void {
   muted = m;
   if (!m) return;
+  const finals = backlog.flatMap((e) => (e.type === 'final' ? [e.text] : []));
   backlog.length = 0;
-  unsent.length = 0;
   const s = sock;
   sock = null;
-  s?.close();
+  let done = false;
+  const finish = (): void => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    s?.close();
+    onFlushed?.(finals);
+  };
+  const timer = setTimeout(finish, FLUSH_GRACE_MS);
+  if (s?.readyState !== WebSocket.OPEN) {
+    unsent.length = 0;
+    finish();
+    return;
+  }
+  for (const f of unsent.splice(0)) s.send(f);
+  s.onmessage = (e) => {
+    const ev = JSON.parse(String(e.data)) as AsrEvent;
+    if (ev.type === 'final') finals.push(ev.text);
+    else if (ev.type === 'flushed') finish();
+  };
+  s.send('flush');
 }
 
 function connect(): void {
@@ -102,7 +133,7 @@ export class DaemonRecognition {
   handle(e: AsrEvent): void {
     if (e.type === 'speechstart') this.onspeechstart?.();
     else if (e.type === 'error') this.onerror?.({ error: e.error });
-    else {
+    else if (e.type === 'final') {
       this.results.push(Object.assign([{ transcript: e.text }], { isFinal: true }));
       this.onresult?.({ resultIndex: this.results.length - 1, results: this.results });
       this.onspeechend?.();
