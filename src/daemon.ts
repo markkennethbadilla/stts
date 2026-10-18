@@ -504,6 +504,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'relisten':
         if (slot && isListen(slot.body)) send();
         return;
+      // Mute is absolute (Mark 2026-10-18): nothing said before or during it reaches the next listen.
+      case 'muted':
+        if (held || carry) deps.log('page mute dropped held words');
+        held = null;
+        carry = '';
+        keepCarry = false;
+        return;
       case 'log':
         deps.log(`page ${m.line}`);
         return;

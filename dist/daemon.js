@@ -16912,6 +16912,7 @@ const RequestBody = object({
 const PageMessage = discriminatedUnion("type", [
 	object({ type: literal("ready") }),
 	object({ type: literal("relisten") }),
+	object({ type: literal("muted") }),
 	object({ type: literal("listening") }),
 	object({
 		type: literal("complete"),
@@ -17522,6 +17523,12 @@ function attachPage(sendToPage) {
 				return;
 			case "relisten":
 				if (slot && isListen(slot.body)) send();
+				return;
+			case "muted":
+				if (held || carry) deps.log("page mute dropped held words");
+				held = null;
+				carry = "";
+				keepCarry = false;
 				return;
 			case "log":
 				deps.log(`page ${m.line}`);

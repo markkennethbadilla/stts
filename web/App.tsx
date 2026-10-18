@@ -766,6 +766,15 @@ export function App() {
     document.title = paused ? 'stts (muted)' : 'stts';
     // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
     if (!paused) post({ type: 'relisten' });
+    else {
+      // Mute is absolute (Mark 2026-10-18: everything said before and during mute was sent at unmute):
+      // the words heard so far are dropped here and in the daemon; only speech after unmute counts.
+      heard.current.final = '';
+      heard.current.startAt = 0;
+      liveWords.current = '';
+      setInterim('');
+      post({ type: 'muted' });
+    }
   }, [paused]);
 
   useEffect(() => {

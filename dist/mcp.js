@@ -21636,6 +21636,7 @@ const RequestBody = object({
 discriminatedUnion("type", [
 	object({ type: literal("ready") }),
 	object({ type: literal("relisten") }),
+	object({ type: literal("muted") }),
 	object({ type: literal("listening") }),
 	object({
 		type: literal("complete"),

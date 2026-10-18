@@ -117,6 +117,19 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/said after a stop$/);
   });
 
+  // Regression, Mark 2026-10-18: "when I mute you and I unmute, everything I said ... gets sent".
+  it('mute drops words held for the next listen; only speech after unmute counts', async () => {
+    speak('said before the mute');
+    page.onMessage(JSON.stringify({ type: 'muted' }));
+    expect(logs).toContain('page mute dropped held words');
+    const r = post('/request', { kind: 'stt' });
+    await tick();
+    speak('said after unmute');
+    const text = await (await r).text();
+    expect(text).toMatch(/said after unmute$/);
+    expect(text).not.toMatch(/before the mute/);
+  });
+
   it('speech while a speak-only tts is open is held, not lost', async () => {
     const t = post('/request', { kind: 'tts', text: 'working on it' });
     await tick();
