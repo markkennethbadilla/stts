@@ -780,7 +780,7 @@ export function App() {
       if (ending || lastTurn.current === 'agentSpeaking' || Date.now() - activeAt.current < min * 60_000) return;
       ending = true;
       log(`idle end after ${min} min`);
-      const end = (): void => post({ type: 'ended' });
+      const end = (): void => post({ type: 'ended', idle: true });
       const bound = setTimeout(end, 8000);
       const u = new SpeechSynthesisUtterance(`Ending voice after ${min} minutes of silence.`);
       u.onend = () => {

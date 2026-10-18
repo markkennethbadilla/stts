@@ -16859,14 +16859,16 @@ const NO_SPEECH = "__STTS_NO_SPEECH__";
 const LISTEN_CONTINUES = "__STTS_LISTEN_CONTINUES__";
 const STOPPED = "__STTS_STOPPED__";
 const BACKGROUND_RESULT = "__STTS_BACKGROUND_RESULT__";
+const IDLE_ENDED = "__STTS_IDLE_ENDED__";
 const SENTINELS = [
 	CONVERSATION_ENDED,
+	IDLE_ENDED,
 	NO_SPEECH,
 	LISTEN_CONTINUES,
 	STOPPED,
 	BACKGROUND_RESULT
 ];
-const ENDED_NOTE = ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation, or the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result: the window has already shut down, so do not speak, do not call stt or tts again, and stop. The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.`;
+const ENDED_NOTE = ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the window has already shut down, so do not speak, do not call stt or tts again, and stop. The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it. If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result, usually because you were busy: voice is dormant, not ended. Say nothing now and do not call stt. When a background result lands or you finish your work, call tts (listen=true) with the update: that reopens the window and the loop continues.`;
 const NO_SPEECH_NOTE = ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window is still open and listening. If a background result has finished, relay it with tts (listen=true); otherwise call stt again without speaking. It never means the conversation ended. If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). Anything he was saying is kept for that listen.`;
 const CONTINUES_NOTE = ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually because he is still talking. Nothing he said is lost: call stt again at once, without speaking, and it returns everything he said.`;
 const NO_SLEEP_NOTE = ` Never sleep or block on another tool to wait for him: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment he stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.`;
@@ -16937,7 +16939,10 @@ const PageMessage = discriminatedUnion("type", [
 	}),
 	object({ type: literal("cancel") }),
 	object({ type: literal("close") }),
-	object({ type: literal("ended") }),
+	object({
+		type: literal("ended"),
+		idle: boolean().optional()
+	}),
 	object({ type: literal("nospeech") }),
 	object({
 		type: literal("stopped"),
@@ -17590,6 +17595,11 @@ function attachPage(sendToPage) {
 				settle(200, NO_SPEECH);
 				return;
 			case "ended":
+				if (m.idle) {
+					if (slot) settle(200, IDLE_ENDED);
+					sendToPage({ type: "close" });
+					return;
+				}
 				setEnded(true);
 				if (slot && takeEnded()) settle(200, CONVERSATION_ENDED);
 				sendToPage({ type: "close" });

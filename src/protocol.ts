@@ -17,13 +17,24 @@ export const NO_SPEECH = '__STTS_NO_SPEECH__';
 export const LISTEN_CONTINUES = '__STTS_LISTEN_CONTINUES__';
 export const STOPPED = '__STTS_STOPPED__';
 export const BACKGROUND_RESULT = '__STTS_BACKGROUND_RESULT__';
-export const SENTINELS = [CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT] as const;
+export const IDLE_ENDED = '__STTS_IDLE_ENDED__';
+export const SENTINELS = [
+  CONVERSATION_ENDED,
+  IDLE_ENDED,
+  NO_SPEECH,
+  LISTEN_CONTINUES,
+  STOPPED,
+  BACKGROUND_RESULT,
+] as const;
 
 // Tool-description notes. The text is the contract agents read; keep it word for word.
 export const ENDED_NOTE =
-  ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation, or the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result: the ` +
+  ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the ` +
   'window has already shut down, so do not speak, do not call stt or tts again, and stop. ' +
-  'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.';
+  'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.' +
+  ` If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result, usually because you were busy: ` +
+  'voice is dormant, not ended. Say nothing now and do not call stt. When a background result lands or you finish your work, ' +
+  'call tts (listen=true) with the update: that reopens the window and the loop continues.';
 
 export const NO_SPEECH_NOTE =
   ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window ` +
@@ -218,7 +229,7 @@ export const PageMessage = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('cancel') }),
   z.object({ type: z.literal('close') }),
-  z.object({ type: z.literal('ended') }),
+  z.object({ type: z.literal('ended'), idle: z.boolean().optional() }),
   z.object({ type: z.literal('nospeech') }),
   z.object({ type: z.literal('stopped'), part: z.number().int().min(1) }),
   z.object({ type: z.literal('log'), line: z.string() }),

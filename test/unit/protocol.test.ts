@@ -4,9 +4,11 @@ import fixture from '../fixtures/old-contract.json' with { type: 'json' };
 
 describe('contract matches the old repo', () => {
   it('sentinels', () => {
-    const { CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT } = p;
-    expect({ CONVERSATION_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT }).toEqual(fixture.sentinels);
-    expect(p.SENTINELS).toHaveLength(5);
+    const { CONVERSATION_ENDED, IDLE_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT } = p;
+    expect({ CONVERSATION_ENDED, IDLE_ENDED, NO_SPEECH, LISTEN_CONTINUES, STOPPED, BACKGROUND_RESULT }).toEqual(
+      fixture.sentinels,
+    );
+    expect(p.SENTINELS).toHaveLength(6);
   });
   it('notes word for word', () => {
     const { ENDED_NOTE, NO_SPEECH_NOTE, CONTINUES_NOTE, NO_SLEEP_NOTE, TURN_NOTE } = p;

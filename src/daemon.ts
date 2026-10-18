@@ -35,6 +35,7 @@ import {
   CONVERSATION_ENDED,
   type DaemonMessage,
   DEFAULT_PORT,
+  IDLE_ENDED,
   LISTEN_CONTINUES,
   NO_SPEECH,
   PageMessage,
@@ -570,6 +571,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'ended':
+        // Idle end (the page's silence timer, Mark 2026-10-19): voice goes dormant, never ended.
+        // The open call gets IDLE_ENDED; nothing is remembered, so the agent's next tts reopens.
+        if (m.idle) {
+          if (slot) settle(200, IDLE_ENDED);
+          sendToPage({ type: 'close' });
+          return;
+        }
         // Written first so a press with no call open (mid-speech, between calls) is never lost;
         // an open call takes it at once. No exit: the newest daemon keeps the port (note above app).
         // Then the window shuts (Mark 2026-10-10: pressing End left it open).

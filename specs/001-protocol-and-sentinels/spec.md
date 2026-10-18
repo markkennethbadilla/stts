@@ -39,7 +39,8 @@ Sentinels are replies that are exactly one special word and mean a signal, not s
 
 | Sentinel | Meaning |
 | --- | --- |
-| `__STTS_CONVERSATION_ENDED__` | He pressed End conversation, or the page idle-ended (spec 005); stop. Returned once per press, never for a closed window |
+| `__STTS_CONVERSATION_ENDED__` | He pressed End conversation; stop. Returned once per press, never for a closed window |
+| `__STTS_IDLE_ENDED__` | The page idle-ended (spec 005): voice is dormant, not ended. Say nothing, no stt; the next background result or finished task is spoken with tts `listen=true`, which reopens the window. Returned only to a call open at that moment; nothing is remembered |
 | `__STTS_NO_SPEECH__` | Nothing said within `idleSec`; listen again |
 | `__STTS_LISTEN_CONTINUES__` | The listen hit the time budget; call stt again, nothing is lost |
 | `__STTS_STOPPED__` | He pressed Stop during speech (followed by the part number) |

@@ -20,6 +20,7 @@ import {
   bargeLine,
   CONVERSATION_ENDED,
   type DaemonMessage,
+  IDLE_ENDED,
   LISTEN_CONTINUES,
   SUPERSEDED,
   TURN_PREFIX,
@@ -293,6 +294,20 @@ describe('daemon', () => {
     await tick();
     speak('still here');
     expect(await (await next).text()).toMatch(/still here$/);
+  });
+
+  it('an idle end answers IDLE_ENDED and is never remembered: the next tts reopens', async () => {
+    const r = post('/request', { kind: 'stt' });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'ended', idle: true }));
+    expect(await (await r).text()).toBe(IDLE_ENDED);
+    expect(sent.at(-1)).toEqual({ type: 'close' });
+    page.onMessage(JSON.stringify({ type: 'ended', idle: true })); // no call open: nothing kept
+    const next = post('/request', { kind: 'stt' });
+    await tick();
+    expect(sent.at(-1)).toMatchObject({ type: 'request' });
+    speak('resumed');
+    expect(await (await next).text()).toMatch(/resumed$/);
   });
 
   it('an End pressed mid-speech ends that tts', async () => {

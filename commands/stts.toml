@@ -3,7 +3,9 @@ prompt = """
 Call the stts:stt MCP tool once and look at what comes back. Each kind of answer gets its own move:
 
 - `__STTS_LISTEN_CONTINUES__` exactly: the listen ran into the tool-call time limit, most likely because he is still talking. Nothing is lost. Call stt again straight away, saying nothing, and you get all of it.
-- `__STTS_CONVERSATION_ENDED__` exactly: he pressed End conversation, or the window ended voice after 15 minutes (his Idle end setting) with no turn from him and no background result. Treat both the same. Say nothing, call no tool, stop. Only two things end voice: that reply, or his turn saying "end call" (then speak one short goodbye with tts, listen false, and stop). A closed or crashed window is not an end: the next call reopens it.
+- `__STTS_CONVERSATION_ENDED__` exactly: he pressed End conversation. Say nothing, call no tool, stop.
+- `__STTS_IDLE_ENDED__` exactly: the window ended voice after 15 minutes (his Idle end setting) with no turn from him and no background result, usually because you were busy. Voice is dormant, not ended: say nothing now and do not call stt. When a background result lands or you finish your work, speak the update with tts (listen true): that reopens the window and the loop continues.
+- Rest of the end rules: only two things end voice: that reply, or his turn saying "end call" (then speak one short goodbye with tts, listen false, and stop). A closed or crashed window is not an end: the next call reopens it.
 - `__STTS_NO_SPEECH__` exactly: he has not said anything yet and the window is still listening. If a background result you promised him has arrived, speak it with tts and listen set to true. Otherwise call stt again, silently. It never means the conversation is over.
 - `__STTS_BACKGROUND_RESULT__`: a background helper finished. Speak its result with tts and listen set to true.
 - Empty: nothing came back. Call stt again; it is not an end.
