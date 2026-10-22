@@ -16,7 +16,7 @@ test('hook exits 0 fast with the daemon down', async () => {
   const t = Date.now();
   const r = spawnSync('node', ['hooks/notify-listen.mjs'], { env: { ...process.env, STTS_PORT: String(port) } });
   expect(r.status).toBe(0);
-  expect(Date.now() - t).toBeLessThan(4000);
+  expect(Date.now() - t).toBeLessThan(8000); // the hook gives up at 2 s; node alone can take 3 s to start on a busy Windows PC
 });
 
 // Payload shapes as Claude Code sends them (fields seen in session cec2b5e7, 2026-10-09).

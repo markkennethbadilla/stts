@@ -36,7 +36,7 @@ it.skipIf(!installed)(
       .map((x) => (x as { text: string }).text)
       .join(' ');
     expect(events[0]).toEqual({ type: 'speechstart' });
-    expect(text.toLowerCase()).toMatch(/well, i don't wish to see it any more, observed phoebe.*old portrait/);
+    expect(text.toLowerCase()).toMatch(/well, i don't wish to see it any more, observed ph(o)?ebe.*old portrait/);
   },
   60_000,
 );

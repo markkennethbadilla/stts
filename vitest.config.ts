@@ -9,6 +9,8 @@ export default defineConfig({
   test: {
     include: ['test/unit/**/*.test.ts'],
     setupFiles: ['test/unit/setup.ts'],
+    // Node takes about 1.5 s to start on Mark's PC, so spawn-heavy tests need more than 5 s.
+    testTimeout: 30_000,
     env: { LOCALAPPDATA: data, HOME: data },
   },
 });

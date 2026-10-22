@@ -1,0 +1,29 @@
+# Local push gate (replaces GitHub Actions, spec 011). Trunk's stock hook
+# actions only warn without a terminal, so these custom ones run with --ci and
+# exit non-zero (skill gate-commits-with-trunk).
+version: 0.1
+cli:
+  version: 1.25.0
+plugins:
+  sources:
+    - id: trunk
+      ref: v1.11.0
+      uri: https://github.com/trunk-io/plugins
+lint:
+  enabled:
+    - gitleaks@8.30.1
+    - git-diff-check
+  ignore:
+    - linters: [ALL]
+      paths: [node_modules/**, dist/**, test-results/**, playwright-report/**]
+actions:
+  definitions:
+    - id: block-commit-on-findings
+      run: trunk check --ci --no-fix -t git-commit --index-file '${env.GIT_INDEX_FILE}' --upstream=HEAD
+      triggers: [{git_hooks: [pre-commit]}]
+      notify_on_error: false
+    - id: block-push-on-findings
+      run: npm run gate
+      triggers: [{git_hooks: [pre-push]}]
+      notify_on_error: false
+  enabled: [block-commit-on-findings, block-push-on-findings]

@@ -24,3 +24,9 @@ dist-ssr
 
 test-results
 playwright-report
+.trunk/out
+.trunk/actions
+.trunk/logs
+.trunk/notifications
+.trunk/plugins
+.trunk/tools
