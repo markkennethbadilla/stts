@@ -449,7 +449,7 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
   if (held && isListen(body)) {
     const h = held;
     held = null;
-    hear(h, true);
+    hear(h, h.typed === true);
   }
   if (slot?.id === id) send();
   return result;
@@ -457,7 +457,12 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
 
 /** Words held for the next listen, then later words: one turn from the first start to the last end. */
 export function joinHeld(a: Heard, b: Heard): Heard {
-  return { ...a, text: `${a.text.trim()} ${b.text.trim()}`.trim(), endAt: b.endAt };
+  return {
+    ...a,
+    text: `${a.text.trim()} ${b.text.trim()}`.trim(),
+    endAt: b.endAt,
+    typed: a.typed === true && b.typed === true,
+  };
 }
 
 // Words for the turns machine. A turn that finishes at once settles the slot inside this call.
@@ -513,7 +518,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'complete': {
         const said = m.text.trim();
         const typed = m.source === 'typed';
-        const h = { text: m.text, startAt: m.startAt, endAt: m.endAt };
+        const h: Heard = { text: m.text, startAt: m.startAt, endAt: m.endAt, typed };
         // A barge: his message cut the agent's speech off. The tts call returns it as the next turn.
         // Words held from before it (said while no listen was open) lead it, so the turn is whole
         // (Mark 2026-10-16 08:06: only the barge's last fragment came through).

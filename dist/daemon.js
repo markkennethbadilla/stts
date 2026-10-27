@@ -17484,7 +17484,7 @@ function occupy(id, body, ms) {
 	if (held && isListen(body)) {
 		const h = held;
 		held = null;
-		hear(h, true);
+		hear(h, h.typed === true);
 	}
 	if (slot?.id === id) send();
 	return result;
@@ -17494,7 +17494,8 @@ function joinHeld(a, b) {
 	return {
 		...a,
 		text: `${a.text.trim()} ${b.text.trim()}`.trim(),
-		endAt: b.endAt
+		endAt: b.endAt,
+		typed: a.typed === true && b.typed === true
 	};
 }
 function hear(h, typed) {
@@ -17549,7 +17550,8 @@ function attachPage(sendToPage) {
 				const h = {
 					text: m.text,
 					startAt: m.startAt,
-					endAt: m.endAt
+					endAt: m.endAt,
+					typed
 				};
 				if (slot && m.interrupted && said) {
 					barge = bargeLine(m.interrupted.part, m.interrupted.sentence);

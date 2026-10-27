@@ -11,7 +11,7 @@ export const CLIPS_AHEAD = 3;
  * session end (real Chrome test, 2026-10-06). Interim words unchanged for hold + this are a turn.
  */
 export const INTERIM_EXTRA_MS = 500;
-export const MAX_TALK_HOLD_MS = 30_000;
+export const MAX_TALK_HOLD_MS = 6_000;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
 export const LANG_ERR = 'language-not-supported';
@@ -467,7 +467,10 @@ export const pageMachine = setup({
             // No SPEECH_START here: a new session starting after an error would drop a turn whose words
             // were already heard. New words restart the hold through INTERIM and RESULT instead.
             // New words restart the hold: a turn is words that stopped changing.
+            // Only changed words restart it: a recogniser repeating the same interim over steady noise
+            // (a virtual mic such as SteelSeries Sonar) held the turn until a mute (Mark 2026-10-27).
             INTERIM: {
+              guard: ({ event, context }) => event.text !== context.transcript,
               target: 'armed',
               reenter: true,
               actions: assign({ transcript: ({ event }) => event.text, interimHold: true, armedAt: now }),
@@ -477,6 +480,7 @@ export const pageMachine = setup({
             ENQUEUE: 'off',
             // Another final: the hold restarts on the longer transcript.
             RESULT: {
+              guard: ({ event, context }) => event.text !== context.transcript,
               target: 'armed',
               reenter: true,
               actions: assign({ transcript: ({ event }) => event.text, interimHold: false, armedAt: now }),

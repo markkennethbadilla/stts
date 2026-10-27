@@ -165,24 +165,36 @@ describe('page machine', () => {
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend', keep: false });
   });
 
-  it('never ends a turn while his voice is on the mic, for up to 30 s; then it sends', () => {
+  it('never ends a turn while his voice is on the mic, for up to 6 s; then it sends', () => {
     let talking = true;
     const { actor, sendTurn } = start(() => talking);
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'RESULT', text: 'I keep talking with no pause at all' });
-    vi.advanceTimersByTime(20_000); // the recogniser went quiet, the mic did not
+    vi.advanceTimersByTime(4_000); // the recogniser went quiet, the mic did not
     expect(sendTurn).not.toHaveBeenCalled();
     talking = false;
     vi.advanceTimersByTime(900);
     expect(sendTurn).toHaveBeenCalledTimes(1);
-    // A mic that never goes quiet (a loud room) still sends after 30 s.
+    // A mic that never goes quiet (a loud room) still sends after 6 s.
     talking = true;
     const b = start(() => talking);
     b.actor.send({ type: 'REQUEST', kind: 'listen' });
     b.actor.send({ type: 'RESULT', text: 'noise' });
-    vi.advanceTimersByTime(31_000);
+    vi.advanceTimersByTime(7_000);
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a repeated identical interim over steady noise never holds the turn past the cap', () => {
+    const { actor, sendTurn } = start(() => true);
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'INTERIM', text: 'whatever I am sure' });
+    for (let i = 0; i < 80; i++) {
+      vi.advanceTimersByTime(100);
+      actor.send({ type: 'INTERIM', text: 'whatever I am sure' });
+    }
+    expect(sendTurn).toHaveBeenCalledTimes(1);
   });
 
   it('autosend on speechend: 0.8 s, or 1.2 s when unfinished', () => {

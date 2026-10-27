@@ -118,6 +118,13 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/said after a stop$/);
   });
 
+  it('held speech comes back labelled heard, not typed', async () => {
+    speak('mm');
+    const r = post('/request', { kind: 'stt' });
+    expect(await (await r).text()).toMatch(/^\[turn \d+, heard /);
+    expect(logs).not.toContain('page typed turn 1');
+  });
+
   it('/held hands held speech to the steer hook once, then has none', async () => {
     expect(await (await post('/held')).json()).toEqual({ text: '' });
     speak('stop that');

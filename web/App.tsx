@@ -143,8 +143,10 @@ export function App() {
       for (const v of buf) sum += v * v;
       const rms = Math.sqrt(sum / buf.length);
       // ponytail: a slow-moving noise floor and 3x above it as voice; tune VOICE_X if a loud room holds turns.
-      // The floor follows the quiet: it drops to quieter readings fast and creeps up slowly.
-      floor = rms < floor ? floor * 0.8 + rms * 0.2 : Math.min(0.05, floor * 1.003);
+      // The floor follows the quiet: it drops to quieter readings fast and rises about 20 percent a second,
+      // uncapped, so steady noise (a fan, a virtual mic's processing) is learnt in seconds instead of
+      // reading as his voice forever (it was capped at 0.05, Mark 2026-10-27).
+      floor = rms < floor ? floor * 0.8 + rms * 0.2 : floor * 1.02;
       if (rms > Math.max(VOICE_MIN, floor * VOICE_X)) voiceAt.current = Date.now();
     }, 100);
     levelStop.current = () => {
