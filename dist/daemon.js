@@ -17654,6 +17654,13 @@ app.get("/barge", (c) => c.json({
 	text: "",
 	open: page !== null
 }));
+app.post("/held", (c) => {
+	if (!held) return c.json({ text: "" });
+	const text = held.text.trim();
+	held = null;
+	deps.log(`page heard taken by the steer hook: ${text}`);
+	return c.json({ text });
+});
 const watched = /* @__PURE__ */ new Set();
 function backgroundResult() {
 	release("background");

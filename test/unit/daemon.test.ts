@@ -118,6 +118,14 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/said after a stop$/);
   });
 
+  it('/held hands held speech to the steer hook once, then has none', async () => {
+    expect(await (await post('/held')).json()).toEqual({ text: '' });
+    speak('stop that');
+    speak('and fix the tests');
+    expect(await (await post('/held')).json()).toEqual({ text: 'stop that and fix the tests' });
+    expect(await (await post('/held')).json()).toEqual({ text: '' });
+  });
+
   it('speech while a speak-only tts is open is held, not lost', async () => {
     const t = post('/request', { kind: 'tts', text: 'working on it' });
     await tick();

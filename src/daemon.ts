@@ -649,6 +649,17 @@ app.post('/api/shutdown', (c) => {
 
 app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 
+// POST /held hands the words held while no listen was open to the busy agent's PostToolUse hook
+// (mkb-agentops spec 086), so his speech steers it on its next step instead of waiting for the next
+// listen (Mark 2026-10-27). Taking them clears them; the hook delivers them as context.
+app.post('/held', (c) => {
+  if (!held) return c.json({ text: '' });
+  const text = held.text.trim();
+  held = null;
+  deps.log(`page heard taken by the steer hook: ${text}`);
+  return c.json({ text });
+});
+
 // POST /notify releases an open listen now (SubagentStop hook). ?watch=<session>/workflows/wf_*.json
 // (PostToolUse hook on Workflow) releases it when that run's state file turns completed or failed: Claude
 // Code fires no hook when a workflow ends, and writes that file just before the task-notification (spec 007).
