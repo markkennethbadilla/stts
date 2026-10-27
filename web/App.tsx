@@ -20,7 +20,7 @@ import {
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
-import { toClips } from '../src/sentences.ts';
+import { CLIP_CHARS, toClips } from '../src/sentences.ts';
 import { Button } from './components/ui/button.tsx';
 import { LiveWaveform } from './components/ui/live-waveform.tsx';
 import { type AgentState, Orb } from './components/ui/orb.tsx';
@@ -60,7 +60,6 @@ const CHIME: Record<Cue, string> = {
 };
 const WORD: Partial<Record<Cue, string>> = { listen: 'Speak.', captured: 'Stop.' };
 const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
-const CLIP_CHARS = 120;
 const ECHO_TAIL_MS = 3000;
 const VOICE_MIN = 0.015;
 const VOICE_X = 3;
@@ -154,6 +153,8 @@ export function App() {
       void ctx.close();
     };
   }
+  // Any audio of the current tts has played: a barge before it means the reply was never heard.
+  const audioStarted = useRef(true);
   // The browser's own voice is speaking (Piper failed).
   const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
@@ -345,7 +346,7 @@ export function App() {
             startAt: now,
             endAt: now,
             source,
-            ...(interrupted ? { interrupted } : {}),
+            ...(interrupted ? { interrupted: { ...interrupted, started: audioStarted.current } } : {}),
           });
         },
         stopAudio: () => cutSpeech(),
@@ -368,6 +369,7 @@ export function App() {
           if (v) u.voice = v;
           u.rate = Number(rate);
           fallbackVoice.current = true;
+          audioStarted.current = true;
           u.onend = () => {
             fallbackVoice.current = false;
             send({ type: 'CLIP_ENDED' });
@@ -424,6 +426,9 @@ export function App() {
       a.onplaying = () =>
         log(`first audio ${Math.round(performance.now() - at)}ms after the tts, clip of ${clip.length} chars`);
     }
+    a.addEventListener('playing', () => {
+      audioStarted.current = true;
+    });
     a.onended = () => {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
       send({ type: 'CLIP_ENDED' });
@@ -710,6 +715,7 @@ export function App() {
       setInterim('');
       listen.current.after = b.listen === true;
       ttsAt.current = performance.now();
+      audioStarted.current = false;
       listen.current.idleSec = b.idleSec ?? 200;
       actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
     };

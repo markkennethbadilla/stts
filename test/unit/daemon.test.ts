@@ -261,6 +261,26 @@ describe('daemon', () => {
     expect(text).toContain('wait, also check the logs');
   });
 
+  it('a barge returns the unspoken rest word for word, from the cut sentence on', async () => {
+    const speech = post('/request', { kind: 'tts', text: 'First one here. Second one here. Third one here.' });
+    await tick();
+    typed('hold on', { interrupted: { part: 1, sentence: 2, started: true } });
+    speak('');
+    const text = await (await speech).text();
+    expect(text).toContain('at part 1 sentence 2');
+    expect(text).toMatch(/\nunspoken: Second one here\. Third one here\.$/);
+  });
+
+  it('a barge before any audio played flags the reply as not spoken and returns it whole', async () => {
+    const speech = post('/request', { kind: 'tts', text: 'Done. The fix is pushed.' });
+    await tick();
+    typed('also check the logs', { interrupted: { part: 1, sentence: 1, started: false } });
+    speak('');
+    const text = await (await speech).text();
+    expect(text).toContain('before your reply was spoken at all');
+    expect(text).toMatch(/\nunspoken: Done\. The fix is pushed\.$/);
+  });
+
   it('/barge has the old shape', async () => {
     expect(await (await app.request('/barge')).json()).toEqual({ text: '', open: true });
     page.detach();

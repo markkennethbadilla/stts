@@ -66,11 +66,24 @@ export const TURN_NOTE =
 
 export const BARGE_NOTE =
   ' If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, ' +
-  'followed by a line saying where it cut you off. Treat that message as an addition or a steer: answer it, then continue the ' +
-  'task you were cut off from, unless it explicitly says stop, abort, halt or never mind.';
+  'followed by a line saying where it cut you off and, after "unspoken:", the words of yours he never heard, word for word. ' +
+  'Treat that message as an addition or a steer: answer it, then briefly repeat those unspoken words (shortened, in your own ' +
+  'words) in the same tts, so he does not miss them; if the line says your reply was not spoken at all, speak that reply ' +
+  'folded together with your answer. Skip the repeat when he said stop, abort, halt or never mind. Then continue the task ' +
+  'you were cut off from, unless it explicitly says stop, abort, halt or never mind.';
 
-export const bargeLine = (part: number, sentence: number): string =>
-  `(interrupted your speech at part ${part} sentence ${sentence}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind)`;
+export const bargeLine = (part: number, sentence: number, unspoken = '', started = true): string => {
+  const where = started
+    ? `interrupted your speech at part ${part} sentence ${sentence}`
+    : `interrupted before your reply was spoken at all (part ${part})`;
+  const rest = unspoken.trim();
+  const repeat = rest
+    ? started
+      ? '; after answering, briefly repeat the unspoken words below unless he said stop or never mind'
+      : '; speak that reply folded together with your answer unless he said stop or never mind'
+    : '';
+  return `(${where}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind${repeat})${rest ? `\nunspoken: ${rest}` : ''}`;
+};
 
 export const NOTES = BARGE_NOTE + ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
 
@@ -225,7 +238,10 @@ export const PageMessage = z.discriminatedUnion('type', [
     // Absent means heard, so an old page still validates. Typed is the keyboard box.
     source: z.enum(['typed', 'heard']).optional(),
     // Set when the message cut the agent's speech off (a barge): where it stopped.
-    interrupted: z.object({ part: z.number().int().min(1), sentence: z.number().int().min(1) }).optional(),
+    // started: false when no audio of the cut-off reply had played yet (his turn came first).
+    interrupted: z
+      .object({ part: z.number().int().min(1), sentence: z.number().int().min(1), started: z.boolean().optional() })
+      .optional(),
   }),
   z.object({ type: z.literal('cancel') }),
   z.object({ type: z.literal('close') }),

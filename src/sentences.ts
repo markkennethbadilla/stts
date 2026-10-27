@@ -57,6 +57,8 @@ export function toParts(text: string, max = PART_CHARS): string[] {
 // The first spoken clip is short, so Piper renders it in about 0.1 s and he hears the first word
 // at once; the rest are clips of up to `max`, synthesised while it plays (Mark 2026-10-10).
 export const FIRST_CHARS = 40;
+/** The page's clip size: sentence N in a barge is clip N of toClips(part, CLIP_CHARS). */
+export const CLIP_CHARS = 120;
 
 /** Speech clips: the first sentence alone, or its first clause when longer than FIRST_CHARS. */
 export function toClips(text: string, max: number): string[] {

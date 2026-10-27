@@ -48,7 +48,7 @@ import {
   SUPERSEDED,
   TURN_PREFIX,
 } from './protocol.ts';
-import { toParts } from './sentences.ts';
+import { CLIP_CHARS, toClips, toParts } from './sentences.ts';
 import { ackGate, type Heard, turnsMachine } from './turns.ts';
 
 export const port = Number(process.env['STTS_PORT'] ?? DEFAULT_PORT);
@@ -523,7 +523,16 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         // Words held from before it (said while no listen was open) lead it, so the turn is whole
         // (Mark 2026-10-16 08:06: only the barge's last fragment came through).
         if (slot && m.interrupted && said) {
-          barge = bargeLine(m.interrupted.part, m.interrupted.sentence);
+          // The words he never heard, from the cut-off sentence on (the page's clip N is sentence N);
+          // the whole part when no audio had played yet (Mark 2026-10-27: he missed the rest).
+          const partText = slot.body.kind === 'tts' ? (slot.body.text ?? '') : '';
+          const started = m.interrupted.started !== false;
+          const unspoken = started
+            ? toClips(partText, CLIP_CHARS)
+                .slice(m.interrupted.sentence - 1)
+                .join(' ')
+            : partText;
+          barge = bargeLine(m.interrupted.part, m.interrupted.sentence, unspoken, started);
           const before = held;
           held = null;
           hear(before ? joinHeld(before, h) : h, typed);
