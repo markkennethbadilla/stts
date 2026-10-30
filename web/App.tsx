@@ -34,7 +34,16 @@ import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
-import { BARGE_HOLD_MS, bargeText, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
+import {
+  BARGE_HOLD_MS,
+  bargeText,
+  bargeVerdict,
+  confirmsBarge,
+  estimateWord,
+  holdMs,
+  isEcho,
+  pageMachine,
+} from './machine.ts';
 
 type Turn = 'notListening' | 'speakNow' | 'working' | 'heard' | 'background' | 'agentSpeaking';
 
@@ -207,6 +216,10 @@ export function App() {
   const speechGen = useRef(0);
   // His words over the paused speech confirmed a barge: it never resumes (2026-10-30).
   const confirmed = useRef(false);
+  // His voice started while the agent's speech was on, paused or between clips: the next words decide.
+  const pending = useRef(false);
+  // Words heard over the speech so far (interim included), for a barge sent by the hold timer.
+  const bargeWords = useRef('');
   // The daemon request now on the page: a Stop names it, so a stale Stop never ends a later one.
   const reqId = useRef(0);
   // 1-based word of the clip now playing, from the voice's word boundary events; 0 when unknown.
@@ -214,6 +227,8 @@ export function App() {
   const cutSpeech = (): void => {
     speechGen.current++;
     confirmed.current = false;
+    pending.current = false;
+    bargeWords.current = '';
     clearTimeout(duckTimer.current);
     ducked.current = null;
     audio.current?.pause();
@@ -222,6 +237,7 @@ export function App() {
   };
   const unduck = (): void => {
     clearTimeout(duckTimer.current);
+    pending.current = false;
     const a = ducked.current;
     ducked.current = null;
     if (a && a === audio.current && actor.getSnapshot().matches({ speech: 'playing' })) void a.play().catch(() => {});
@@ -353,8 +369,16 @@ export function App() {
           setTurnNo((n) => n + 1);
           heard.current.final = '';
           liveWords.current = '';
+          bargeWords.current = '';
+          // A heard barge used these results: the recogniser's later final must not repeat them in
+          // the next turn (Fable review 2026-10-30).
+          if (interrupted && source === 'heard') consumed.current = resultsSeen.current;
           // The cut-off tts already returns this turn: its end must not open a listen.
           if (interrupted) listen.current.after = false;
+          // Piper gives no word timings: estimate the word from the share of the clip played.
+          const a = audio.current;
+          const clipNow = actor.getSnapshot().context.queue[0] ?? '';
+          const word = wordAt.current > 0 ? wordAt.current : a ? estimateWord(clipNow, a.currentTime, a.duration) : 0;
           const now = Date.now();
           post({
             type: 'complete',
@@ -367,7 +391,7 @@ export function App() {
                   interrupted: {
                     ...interrupted,
                     started: audioStarted.current,
-                    ...(wordAt.current > 0 ? { word: wordAt.current } : {}),
+                    ...(word > 0 ? { word } : {}),
                   },
                 }
               : {}),
@@ -436,7 +460,7 @@ export function App() {
   async function playClip(clip: string): Promise<void> {
     // The clip to play now goes first; prefetches queue behind it.
     ahead.current.delete(clip);
-    wordAt.current = 0; // Piper gives no word timings: a barge here is sentence level
+    wordAt.current = 0; // Piper gives no word timings: a barge estimates the word from the time played
     const gen = speechGen.current;
     const p = fetchClip(clip);
     synthTail.current = Promise.all([synthTail.current, p]);
@@ -464,6 +488,8 @@ export function App() {
       send({ type: 'CLIP_ENDED' });
     };
     spokenLog.current.push({ text: clip, at: Date.now() });
+    // A barge confirmed between clips: the next clip never starts; the barge stops the speech.
+    if (confirmed.current) return;
     a.play().catch((e: unknown) => send({ type: 'CLIP_FAILED', reason: `play ${String(e)}` }));
   }
 
@@ -580,10 +606,14 @@ export function App() {
       // sentence plus decode). It pauses the moment his voice starts; the final then decides: a
       // barge stops it, an echo or a short sound resumes it, and no final within BARGE_HOLD_MS resumes it.
       const a = audio.current;
-      if (actor.getSnapshot().matches({ speech: 'playing' }) && !fallbackVoice.current && a && !a.paused) {
-        a.pause();
-        ducked.current = a;
+      if (actor.getSnapshot().matches({ speech: 'playing' }) && !fallbackVoice.current) {
+        // Paused or between clips too: his words confirm the barge either way (Fable review 2026-10-30).
+        pending.current = true;
         clearTimeout(duckTimer.current);
+        if (a && !a.paused) {
+          a.pause();
+          ducked.current = a;
+        }
         duckTimer.current = setTimeout(unduck, BARGE_HOLD_MS);
       }
     };
@@ -613,24 +643,37 @@ export function App() {
         // the speech never resumes, and if no final comes in BARGE_HOLD_MS the barge goes with the
         // words heard so far.
         const words = `${final} ${live}`.trim();
-        if (words && ducked.current && !confirmed.current && !isEcho(words, [clip, ...recentSpoken()])) {
+        if (words) bargeWords.current = words;
+        const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
+        if (
+          pending.current &&
+          !confirmed.current &&
+          confirmsBarge(words, clip, recentSpoken(), Date.now() - startedAt)
+        ) {
           confirmed.current = true;
+          audio.current?.pause();
           clearTimeout(duckTimer.current);
           duckTimer.current = setTimeout(() => {
             if (!confirmed.current || !actor.getSnapshot().matches({ speech: 'playing' })) return;
             confirmed.current = false;
+            pending.current = false;
             ducked.current = null;
-            send({ type: 'BARGE', text: bargeText(heard.current.final, words), part: listen.current.part });
+            // The words heard by now, not the ones at confirmation (Fable review 2026-10-30).
+            send({
+              type: 'BARGE',
+              text: bargeText(heard.current.final, bargeWords.current),
+              part: listen.current.part,
+            });
           }, BARGE_HOLD_MS);
         }
         if (!final) return;
-        const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
         const verdict = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
         // Confirmed: any final that is not echo is the barge, short or not.
         const v =
           confirmed.current && verdict === 'short' && !isEcho(final, [clip, ...recentSpoken()]) ? 'barge' : verdict;
         if (v === 'barge') {
           confirmed.current = false;
+          pending.current = false;
           clearTimeout(duckTimer.current);
           ducked.current = null;
           // The barge carries every word heard before it: words said before the speech started and
@@ -1110,10 +1153,13 @@ export function App() {
               e.currentTarget.blur();
               // Stop over a Repeat silences it only: the agent's reply and listen are untouched.
               if (replaying.current) return skip();
+              // The stop goes to the daemon first: the machine's STOP ends the speech, and that edge
+              // posts an empty complete, which settled the call as spoken before the stop arrived
+              // (e2e flake 2026-10-30: a read-aloud Stop was dropped and the whole file read on).
+              post({ type: 'stopped', part: listen.current.part, id: reqId.current });
               cutSpeech();
               listen.current.after = false;
               send({ type: 'STOP' });
-              post({ type: 'stopped', part: listen.current.part, id: reqId.current });
             }}
           >
             <CircleStop />

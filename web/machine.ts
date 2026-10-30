@@ -107,6 +107,30 @@ export function bargeVerdict(final: string, spoken: readonly string[], msIntoCli
   return isEcho(final, spoken) || msIntoClip < BARGE_MIN_MS ? 'echo' : 'barge';
 }
 
+/**
+ * Do words heard over the agent's speech (interim or final) confirm a barge, so the speech stops for
+ * good? Two words at least, BARGE_MIN_MS into the clip, not the agent's echo, and not the opening
+ * words of the clip playing (isEcho cannot judge one or two words; Fable review 2026-10-30: a phone
+ * speaker's echo of the first words cut the agent off).
+ */
+export function confirmsBarge(heard: string, clip: string, spoken: readonly string[], msIntoClip: number): boolean {
+  const hw = words(heard);
+  if (hw.length < 2 || msIntoClip < BARGE_MIN_MS) return false;
+  const cw = words(clip);
+  if (hw.every((w, i) => cw[i] === w)) return false;
+  return !isEcho(heard, [clip, ...spoken]);
+}
+
+/**
+ * The word of a clip playing at `at` of `duration` seconds, 1-based, from the share of time played:
+ * an estimate for a voice with no word timings (Piper). 0 when the duration is unknown.
+ */
+export function estimateWord(clip: string, at: number, duration: number): number {
+  const n = words(clip).length;
+  if (!n || !Number.isFinite(duration) || duration <= 0) return 0;
+  return Math.min(n, Math.max(1, Math.floor((at / duration) * n) + 1));
+}
+
 /** A barge's text: the words already heard for this turn, then the final that cut the speech off. */
 export function bargeText(held: string, final: string): string {
   return `${held} ${final}`.trim();

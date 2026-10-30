@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
-import { bargeText, bargeVerdict, isEcho, nextBackoff, pageMachine, watchdogVerdict } from '../../web/machine';
+import {
+  bargeText,
+  bargeVerdict,
+  confirmsBarge,
+  estimateWord,
+  isEcho,
+  nextBackoff,
+  pageMachine,
+  watchdogVerdict,
+} from '../../web/machine';
 
 function start(talking: () => boolean = () => false) {
   const startMic = vi.fn();
@@ -495,5 +504,24 @@ describe('page machine', () => {
     expect(watchdogVerdict({ ...base, speechAt: 11000, resultAt: 10000 })).toBeNull();
     expect(watchdogVerdict({ ...base, heardAt: 4000 })).toBeNull();
     expect([null, 0, 250, 1000, 2000].map((p) => nextBackoff(p))).toEqual([0, 250, 500, 2000, 2000]);
+  });
+});
+
+describe('barge confirmation and word estimate (Fable review 2026-10-30)', () => {
+  const clip = 'The deploy finished and every check passed on the first try.';
+  it('one word, too early, or the clip opening words never confirm a hard stop', () => {
+    expect(confirmsBarge('wait', clip, [], 2000)).toBe(false);
+    expect(confirmsBarge('hold on', clip, [], 300)).toBe(false);
+    expect(confirmsBarge('the deploy', clip, [], 2000)).toBe(false);
+    expect(confirmsBarge('the deploy finished and every check', clip, [], 2000)).toBe(false);
+  });
+  it('two of his own words after 600 ms confirm it', () => {
+    expect(confirmsBarge('hold on', clip, [], 2000)).toBe(true);
+  });
+  it('estimates the word from the share of the clip played, 1-based, clamped', () => {
+    expect(estimateWord(clip, 0, 4)).toBe(1);
+    expect(estimateWord(clip, 2, 4)).toBe(6);
+    expect(estimateWord(clip, 4, 4)).toBe(11);
+    expect(estimateWord(clip, 1, Number.NaN)).toBe(0);
   });
 });

@@ -141,6 +141,29 @@ describe('daemon', () => {
     expect(text).toContain(bargeLine(1, 1, 'Here is my answer.', false));
   });
 
+  it('a background result during a held-join tts reaches the next listen (Fable review)', async () => {
+    speak('I want to go to the');
+    const r = post('/request', { kind: 'tts', text: 'Here is my answer.', listen: true });
+    await tick();
+    await post('/notify');
+    speak('shop now');
+    expect(await (await r).text()).toContain('shop now');
+    expect(await (await post('/request', { kind: 'stt', ack: 1 })).text()).toBe(BACKGROUND_RESULT);
+  });
+
+  it('a Stop in the gap between two read-aloud parts stops the reading (e2e flake 2026-10-30)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stts-read-'));
+    const file = join(dir, 'read.txt');
+    writeFileSync(file, Array.from({ length: 40 }, (_, i) => `This is sentence number ${i} read out loud.`).join(' '));
+    const r = post('/request', { kind: 'tts', file });
+    await vi.waitFor(() => expect(slotId()).not.toBeNull());
+    const id = slotId();
+    page.onMessage(JSON.stringify({ type: 'complete', text: '', startAt: 0, endAt: 0 }));
+    expect(slotId()).toBeNull();
+    page.onMessage(JSON.stringify({ type: 'stopped', part: 1, id }));
+    expect(await (await r).text()).toMatch(/^__STTS_STOPPED__ 2 He stopped it during part 2 of \d+/);
+  });
+
   it('a stale Stop for an older request never ends the open one (review 5)', async () => {
     const t = post('/request', { kind: 'tts', text: 'a long answer', listen: true });
     await tick();

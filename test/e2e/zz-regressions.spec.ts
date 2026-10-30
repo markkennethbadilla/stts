@@ -325,6 +325,8 @@ test('his first words over the speech stop it for good, final or not', async ({ 
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
     await expect.poll(count).toBeGreaterThan(0);
+    // Past BARGE_MIN_MS into the clip: words sooner are its own echo, never a hard stop.
+    await voice.clock.fastForward(700);
     const plays = await count();
     await voice.evaluate(() => {
       const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })

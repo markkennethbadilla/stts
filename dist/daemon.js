@@ -17395,15 +17395,20 @@ function resetTurns() {
 	held = null;
 	barge = null;
 	typedNext = false;
+	backgroundNext = false;
+	stopBetween = 0;
 	clearTimeout(reopenTimer);
 	reopenTries = 0;
 	watchTurns();
 }
 const slotId = () => slot?.id ?? null;
 const isListen = (b) => b.kind === "stt" || b.listen === true;
+let backgroundNext = false;
+let stopBetween = 0;
 function settle(status, text) {
 	const s = slot;
 	if (!s) return;
+	if (s.background && text !== "__STTS_BACKGROUND_RESULT__") backgroundNext = true;
 	slot = null;
 	clearTimeout(s.timer);
 	s.done({
@@ -17505,6 +17510,14 @@ function occupy(id, body, ms) {
 		hear(h, h.typed === true);
 		if (slot?.id === id && reply && turns.getSnapshot().matches("joining")) return result;
 		if (slot?.id === id) barge = null;
+	}
+	if (slot?.id === id && isListen(body) && backgroundNext) {
+		backgroundNext = false;
+		if (body.kind === "tts") slot.background = true;
+		else {
+			backgroundResult();
+			return result;
+		}
 	}
 	if (slot?.id === id) send();
 	return result;
@@ -17621,6 +17634,10 @@ function attachPage(sendToPage) {
 				settle(200, NO_SPEECH);
 				return;
 			case "stopped":
+				if (!slot && m.id !== void 0 && m.id === seq) {
+					stopBetween = m.id;
+					return;
+				}
 				if (m.id !== void 0 && slot && m.id !== slot.id) {
 					deps.log(`page stop for request ${m.id} ignored: request ${slot.id} is open`);
 					return;
@@ -17791,6 +17808,10 @@ app.post("/request", async (c) => {
 	for (; i < n; i++) {
 		if (i > first && Date.now() - t0 > budgetMs() / 2) break;
 		if (seq !== id) return c.text(SUPERSEDED, 504);
+		if (stopBetween === id) {
+			stopBetween = 0;
+			return c.text(`${STOPPED} ${i + 1} ${readNotes.stopped(i + 1, n, where)}`);
+		}
 		const last = i === n - 1;
 		const r = await occupy(id, {
 			kind: "tts",

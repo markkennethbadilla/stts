@@ -343,6 +343,8 @@ export function resetTurns(): void {
   held = null;
   barge = null;
   typedNext = false;
+  backgroundNext = false;
+  stopBetween = 0;
   clearTimeout(reopenTimer);
   reopenTries = 0;
   watchTurns();
@@ -351,9 +353,15 @@ export function resetTurns(): void {
 export const slotId = (): number | null => slot?.id ?? null;
 const isListen = (b: RequestBody): boolean => b.kind === 'stt' || b.listen === true;
 
+// A background result that arrived for a call settled some other way (a held-join turn): the next
+// listen returns it (Fable review 2026-10-30: it was lost).
+let backgroundNext = false;
+// A Stop for request N that arrived while no slot was open (a read-aloud between parts).
+let stopBetween = 0;
 function settle(status: 200 | 504, text: string): void {
   const s = slot;
   if (!s) return;
+  if (s.background && text !== BACKGROUND_RESULT) backgroundNext = true;
   slot = null;
   clearTimeout(s.timer);
   s.done({ status, text });
@@ -463,6 +471,15 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
     // not-spoken line, when the join ends.
     if (slot?.id === id && reply && turns.getSnapshot().matches('joining')) return result;
     if (slot?.id === id) barge = null;
+  }
+  if (slot?.id === id && isListen(body) && backgroundNext) {
+    backgroundNext = false;
+    // A tts speaks first and returns the result once its listen opens; an stt returns it now.
+    if (body.kind === 'tts') slot.background = true;
+    else {
+      backgroundResult();
+      return result;
+    }
   }
   if (slot?.id === id) send();
   return result;
@@ -600,6 +617,11 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
+        // No call open: a read-aloud between two parts takes it before its next part.
+        if (!slot && m.id !== undefined && m.id === seq) {
+          stopBetween = m.id;
+          return;
+        }
         if (m.id !== undefined && slot && m.id !== slot.id) {
           deps.log(`page stop for request ${m.id} ignored: request ${slot.id} is open`);
           return;
@@ -815,6 +837,12 @@ app.post('/request', async (c) => {
   for (; i < n; i++) {
     if (i > first && Date.now() - t0 > budgetMs() / 2) break;
     if (seq !== id) return c.text(SUPERSEDED, 504);
+    // Stop pressed in the gap between two parts (no slot open): the reading stops here (e2e flake
+    // 2026-10-30: the Stop was dropped and the whole file was read on).
+    if (stopBetween === id) {
+      stopBetween = 0;
+      return c.text(`${STOPPED} ${i + 1} ${readNotes.stopped(i + 1, n, where)}`);
+    }
     const last = i === n - 1;
     const partBody: RequestBody = {
       kind: 'tts',
