@@ -243,6 +243,11 @@ export function App() {
   const [autosend, setAutosend] = useSetting('autosend', '1');
   const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
+  // The mic picked now: startMic runs from the machine's actions, whose closure can hold an older
+  // render's mic, so an unplug fallback reopened the unplugged device (e2e, 2026-10-30).
+  const micRef = useRef(mic);
+  const startSeq = useRef(0);
+  micRef.current = mic;
   const [cues, setCues] = useSetting('cues', 'chime');
   // Speech recognition: Google's cloud service by default. On-device returned chopped and changed
   // words on long turns (2026-10-06 11:43: 32 s of speech came back as nine words) and none at all
@@ -491,6 +496,9 @@ export function App() {
     // This runs as the entry action, mid-transition: the snapshot still shows the old state until the
     // next tick. Read it after one await, or an automatic restart (no chime, no await) saw itself as
     // not starting and never opened the mic: the grey light after every reply (real Chrome test 2026-10-06).
+    // A newer start (a second mic switch while this one awaited getUserMedia) supersedes this one:
+    // two recognisers ran and his words went to the one the page no longer listened to (e2e 2026-10-30).
+    const myStart = ++startSeq.current;
     await Promise.resolve();
     const snap = actor.getSnapshot();
     startStage.current = 'cue';
@@ -504,23 +512,41 @@ export function App() {
     // before every start put getUserMedia in the gap and lost his first words. Reopened only when the
     // track died or the chosen mic changed.
     const cur = aec.current;
-    if (!cur || cur.mic !== mic || cur.stream.getAudioTracks()[0]?.readyState !== 'live') {
+    if (!cur || cur.mic !== micRef.current || cur.stream.getAudioTracks()[0]?.readyState !== 'live') {
       startStage.current = 'getUserMedia';
+      // The device asked for, kept with the stream: a switch while getUserMedia is pending must
+      // not label the old device's stream with the new choice (it was then never reopened).
       for (const t of cur?.stream.getTracks() ?? []) t.stop();
       aec.current = null;
-      const s = await navigator.mediaDevices
-        .getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, ...(mic === 'default' ? {} : { deviceId: mic }) },
-        })
-        .catch(() => null);
+      let want = micRef.current;
+      let s: MediaStream | null = null;
+      // A mic picked (or an unplug fallback) while getUserMedia was pending: the stream is for the
+      // old choice, so it is dropped and the new one opened (e2e 2026-10-30: the setting said
+      // default while the unplugged device's stream stayed open).
+      for (let i = 0; i < 3; i++) {
+        want = micRef.current;
+        s = await navigator.mediaDevices
+          .getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              ...(want === 'default' ? {} : { deviceId: want }),
+            },
+          })
+          .catch(() => null);
+        if (!s || micRef.current === want) break;
+        for (const t of s.getTracks()) t.stop();
+        s = null;
+      }
       if (s) {
-        aec.current = { stream: s, mic };
+        aec.current = { stream: s, mic: want };
         watchLevel(s);
         // Device names come only after a mic grant: list again now that the mic is open.
         refreshMics();
       }
       if (!stillStarting()) return;
     }
+    if (startSeq.current !== myStart) return;
     const stream = aec.current?.stream ?? null;
     if (stream) void feed(stream);
     // The e2e suite injects a fake recogniser here; the real one is the daemon's engine.

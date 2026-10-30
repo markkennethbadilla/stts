@@ -491,8 +491,9 @@ test('30 s of continuous speech is one turn, even when the recogniser goes quiet
   ];
   for (const p of parts) {
     await say(voice, p);
-    // The recogniser gives nothing for 7.5 s while he talks: no turn may go out.
-    for (let i = 0; i < 15; i++) await voice.clock.fastForward(500);
+    // The recogniser gives nothing for 5 s while he talks: no turn may go out. Past 6 s with no new
+    // words a turn goes anyway (MAX_TALK_HOLD_MS, Mark 2026-10-27: steady noise held turns forever).
+    for (let i = 0; i < 10; i++) await voice.clock.fastForward(500);
   }
   await level(0);
   await voice.clock.fastForward(2000);
@@ -567,13 +568,25 @@ test('a mic plugged in later is listed, picking it switches the open mic, unplug
   // Picked while the mic is open: the open mic moves to it, no reload, no new listen.
   await expect.poll(gum).toContain('iriun');
   await expect.poll(daemonLog).toContain('page mic switched to a new device');
+  // Let the switch finish (its recogniser starts on the fake clock) before the unplug, as a real
+  // unplug never comes within milliseconds of the pick.
+  await voice.clock.fastForward(300);
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
   // Unplugged: the setting falls back to the default and the open mic follows.
   const before = (await gum()).length;
   await plug(false);
   await expect.poll(() => voice.evaluate(() => localStorage.getItem('__stts__mic'))).toBe('default');
-  await expect.poll(async () => (await gum()).slice(before)).toContain('default');
+  // The restart after a second mic switch waits a backoff (250 ms and up) on the test's fake clock.
+  await expect
+    .poll(async () => {
+      await voice.clock.fastForward(300);
+      return (await gum()).slice(before);
+    })
+    .toContain('default');
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await voice.keyboard.press('Escape');
+  // The reopened recogniser starts on a setTimeout, which runs only as the fake clock moves.
+  await voice.clock.fastForward(300);
   await say(voice, 'the new mic works');
   await voice.clock.fastForward(1500);
   expect(await (await reply).text()).toMatch(/the new mic works$/);
