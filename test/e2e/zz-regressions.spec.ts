@@ -297,6 +297,49 @@ test('his voice starting over the speech pauses it at once; an echo final resume
   }
 });
 
+// Mark 2026-10-30: the first barge only paused the speech; it resumed while his final was still
+// decoding and he had to barge again. His first non-echo words now stop it for good.
+test('his first words over the speech stop it for good, final or not', async ({ voice, request }) => {
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  await voice.evaluate(() => {
+    const g = globalThis as unknown as Record<string, number>;
+    g['__plays'] = 0;
+    const p = HTMLMediaElement.prototype;
+    const play = p.play;
+    p.play = function (this: HTMLMediaElement) {
+      g['__plays'] = (g['__plays'] ?? 0) + 1;
+      return play.call(this);
+    };
+  });
+  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
+  try {
+    const speech = ask(request, {
+      kind: 'tts',
+      text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
+    });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await expect.poll(count).toBeGreaterThan(0);
+    const plays = await count();
+    await voice.evaluate(() => {
+      const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })
+        .__rec;
+      r.onspeechstart();
+      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'hold on a' }], { isFinal: false })] });
+    });
+    await voice.clock.fastForward(3000);
+    expect(await count()).toBe(plays);
+    expect(await (await speech).text()).toMatch(/hold on a/);
+  } finally {
+    piper.close();
+  }
+});
+
 // Mark 2026-10-10: "could it be instantaneous?" The first clip is the short first sentence, and
 // Piper gets it alone: prefetches sent beside it shared the CPU and held the first word 2-3x longer.
 test('the first clip is short and synthesised alone; the rest follow one at a time, in order', async ({

@@ -293,6 +293,16 @@ describe('daemon', () => {
     expect(text).toContain('wait, also check the logs');
   });
 
+  it('a barge with a word timing returns the unspoken rest from that word (2026-10-30)', async () => {
+    const speech = post('/request', { kind: 'tts', text: 'First one here. Second one is long. Third one here.' });
+    await tick();
+    typed('hold on', { interrupted: { part: 1, sentence: 2, started: true, word: 3 } });
+    speak('');
+    const text = await (await speech).text();
+    expect(text).toContain('at part 1 sentence 2 word 3');
+    expect(text).toMatch(/\nunspoken: is long\. Third one here\.$/);
+  });
+
   it('a barge returns the unspoken rest word for word, from the cut sentence on', async () => {
     const speech = post('/request', { kind: 'tts', text: 'First one here. Second one here. Third one here.' });
     await tick();

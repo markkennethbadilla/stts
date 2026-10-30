@@ -103,6 +103,25 @@ describe('page machine', () => {
     expect(actor.getSnapshot().matches({ mic: { live: 'listening' }, turn: 'speakNow' })).toBe(true);
   });
 
+  it('after his turn goes out the light shows working, never green, until the next listen (2026-10-30)', () => {
+    const { actor, sendTurn } = start();
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'INTERIM', text: 'tell me about MiniBoo' });
+    vi.advanceTimersByTime(3000);
+    expect(sendTurn).toHaveBeenCalled();
+    actor.send({ type: 'MIC_ENDED' });
+    vi.advanceTimersByTime(1);
+    actor.send({ type: 'MIC_STARTED' });
+    actor.send({ type: 'QUEUE_EMPTY' });
+    expect(actor.getSnapshot().matches({ turn: 'working' })).toBe(true);
+    // His words while the agent works still light heard (the daemon holds them).
+    actor.send({ type: 'INTERIM', text: 'and also' });
+    expect(actor.getSnapshot().matches({ turn: 'heard' })).toBe(true);
+    actor.send({ type: 'REQUEST', kind: 'listen' });
+    expect(actor.getSnapshot().context.working).toBe(false);
+  });
+
   it('a recogniser that ends on its own during a listen restarts at once', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });

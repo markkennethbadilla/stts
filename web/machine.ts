@@ -160,6 +160,9 @@ export interface PageContext {
   // The hold_ms setting; null keeps the defaults (0.7 s, or 1 s when the words read unfinished).
   holdMs: number | null;
   wantListen: boolean;
+  // His turn went out and no new listen is open yet: the agent is working (Mark 2026-10-30: green
+  // showed while no listen was open). The mic still runs and his words are held by the daemon.
+  working: boolean;
   transcript: string;
   backoff: number | null;
   queue: string[];
@@ -244,6 +247,7 @@ export const pageMachine = setup({
     bargeIn: true,
     holdMs: null,
     wantListen: false,
+    working: false,
     transcript: '',
     backoff: null,
     queue: [],
@@ -267,7 +271,7 @@ export const pageMachine = setup({
     SET_BARGE: { actions: assign({ bargeIn: ({ event }) => event.on }) },
     SET_HOLD: { actions: assign({ holdMs: ({ event }) => event.ms }) },
     // A listen request is remembered even while paused; only a trusted resume acts on it.
-    REQUEST: { guard: ({ event }) => event.kind === 'listen', actions: assign({ wantListen: true }) },
+    REQUEST: { guard: ({ event }) => event.kind === 'listen', actions: assign({ wantListen: true, working: false }) },
   },
   states: {
     mic: {
@@ -371,6 +375,7 @@ export const pageMachine = setup({
       states: {
         notListening: {},
         speakNow: {},
+        working: {},
         heard: {},
         background: {},
         agentSpeaking: {},
@@ -380,17 +385,23 @@ export const pageMachine = setup({
         LISTEN_DONE: '.notListening',
         // A tts with listen whose mic already runs: speak now, no restart.
         QUEUE_EMPTY: [
-          { guard: ({ context }) => context.wantListen && context.running, target: '.speakNow' },
+          { guard: ({ context }) => context.wantListen && context.running && !context.working, target: '.speakNow' },
+          { guard: ({ context }) => context.working, target: '.working' },
           { target: '.notListening' },
         ],
         STOP: '.notListening',
         // Green only while a listen is open: a mic restarted after the turn went out showed green over
         // a closed listen, so his words went nowhere (log 2026-10-06 21:22-21:29).
-        MIC_STARTED: { guard: and(['quiet', 'listenOpen']), target: '.speakNow' },
+        MIC_STARTED: [
+          { guard: and(['quiet', 'listenOpen', ({ context }) => !context.working]), target: '.speakNow' },
+          { guard: and(['quiet', ({ context }) => context.working]), target: '.working' },
+        ],
         // A listen that opens while the mic already runs (it stays on after every turn): speak now.
         REQUEST: {
           guard: and(['quiet', ({ context, event }) => event.kind === 'listen' && context.running]),
           target: '.speakNow',
+          // Taken here, the root REQUEST does not run: the listen is open, so the agent is done working.
+          actions: assign({ wantListen: true, working: false }),
         },
         INTERIM: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
         SPEECH_END: { guard: and(['quiet', 'listenOpen']), target: '.heard' },
@@ -457,7 +468,7 @@ export const pageMachine = setup({
                   // The mic stays on after every turn (Mark 2026-10-07: "it's not" read finished, the mic closed and
                   // the rest of his sentence was lost). Words after the turn reach the daemon, which holds them
                   // for the next listen; the agent's speech or a barge takes the mic from here.
-                  assign({ wantListen: true }),
+                  assign({ wantListen: true, working: ({ context }) => !readsUnfinished(context.transcript) }),
                 ],
               },
             ],
@@ -502,6 +513,7 @@ export const pageMachine = setup({
                 queue: ({ event }) => [...event.clips],
                 sentence: 1,
                 wantListen: ({ context, event }) => context.wantListen || event.listen === true,
+                working: false,
               }),
             },
             TYPED: {
@@ -509,7 +521,7 @@ export const pageMachine = setup({
                 // The mic stays on after a typed turn, like after a heard one: words he says next are held
                 // by the daemon for the next listen (Mark 2026-10-16: the mic went off at a typed send and
                 // the start of his next sentence was never heard).
-                assign({ interrupted: null, wantListen: true }),
+                assign({ interrupted: null, wantListen: true, working: true }),
                 { type: 'deliver', params: ({ event }) => ({ text: event.text, source: 'typed', interrupted: null }) },
               ],
             },
@@ -544,7 +556,7 @@ export const pageMachine = setup({
               actions: [
                 // The mic keeps running after a barge or typed cut: he is usually still talking (Mark
                 // 2026-10-16 08:06: the mic went off at the barge and 7 s of his speech was lost).
-                assign({ interrupted: cut, wantListen: true }),
+                assign({ interrupted: cut, wantListen: true, working: true }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({
@@ -562,7 +574,7 @@ export const pageMachine = setup({
               actions: [
                 // The mic keeps running after a barge or typed cut: he is usually still talking (Mark
                 // 2026-10-16 08:06: the mic went off at the barge and 7 s of his speech was lost).
-                assign({ interrupted: cut, wantListen: true }),
+                assign({ interrupted: cut, wantListen: true, working: true }),
                 {
                   type: 'deliver',
                   params: ({ context, event }) => ({

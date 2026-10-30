@@ -37,7 +37,7 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `page skipped by Mark` | Skip or Esc stopped the speech |
 | `page mic restart #N: reason` | watchdog, error or recogniser-ended restart |
 | `page turn sent MSms after the last words, N words (the window showed up to M)` | auto-send fired: the end-of-speech delay, and word counts only (never the words): N below M means the recogniser revised its own text or words were dropped |
-| `page light TURN` | the status light changed (notListening, speakNow, heard, background, agentSpeaking) |
+| `page light TURN` | the status light changed (notListening, speakNow, working, heard, background, agentSpeaking) |
 | `page mic error ERROR` | speech recognition error |
 | `page paused by Mark`, `page resumed by Mark` | mute and unmute |
 | `page ws closed` | the page lost the daemon |

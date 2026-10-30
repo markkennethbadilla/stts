@@ -534,12 +534,16 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
           // the whole part when no audio had played yet (Mark 2026-10-27: he missed the rest).
           const partText = slot.body.kind === 'tts' ? (slot.body.text ?? '') : '';
           const started = m.interrupted.started !== false;
-          const unspoken = started
-            ? toClips(partText, CLIP_CHARS)
-                .slice(m.interrupted.sentence - 1)
-                .join(' ')
-            : partText;
-          barge = bargeLine(m.interrupted.part, m.interrupted.sentence, unspoken, started);
+          // Word level when the voice reported word boundaries (Mark 2026-10-30), else from the sentence.
+          const word = started ? (m.interrupted.word ?? 0) : 0;
+          const rest = toClips(partText, CLIP_CHARS).slice(m.interrupted.sentence - 1);
+          if (word > 1 && rest[0])
+            rest[0] = rest[0]
+              .split(/\s+/)
+              .slice(word - 1)
+              .join(' ');
+          const unspoken = started ? rest.join(' ') : partText;
+          barge = bargeLine(m.interrupted.part, m.interrupted.sentence, unspoken, started, word);
           const before = held;
           held = null;
           hear(before ? joinHeld(before, h) : h, typed);
@@ -583,7 +587,10 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
-        if (takeEnded()) return settle(200, CONVERSATION_ENDED);
+        if (takeEnded()) {
+          settle(200, CONVERSATION_ENDED);
+          return;
+        }
         // Stop stops only speech in progress (Mark 2026-10-30: after a Stop, every stt and tts
         // returned STOPPED at once, five calls in a row, and the agent left voice). A stop that arrives
         // on an open listen (an stt, or a tts whose speech is done) has no speech to stop: the listen

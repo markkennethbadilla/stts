@@ -21647,7 +21647,8 @@ discriminatedUnion("type", [
 		interrupted: object({
 			part: number().int().min(1),
 			sentence: number().int().min(1),
-			started: boolean().optional()
+			started: boolean().optional(),
+			word: number().int().min(1).optional()
 		}).optional()
 	}),
 	object({ type: literal("cancel") }),

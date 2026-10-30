@@ -8,6 +8,7 @@ import {
   Ear,
   HeadphoneOff,
   Headphones,
+  Hourglass,
   Mic,
   MicOff,
   PhoneOff,
@@ -35,11 +36,13 @@ import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
 import { BARGE_HOLD_MS, bargeText, bargeVerdict, holdMs, isEcho, pageMachine } from './machine.ts';
 
-type Turn = 'notListening' | 'speakNow' | 'heard' | 'background' | 'agentSpeaking';
+type Turn = 'notListening' | 'speakNow' | 'working' | 'heard' | 'background' | 'agentSpeaking';
 
 const TINT: Record<Turn, [string, string]> = {
   notListening: ['#9ca3af', '#4b5563'],
   speakNow: ['#4ade80', '#15803d'],
+  // The agent is working: no listen open, his words are held for the next one (Mark 2026-10-30).
+  working: ['#c084fc', '#7e22ce'],
   heard: ['#fbbf24', '#b45309'],
   background: ['#f59e0b', '#7c2d12'],
   agentSpeaking: ['#60a5fa', '#1d4ed8'],
@@ -47,6 +50,7 @@ const TINT: Record<Turn, [string, string]> = {
 const ORB_STATE: Record<Turn, AgentState> = {
   notListening: null,
   speakNow: 'listening',
+  working: 'thinking',
   heard: 'thinking',
   background: 'thinking',
   agentSpeaking: 'talking',
@@ -201,8 +205,13 @@ export function App() {
   // timer is pending, belongs to the old speech and never plays over the new one (Mark 2026-10-16
   // 08:15: after a barge the next tts played over the old one).
   const speechGen = useRef(0);
+  // His words over the paused speech confirmed a barge: it never resumes (2026-10-30).
+  const confirmed = useRef(false);
+  // 1-based word of the clip now playing, from the voice's word boundary events; 0 when unknown.
+  const wordAt = useRef(0);
   const cutSpeech = (): void => {
     speechGen.current++;
+    confirmed.current = false;
     clearTimeout(duckTimer.current);
     ducked.current = null;
     audio.current?.pause();
@@ -346,7 +355,15 @@ export function App() {
             startAt: now,
             endAt: now,
             source,
-            ...(interrupted ? { interrupted: { ...interrupted, started: audioStarted.current } } : {}),
+            ...(interrupted
+              ? {
+                  interrupted: {
+                    ...interrupted,
+                    started: audioStarted.current,
+                    ...(wordAt.current > 0 ? { word: wordAt.current } : {}),
+                  },
+                }
+              : {}),
           });
         },
         stopAudio: () => cutSpeech(),
@@ -370,6 +387,11 @@ export function App() {
           u.rate = Number(rate);
           fallbackVoice.current = true;
           audioStarted.current = true;
+          // Word boundary events give the word he cut in on (Mark 2026-10-30); Piper clips have none.
+          wordAt.current = 0;
+          u.onboundary = (e) => {
+            if (e.name === 'word') wordAt.current = clip.slice(0, e.charIndex).split(/\s+/).filter(Boolean).length + 1;
+          };
           u.onend = () => {
             fallbackVoice.current = false;
             send({ type: 'CLIP_ENDED' });
@@ -407,6 +429,7 @@ export function App() {
   async function playClip(clip: string): Promise<void> {
     // The clip to play now goes first; prefetches queue behind it.
     ahead.current.delete(clip);
+    wordAt.current = 0; // Piper gives no word timings: a barge here is sentence level
     const gen = speechGen.current;
     const p = fetchClip(clip);
     synthTail.current = Promise.all([synthTail.current, p]);
@@ -555,11 +578,31 @@ export function App() {
         // The browser voice plays outside the page's audio, so echo cancellation cannot remove it:
         // its own words cut it off (2026-10-05 23:49 UTC). No spoken barge while it plays.
         if (fallbackVoice.current) return;
-        if (!final) return;
         const clip = snap.context.queue[0] ?? '';
+        // Hard stop (Mark 2026-10-30: the first barge only paused the speech, it resumed after 2.5 s
+        // while his final was still decoding, and he had to barge again and again). The pause at his
+        // first sound is only a pre-check; his first words that are not the agent's echo confirm it:
+        // the speech never resumes, and if no final comes in BARGE_HOLD_MS the barge goes with the
+        // words heard so far.
+        const words = `${final} ${live}`.trim();
+        if (words && ducked.current && !confirmed.current && !isEcho(words, [clip, ...recentSpoken()])) {
+          confirmed.current = true;
+          clearTimeout(duckTimer.current);
+          duckTimer.current = setTimeout(() => {
+            if (!confirmed.current || !actor.getSnapshot().matches({ speech: 'playing' })) return;
+            confirmed.current = false;
+            ducked.current = null;
+            send({ type: 'BARGE', text: bargeText(heard.current.final, words), part: listen.current.part });
+          }, BARGE_HOLD_MS);
+        }
+        if (!final) return;
         const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
-        const v = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
+        const verdict = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
+        // Confirmed: any final that is not echo is the barge, short or not.
+        const v =
+          confirmed.current && verdict === 'short' && !isEcho(final, [clip, ...recentSpoken()]) ? 'barge' : verdict;
         if (v === 'barge') {
+          confirmed.current = false;
           clearTimeout(duckTimer.current);
           ducked.current = null;
           // The barge carries every word heard before it: words said before the speech started and
@@ -572,7 +615,8 @@ export function App() {
           heard.current.startAt ||= Date.now();
           heard.current.final = bargeText(heard.current.final, final);
         }
-        unduck();
+        // Confirmed by his words: the speech stays stopped until the barge goes.
+        if (!confirmed.current) unduck();
         if (v === 'echo' && echoLogged.current !== clip) {
           echoLogged.current = clip;
           log('echo discarded');
@@ -986,9 +1030,11 @@ export function App() {
         ? Volume2
         : turn === 'background'
           ? Bell
-          : turn === 'heard'
-            ? Ear
-            : Mic;
+          : turn === 'working'
+            ? Hourglass
+            : turn === 'heard'
+              ? Ear
+              : Mic;
   const holdSec = holdMs(state.context) / 1000;
 
   return (

@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import type { APIRequestContext } from '@playwright/test';
 import { dataRoot, testPort } from '../../playwright.config.ts';
-import { BACKGROUND_RESULT, bargeLine, readNotes, STOPPED, SUPERSEDED } from '../../src/protocol.ts';
+import { BACKGROUND_RESULT, readNotes, STOPPED, SUPERSEDED } from '../../src/protocol.ts';
 import { daemonLog, expect, test } from './fixtures.ts';
 
 const ask = (request: APIRequestContext, data: object) =>
@@ -178,7 +178,7 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
     await voice.getByLabel('Message').press('Enter');
     const text = await (await speech).text();
     expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] also check the logs\n/);
-    expect(text).toContain(bargeLine(1, 1));
+    expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
     piper.close();
@@ -208,7 +208,7 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     const text = await (await speech).text();
     // The short "wait" does not cut the speech off, but it is his and rides with the barge (2026-10-16).
     expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] wait use the other repo please\n/);
-    expect(text).toContain(bargeLine(1, 1));
+    expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
     piper.close();

@@ -74,9 +74,9 @@ export const BARGE_NOTE =
   'folded together with your answer. Skip the repeat when he said stop, abort, halt or never mind. Then continue the task ' +
   'you were cut off from, unless it explicitly says stop, abort, halt or never mind.';
 
-export const bargeLine = (part: number, sentence: number, unspoken = '', started = true): string => {
+export const bargeLine = (part: number, sentence: number, unspoken = '', started = true, word = 0): string => {
   const where = started
-    ? `interrupted your speech at part ${part} sentence ${sentence}`
+    ? `interrupted your speech at part ${part} sentence ${sentence}${word > 0 ? ` word ${word}` : ''}`
     : `interrupted before your reply was spoken at all (part ${part})`;
   const rest = unspoken.trim();
   const repeat = rest
@@ -242,7 +242,14 @@ export const PageMessage = z.discriminatedUnion('type', [
     // Set when the message cut the agent's speech off (a barge): where it stopped.
     // started: false when no audio of the cut-off reply had played yet (his turn came first).
     interrupted: z
-      .object({ part: z.number().int().min(1), sentence: z.number().int().min(1), started: z.boolean().optional() })
+      .object({
+        part: z.number().int().min(1),
+        sentence: z.number().int().min(1),
+        started: z.boolean().optional(),
+        // The word of that sentence he cut in on, from the voice's word boundary events (1-based);
+        // absent when the voice gives no word timings (Piper): the cut is then the sentence.
+        word: z.number().int().min(1).optional(),
+      })
       .optional(),
   }),
   z.object({ type: z.literal('cancel') }),

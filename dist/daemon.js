@@ -16874,8 +16874,8 @@ const CONTINUES_NOTE = ` If the reply is exactly ${LISTEN_CONTINUES}, the listen
 const NO_SLEEP_NOTE = ` Never sleep or block on another tool to wait for him: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment he stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.`;
 const TURN_NOTE = " Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said while no listen was open for the next listen, so nothing he says is lost. Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
 const BARGE_NOTE = " If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, followed by a line saying where it cut you off and, after \"unspoken:\", the words of yours he never heard, word for word. Treat that message as an addition or a steer: answer it, then briefly repeat those unspoken words (shortened, in your own words) in the same tts, so he does not miss them; if the line says your reply was not spoken at all, speak that reply folded together with your answer. Skip the repeat when he said stop, abort, halt or never mind. Then continue the task you were cut off from, unless it explicitly says stop, abort, halt or never mind.";
-const bargeLine = (part, sentence, unspoken = "", started = true) => {
-	const where = started ? `interrupted your speech at part ${part} sentence ${sentence}` : `interrupted before your reply was spoken at all (part ${part})`;
+const bargeLine = (part, sentence, unspoken = "", started = true, word = 0) => {
+	const where = started ? `interrupted your speech at part ${part} sentence ${sentence}${word > 0 ? ` word ${word}` : ""}` : `interrupted before your reply was spoken at all (part ${part})`;
 	const rest = unspoken.trim();
 	return `(${where}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind${rest ? started ? "; after answering, briefly repeat the unspoken words below unless he said stop or never mind" : "; speak that reply folded together with your answer unless he said stop or never mind" : ""})${rest ? `\nunspoken: ${rest}` : ""}`;
 };
@@ -16939,7 +16939,8 @@ const PageMessage = discriminatedUnion("type", [
 		interrupted: object({
 			part: number().int().min(1),
 			sentence: number().int().min(1),
-			started: boolean().optional()
+			started: boolean().optional(),
+			word: number().int().min(1).optional()
 		}).optional()
 	}),
 	object({ type: literal("cancel") }),
@@ -17572,8 +17573,11 @@ function attachPage(sendToPage) {
 				if (slot && m.interrupted && said) {
 					const partText = slot.body.kind === "tts" ? slot.body.text ?? "" : "";
 					const started = m.interrupted.started !== false;
-					const unspoken = started ? toClips(partText, 120).slice(m.interrupted.sentence - 1).join(" ") : partText;
-					barge = bargeLine(m.interrupted.part, m.interrupted.sentence, unspoken, started);
+					const word = started ? m.interrupted.word ?? 0 : 0;
+					const rest = toClips(partText, 120).slice(m.interrupted.sentence - 1);
+					if (word > 1 && rest[0]) rest[0] = rest[0].split(/\s+/).slice(word - 1).join(" ");
+					const unspoken = started ? rest.join(" ") : partText;
+					barge = bargeLine(m.interrupted.part, m.interrupted.sentence, unspoken, started, word);
 					const before = held;
 					held = null;
 					hear(before ? joinHeld(before, h) : h, typed);
@@ -17609,7 +17613,10 @@ function attachPage(sendToPage) {
 				settle(200, NO_SPEECH);
 				return;
 			case "stopped":
-				if (takeEnded()) return settle(200, CONVERSATION_ENDED);
+				if (takeEnded()) {
+					settle(200, CONVERSATION_ENDED);
+					return;
+				}
 				if (slot && (slot.body.kind === "stt" || slot.listening)) {
 					deps.log("page stop with no speech playing: the listen stays open");
 					send();
