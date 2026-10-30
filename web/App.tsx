@@ -207,6 +207,8 @@ export function App() {
   const speechGen = useRef(0);
   // His words over the paused speech confirmed a barge: it never resumes (2026-10-30).
   const confirmed = useRef(false);
+  // The daemon request now on the page: a Stop names it, so a stale Stop never ends a later one.
+  const reqId = useRef(0);
   // 1-based word of the clip now playing, from the voice's word boundary events; 0 when unknown.
   const wordAt = useRef(0);
   const cutSpeech = (): void => {
@@ -728,6 +730,7 @@ export function App() {
         return;
       }
       const b = m.body;
+      reqId.current = m.id;
       // A new tts cuts a Repeat short; its end (consumed below) must not answer the new tts.
       // Every tts cuts off whatever speech is left first, playing, ducked or still synthesising, so two
       // never overlap (Mark 2026-10-16 08:15).
@@ -1084,7 +1087,7 @@ export function App() {
               cutSpeech();
               listen.current.after = false;
               send({ type: 'STOP' });
-              post({ type: 'stopped', part: listen.current.part });
+              post({ type: 'stopped', part: listen.current.part, id: reqId.current });
             }}
           >
             <CircleStop />

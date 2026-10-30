@@ -30,7 +30,7 @@ The request body is `{kind, text|file|url, part, listen, close, idleSec, rate, v
 
 WebSocket messages, one checked list per direction:
 
-- Page to daemon: `ready`, `relisten` (sent on unmute: the daemon resends an open listen, never a tts), `listening` (the light went green: a tts with listen has finished speaking), `complete{text,startAt,endAt,source?,interrupted?}` (`source` is `typed` or `heard`, absent means heard so an old page still validates; `interrupted{part,sentence,started?,word?}` marks a barge; `word` is the 1-based word of that sentence he cut in on, from the voice's word boundary events, absent when the voice gives none), `cancel`, `close`, `ended`, `nospeech`, `stopped{part}`, `log{line}`, `settings`.
+- Page to daemon: `ready`, `relisten` (sent on unmute: the daemon resends an open listen, never a tts), `listening` (the light went green: a tts with listen has finished speaking), `complete{text,startAt,endAt,source?,interrupted?}` (`source` is `typed` or `heard`, absent means heard so an old page still validates; `interrupted{part,sentence,started?,word?}` marks a barge; `word` is the 1-based word of that sentence he cut in on, from the voice's word boundary events, absent when the voice gives none), `cancel`, `close`, `ended`, `nospeech`, `stopped{part,id?}` (`id`: the request the Stop was pressed during; another id is ignored), `log{line}`, `settings`.
 - Daemon to page: `request{id,body}`, `released{reason}` where reason is `superseded`, `timeout` or `background`, and `close` (the page shuts its own window: after End, or after a session tts with `close=true` has spoken).
 
 A frame that fails the check is logged as `ws bad message` and dropped; parsing never throws.

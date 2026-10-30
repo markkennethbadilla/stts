@@ -16952,7 +16952,8 @@ const PageMessage = discriminatedUnion("type", [
 	object({ type: literal("nospeech") }),
 	object({
 		type: literal("stopped"),
-		part: number().int().min(1)
+		part: number().int().min(1),
+		id: number().int().optional()
 	}),
 	object({
 		type: literal("log"),
@@ -17322,6 +17323,7 @@ function setEnded(on) {
 	mkdirSync(dataDir, { recursive: true });
 	if (on) writeFileSync(endedFile(), (/* @__PURE__ */ new Date()).toISOString());
 	else rmSync(endedFile(), { force: true });
+	if (on) writeFileSync(join(dataDir, "ended-at"), (/* @__PURE__ */ new Date()).toISOString());
 }
 async function liveUpdate(skipUpdate = false) {
 	if (!safe()) return false;
@@ -17501,6 +17503,7 @@ function occupy(id, body, ms) {
 		const reply = body.kind === "tts" ? (body.text ?? "").trim() : "";
 		if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
 		hear(h, h.typed === true);
+		if (slot?.id === id && reply && turns.getSnapshot().matches("joining")) return result;
 		if (slot?.id === id) barge = null;
 	}
 	if (slot?.id === id) send();
@@ -17570,6 +17573,11 @@ function attachPage(sendToPage) {
 					endAt: m.endAt,
 					typed
 				};
+				if (slot && m.interrupted && said && slot.body.who !== "session") {
+					held = held ? joinHeld(held, h) : h;
+					deps.log("page barge held: the open request is not the session");
+					return;
+				}
 				if (slot && m.interrupted && said) {
 					const partText = slot.body.kind === "tts" ? slot.body.text ?? "" : "";
 					const started = m.interrupted.started !== false;
@@ -17613,6 +17621,10 @@ function attachPage(sendToPage) {
 				settle(200, NO_SPEECH);
 				return;
 			case "stopped":
+				if (m.id !== void 0 && slot && m.id !== slot.id) {
+					deps.log(`page stop for request ${m.id} ignored: request ${slot.id} is open`);
+					return;
+				}
 				if (takeEnded()) {
 					settle(200, CONVERSATION_ENDED);
 					return;
@@ -17689,9 +17701,11 @@ app.get("/barge", (c) => c.json({
 	open: page !== null
 }));
 app.post("/held", (c) => {
-	if (!held) return c.json({ text: "" });
-	const text = held.text.trim();
+	const text = `${carry} ${held?.text ?? ""}`.trim();
+	if (!text) return c.json({ text: "" });
 	held = null;
+	carry = "";
+	keepCarry = false;
 	deps.log(`page heard taken by the steer hook: ${text}`);
 	return c.json({ text });
 });

@@ -21660,7 +21660,8 @@ discriminatedUnion("type", [
 	object({ type: literal("nospeech") }),
 	object({
 		type: literal("stopped"),
-		part: number().int().min(1)
+		part: number().int().min(1),
+		id: number().int().optional()
 	}),
 	object({
 		type: literal("log"),

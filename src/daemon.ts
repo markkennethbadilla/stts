@@ -247,6 +247,9 @@ export function setEnded(on: boolean): void {
   mkdirSync(dataDir, { recursive: true });
   if (on) writeFileSync(endedFile(), new Date().toISOString());
   else rmSync(endedFile(), { force: true });
+  // A stamp never deleted: every armed agent session sees the End, not only the one whose reply
+  // carried the sentinel (Fable review 7; read by the guard-voice-loop hook).
+  if (on) writeFileSync(join(dataDir, 'ended-at'), new Date().toISOString());
 }
 
 export async function liveUpdate(skipUpdate = false): Promise<boolean> {
@@ -455,7 +458,10 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
     const reply = body.kind === 'tts' ? (body.text ?? '').trim() : '';
     if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
     hear(h, h.typed === true);
-    // Still joining: the tts plays after all, so it was not cut off.
+    // Held words that read unfinished are still joining: the tts must not play, or the join's end
+    // would settle it mid-speech with no line (Fable review 1). It stays unsent and settles, with the
+    // not-spoken line, when the join ends.
+    if (slot?.id === id && reply && turns.getSnapshot().matches('joining')) return result;
     if (slot?.id === id) barge = null;
   }
   if (slot?.id === id) send();
@@ -529,6 +535,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         // A barge: his message cut the agent's speech off. The tts call returns it as the next turn.
         // Words held from before it (said while no listen was open) lead it, so the turn is whole
         // (Mark 2026-10-16 08:06: only the barge's last fragment came through).
+        // Only a session request takes his barge: a subagent's request that superseded the session's
+        // never gets Mark's turn; the words are held for the session's next listen (Fable review 10).
+        if (slot && m.interrupted && said && slot.body.who !== 'session') {
+          held = held ? joinHeld(held, h) : h;
+          deps.log('page barge held: the open request is not the session');
+          return;
+        }
         if (slot && m.interrupted && said) {
           // The words he never heard, from the cut-off sentence on (the page's clip N is sentence N);
           // the whole part when no audio had played yet (Mark 2026-10-27: he missed the rest).
@@ -587,6 +600,10 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
+        if (m.id !== undefined && slot && m.id !== slot.id) {
+          deps.log(`page stop for request ${m.id} ignored: request ${slot.id} is open`);
+          return;
+        }
         if (takeEnded()) {
           settle(200, CONVERSATION_ENDED);
           return;
@@ -691,9 +708,12 @@ app.get('/barge', (c) => c.json({ text: '', open: page !== null }));
 // (mkb-agentops spec 086), so his speech steers it on its next step instead of waiting for the next
 // listen (Mark 2026-10-27). Taking them clears them; the hook delivers them as context.
 app.post('/held', (c) => {
-  if (!held) return c.json({ text: '' });
-  const text = held.text.trim();
+  // Carry (words after a timed-out listen) is his too: handed over with the held words (Fable review 9).
+  const text = `${carry} ${held?.text ?? ''}`.trim();
+  if (!text) return c.json({ text: '' });
   held = null;
+  carry = '';
+  keepCarry = false;
   deps.log(`page heard taken by the steer hook: ${text}`);
   return c.json({ text });
 });

@@ -130,6 +130,47 @@ describe('daemon', () => {
     expect(sent.some((m) => m.type === 'request')).toBe(false);
   });
 
+  it('held words still joining: the tts never plays and settles with the not-spoken line (review 1)', async () => {
+    speak('I want to go to the');
+    const r = post('/request', { kind: 'tts', text: 'Here is my answer.', listen: true });
+    await tick();
+    expect(sent.some((m) => m.type === 'request')).toBe(false);
+    speak('shop now');
+    const text = await (await r).text();
+    expect(text).toContain('I want to go to the shop now');
+    expect(text).toContain(bargeLine(1, 1, 'Here is my answer.', false));
+  });
+
+  it('a stale Stop for an older request never ends the open one (review 5)', async () => {
+    const t = post('/request', { kind: 'tts', text: 'a long answer', listen: true });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'stopped', part: 1, id: 999 }));
+    await tick();
+    expect(slotId()).not.toBeNull();
+    page.onMessage(JSON.stringify({ type: 'stopped', part: 1, id: slotId() }));
+    expect(await (await t).text()).toMatch(/^__STTS_STOPPED__ 1/);
+  });
+
+  it('/held hands over carry words too, once (review 9)', async () => {
+    process.env['STTS_REQUEST_TIMEOUT_MS'] = '50';
+    const r = post('/request', { kind: 'stt' });
+    await new Promise((res) => setTimeout(res, 80));
+    await r;
+    speak('words after the timeout');
+    expect(await (await post('/held')).json()).toEqual({ text: 'words after the timeout' });
+    expect(await (await post('/held')).json()).toEqual({ text: '' });
+  });
+
+  it('a barge never settles into a subagent request; the words are held for the session (review 10)', async () => {
+    const t = post('/request', { kind: 'tts', who: 'agent', text: 'a subagent note', listen: false });
+    await tick();
+    typed('wait, not that', { interrupted: { part: 1, sentence: 1 } });
+    expect(logs).toContain('page barge held: the open request is not the session');
+    speak('');
+    await t;
+    expect(await (await post('/request', { kind: 'stt' })).text()).toMatch(/wait, not that$/);
+  });
+
   it('held speech comes back labelled heard, not typed', async () => {
     speak('mm');
     const r = post('/request', { kind: 'stt' });

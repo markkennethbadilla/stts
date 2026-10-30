@@ -256,7 +256,8 @@ export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('close') }),
   z.object({ type: z.literal('ended'), idle: z.boolean().optional() }),
   z.object({ type: z.literal('nospeech') }),
-  z.object({ type: z.literal('stopped'), part: z.number().int().min(1) }),
+  // id: the request the Stop was pressed during; a stale Stop never ends a later request (Fable review 5).
+  z.object({ type: z.literal('stopped'), part: z.number().int().min(1), id: z.number().int().optional() }),
   z.object({ type: z.literal('log'), line: z.string() }),
   z.object({ type: z.literal('settings'), settings: z.record(z.string(), z.unknown()) }),
 ]);
