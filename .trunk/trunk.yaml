@@ -26,4 +26,7 @@ actions:
       run: npm run gate
       triggers: [{git_hooks: [pre-push]}]
       notify_on_error: false
-  enabled: [block-commit-on-findings, block-push-on-findings]
+    - id: block-push-on-opengrep
+      triggers: [{git_hooks: [pre-push]}]
+      run: '"C:/Program Files/opengrep/opengrep.exe" scan --experimental --disable-version-check --quiet --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules .'
+  enabled: [block-commit-on-findings, block-push-on-findings, block-push-on-opengrep]

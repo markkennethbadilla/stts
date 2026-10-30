@@ -1,7 +1,7 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
 // page over /ws, launches the Chrome --app window and runs Piper as a child process.
 
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
@@ -23,6 +23,7 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { launch } from 'chrome-launcher';
+import spawn from 'cross-spawn';
 import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
@@ -106,10 +107,11 @@ export const deps = {
     process.exit(code);
   },
   // Live update (spec 013): Claude Code's own plugin updater pulls a new version into its cache.
+  // cross-spawn runs claude.cmd on Windows without shell: true.
   update(): Promise<void> {
     return new Promise((done) => {
       const run = (args: string[], next: () => void): void => {
-        const p = spawn('claude', args, { stdio: 'ignore', windowsHide: true, shell: true });
+        const p = spawn('claude', args, { stdio: 'ignore', windowsHide: true });
         const t = setTimeout(() => p.kill(), 120_000);
         p.on('error', () => {});
         p.on('close', () => {

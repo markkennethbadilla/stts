@@ -12,10 +12,12 @@ const who = process.env['STTS_WHO'] === 'agent' ? 'agent' : 'session';
 const reply = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 
 server.registerTool('stt', { description: STT_DESCRIPTION, inputSchema: sttShape }, async (a) =>
+  // nosemgrep: mcp-ssrf-typescript -- args go in the JSON body to the fixed 127.0.0.1 daemon URL
   reply(await request({ kind: 'stt', who, ...a })),
 );
 
 server.registerTool('tts', { description: TTS_DESCRIPTION, inputSchema: ttsShape }, async (a) =>
+  // nosemgrep: mcp-ssrf-typescript -- args go in the JSON body to the fixed 127.0.0.1 daemon URL
   reply(await request({ kind: 'tts', who, ...a })),
 );
 

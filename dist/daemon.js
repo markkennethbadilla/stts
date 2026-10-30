@@ -1,5 +1,4 @@
 import { createRequire } from "node:module";
-import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { constants, homedir, setPriority } from "node:os";
@@ -10,7 +9,7 @@ import { createServer } from "http";
 import { Http2ServerRequest, constants as constants$1 } from "http2";
 import { Readable } from "stream";
 import crypto from "crypto";
-import * as fs$1 from "fs";
+import * as fs$4 from "fs";
 import fs, { createReadStream, existsSync as existsSync$1, mkdtempSync, statSync as statSync$1 } from "fs";
 import path, { join as join$1 } from "path";
 import process$1, { versions } from "process";
@@ -18,7 +17,7 @@ import { EventEmitter } from "events";
 import * as net from "net";
 import { STATUS_CODES } from "node:http";
 import { homedir as homedir$1 } from "os";
-import childProcess, { execFileSync, execSync, spawn as spawn$1, spawnSync } from "child_process";
+import childProcess, { execFileSync, execSync, spawn, spawnSync } from "child_process";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -52,7 +51,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
-//#region ../stts/node_modules/@hono/node-server/dist/index.mjs
+//#region node_modules/@hono/node-server/dist/index.mjs
 var RequestError = class extends Error {
 	constructor(message, options) {
 		super(message, options);
@@ -557,7 +556,7 @@ var serve = (options, listeningListener) => {
 	return server;
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/mime.js
+//#region node_modules/hono/dist/utils/mime.js
 /**
 * @module
 * MIME utility.
@@ -626,7 +625,7 @@ const baseMimes = {
 	glb: "model/gltf-binary"
 };
 //#endregion
-//#region ../stts/node_modules/@hono/node-server/dist/serve-static.mjs
+//#region node_modules/@hono/node-server/dist/serve-static.mjs
 var COMPRESSIBLE_CONTENT_TYPE_REGEX = /^\s*(?:text\/[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
 var ENCODINGS = {
 	br: ".br",
@@ -752,7 +751,7 @@ var serveStatic = (options = { root: "" }) => {
 	};
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/helper/websocket/index.js
+//#region node_modules/hono/dist/helper/websocket/index.js
 /**
 * Create a WebSocket adapter/helper
 */
@@ -776,7 +775,7 @@ const defineWebSocketHelper = (handler) => {
 	});
 };
 //#endregion
-//#region ../stts/node_modules/ws/lib/constants.js
+//#region node_modules/ws/lib/constants.js
 var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const BINARY_TYPES = [
 		"nodebuffer",
@@ -799,7 +798,7 @@ var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/buffer-util.js
+//#region node_modules/ws/lib/buffer-util.js
 var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { EMPTY_BUFFER } = require_constants();
 	const FastBuffer = Buffer[Symbol.species];
@@ -899,7 +898,7 @@ var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	} catch (e) {}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/limiter.js
+//#region node_modules/ws/lib/limiter.js
 var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const kDone = Symbol("kDone");
 	const kRun = Symbol("kRun");
@@ -950,7 +949,7 @@ var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = Limiter;
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/permessage-deflate.js
+//#region node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const zlib = __require("zlib");
 	const bufferUtil = require_buffer_util();
@@ -1286,7 +1285,7 @@ var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/validation.js
+//#region node_modules/ws/lib/validation.js
 var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { isUtf8 } = __require("buffer");
 	const { hasBlob } = require_constants();
@@ -1482,7 +1481,7 @@ var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	} catch (e) {}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/receiver.js
+//#region node_modules/ws/lib/receiver.js
 var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Writable } = __require("stream");
 	const PerMessageDeflate = require_permessage_deflate();
@@ -1945,7 +1944,7 @@ var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = Receiver;
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/sender.js
+//#region node_modules/ws/lib/sender.js
 var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Duplex: Duplex$3 } = __require("stream");
 	const { randomFillSync } = __require("crypto");
@@ -2443,7 +2442,7 @@ var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/event-target.js
+//#region node_modules/ws/lib/event-target.js
 var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { kForOnEventAttribute, kListener } = require_constants();
 	const kCode = Symbol("kCode");
@@ -2674,7 +2673,7 @@ var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/extension.js
+//#region node_modules/ws/lib/extension.js
 var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -2820,7 +2819,7 @@ var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/websocket.js
+//#region node_modules/ws/lib/websocket.js
 var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter$2 = __require("events");
 	const https = __require("https");
@@ -3819,7 +3818,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/stream.js
+//#region node_modules/ws/lib/stream.js
 var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	require_websocket();
 	const { Duplex: Duplex$1 } = __require("stream");
@@ -3935,7 +3934,7 @@ var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = createWebSocketStream;
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/subprotocol.js
+//#region node_modules/ws/lib/subprotocol.js
 var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -3974,7 +3973,7 @@ var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = { parse };
 }));
 //#endregion
-//#region ../stts/node_modules/ws/lib/websocket-server.js
+//#region node_modules/ws/lib/websocket-server.js
 var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter$1 = __require("events");
 	const http = __require("http");
@@ -4369,7 +4368,7 @@ require_subprotocol();
 require_websocket();
 var import_websocket_server = /* @__PURE__ */ __toESM(require_websocket_server(), 1);
 //#endregion
-//#region ../stts/node_modules/@hono/node-ws/dist/index.js
+//#region node_modules/@hono/node-ws/dist/index.js
 /**
 * @link https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 */
@@ -4512,7 +4511,7 @@ Content-Length: 0\r
 	};
 };
 //#endregion
-//#region ../stts/node_modules/escape-string-regexp/index.js
+//#region node_modules/escape-string-regexp/index.js
 var require_escape_string_regexp = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = (string) => {
 		if (typeof string !== "string") throw new TypeError("Expected a string");
@@ -4520,7 +4519,7 @@ var require_escape_string_regexp = /* @__PURE__ */ __commonJSMin(((exports, modu
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/ms/index.js
+//#region node_modules/ms/index.js
 var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Helpers.
@@ -4638,7 +4637,7 @@ var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/debug/src/common.js
+//#region node_modules/debug/src/common.js
 var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the common logic for both the Node.js and web browser
@@ -4841,7 +4840,7 @@ var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = setup;
 }));
 //#endregion
-//#region ../stts/node_modules/debug/src/browser.js
+//#region node_modules/debug/src/browser.js
 var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the web browser implementation of `debug()`.
@@ -5037,7 +5036,7 @@ var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/debug/src/node.js
+//#region node_modules/debug/src/node.js
 var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Module dependencies.
@@ -5244,7 +5243,7 @@ var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/debug/src/index.js
+//#region node_modules/debug/src/index.js
 var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Detect Electron renderer / nwjs process, which is node, but we should
@@ -5254,7 +5253,7 @@ var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	else module.exports = require_node();
 }));
 //#endregion
-//#region ../stts/node_modules/marky/lib/marky.cjs.js
+//#region node_modules/marky/lib/marky.cjs.js
 var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	var perf = typeof performance !== "undefined" && performance;
@@ -5341,7 +5340,7 @@ var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 }));
 //#endregion
-//#region ../stts/node_modules/lighthouse-logger/index.js
+//#region node_modules/lighthouse-logger/index.js
 var import_escape_string_regexp = /* @__PURE__ */ __toESM(require_escape_string_regexp(), 1);
 /**
 * @license
@@ -5576,13 +5575,13 @@ Log.takeTimeEntries = () => {
 */
 Log.getTimeEntries = () => import_marky_cjs.getEntries();
 //#endregion
-//#region ../stts/node_modules/is-docker/index.js
+//#region node_modules/is-docker/index.js
 var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const fs$3 = __require("fs");
+	const fs$6 = __require("fs");
 	let isDocker;
 	function hasDockerEnv() {
 		try {
-			fs$3.statSync("/.dockerenv");
+			fs$6.statSync("/.dockerenv");
 			return true;
 		} catch (_) {
 			return false;
@@ -5590,7 +5589,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	function hasDockerCGroup() {
 		try {
-			return fs$3.readFileSync("/proc/self/cgroup", "utf8").includes("docker");
+			return fs$6.readFileSync("/proc/self/cgroup", "utf8").includes("docker");
 		} catch (_) {
 			return false;
 		}
@@ -5601,7 +5600,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/utils.js
+//#region node_modules/chrome-launcher/dist/utils.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5609,7 +5608,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 */
 var import_is_wsl = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const os = __require("os");
-	const fs$2 = __require("fs");
+	const fs$5 = __require("fs");
 	const isDocker = require_is_docker();
 	const isWsl = () => {
 		if (process.platform !== "linux") return false;
@@ -5618,7 +5617,7 @@ var import_is_wsl = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exp
 			return true;
 		}
 		try {
-			return fs$2.readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft") ? !isDocker() : false;
+			return fs$5.readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft") ? !isDocker() : false;
 		} catch (_) {
 			return false;
 		}
@@ -5724,7 +5723,7 @@ function makeWin32TmpDir() {
 	return mkdtempSync(join$1(winTmpPath, "lighthouse."));
 }
 //#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/chrome-finder.js
+//#region node_modules/chrome-launcher/dist/chrome-finder.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5928,7 +5927,7 @@ function findChromeExecutables(folder) {
 	return installations;
 }
 //#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/flags.js
+//#region node_modules/chrome-launcher/dist/flags.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5975,7 +5974,7 @@ const DEFAULT_FLAGS = [
 	"--propagate-iph-for-testing"
 ];
 //#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/chrome-launcher.js
+//#region node_modules/chrome-launcher/dist/chrome-launcher.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -6030,8 +6029,8 @@ var Launcher = class Launcher {
 		this.tmpDirandPidFileReady = false;
 		this.remoteDebuggingPipes = null;
 		this.opts = opts;
-		this.fs = moduleOverrides.fs || fs$1;
-		this.spawn = moduleOverrides.spawn || spawn$1;
+		this.fs = moduleOverrides.fs || fs$4;
+		this.spawn = moduleOverrides.spawn || spawn;
 		Log.setLevel(defaults(this.opts.logLevel, "silent"));
 		this.startingUrl = defaults(this.opts.startingUrl, "about:blank");
 		this.chromeFlags = defaults(this.opts.chromeFlags, []);
@@ -6084,8 +6083,8 @@ var Launcher = class Launcher {
 		if (!_SUPPORTED_PLATFORMS.has(platform)) throw new UnsupportedPlatformError();
 		this.userDataDir = this.userDataDir || this.makeTmpDir();
 		try {
-			this.outFile = fs$1.openSync(`${this.userDataDir}/chrome-out.log`, "a");
-			this.errFile = fs$1.openSync(`${this.userDataDir}/chrome-err.log`, "a");
+			this.outFile = fs$4.openSync(`${this.userDataDir}/chrome-out.log`, "a");
+			this.errFile = fs$4.openSync(`${this.userDataDir}/chrome-err.log`, "a");
 		} catch (_) {}
 		this.setBrowserPrefs();
 		this.pidFile = `${this.userDataDir}/chrome.pid`;
@@ -6198,7 +6197,7 @@ var Launcher = class Launcher {
 				Log.log("ChromeLauncher", waitStatus);
 				const checkReady = () => {
 					if (launcher.port === 0) try {
-						const match = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
+						const match = fs$4.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
 						if (match) {
 							launcher.port = parseInt(match[1], 10);
 							Log.verbose("ChromeLauncher", `Discovered Chrome listening on port ${launcher.port}.`);
@@ -6215,7 +6214,7 @@ var Launcher = class Launcher {
 						Log.error("ChromeLauncher", err.message);
 						let stderr = "";
 						try {
-							stderr = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
+							stderr = fs$4.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
 						} catch (readErr) {
 							stderr = `Failed to read log: ${readErr.message}`;
 						}
@@ -6253,13 +6252,13 @@ var Launcher = class Launcher {
 	destroyTmp() {
 		if (this.outFile) {
 			try {
-				fs$1.closeSync(this.outFile);
+				fs$4.closeSync(this.outFile);
 			} catch (_) {}
 			delete this.outFile;
 		}
 		if (this.errFile) {
 			try {
-				fs$1.closeSync(this.errFile);
+				fs$4.closeSync(this.errFile);
 			} catch (_) {}
 			delete this.errFile;
 		}
@@ -6277,15 +6276,415 @@ var Launcher = class Launcher {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/request/constants.js
+//#region node_modules/isexe/windows.js
+var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = isexe;
+	isexe.sync = sync;
+	var fs$3 = __require("fs");
+	function checkPathExt(path, options) {
+		var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
+		if (!pathext) return true;
+		pathext = pathext.split(";");
+		if (pathext.indexOf("") !== -1) return true;
+		for (var i = 0; i < pathext.length; i++) {
+			var p = pathext[i].toLowerCase();
+			if (p && path.substr(-p.length).toLowerCase() === p) return true;
+		}
+		return false;
+	}
+	function checkStat(stat, path, options) {
+		if (!stat.isSymbolicLink() && !stat.isFile()) return false;
+		return checkPathExt(path, options);
+	}
+	function isexe(path, options, cb) {
+		fs$3.stat(path, function(er, stat) {
+			cb(er, er ? false : checkStat(stat, path, options));
+		});
+	}
+	function sync(path, options) {
+		return checkStat(fs$3.statSync(path), path, options);
+	}
+}));
+//#endregion
+//#region node_modules/isexe/mode.js
+var require_mode = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = isexe;
+	isexe.sync = sync;
+	var fs$2 = __require("fs");
+	function isexe(path, options, cb) {
+		fs$2.stat(path, function(er, stat) {
+			cb(er, er ? false : checkStat(stat, options));
+		});
+	}
+	function sync(path, options) {
+		return checkStat(fs$2.statSync(path), options);
+	}
+	function checkStat(stat, options) {
+		return stat.isFile() && checkMode(stat, options);
+	}
+	function checkMode(stat, options) {
+		var mod = stat.mode;
+		var uid = stat.uid;
+		var gid = stat.gid;
+		var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
+		var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
+		var u = parseInt("100", 8);
+		var g = parseInt("010", 8);
+		var o = parseInt("001", 8);
+		var ug = u | g;
+		return mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
+	}
+}));
+//#endregion
+//#region node_modules/isexe/index.js
+var require_isexe = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	__require("fs");
+	var core;
+	if (process.platform === "win32" || global.TESTING_WINDOWS) core = require_windows();
+	else core = require_mode();
+	module.exports = isexe;
+	isexe.sync = sync;
+	function isexe(path, options, cb) {
+		if (typeof options === "function") {
+			cb = options;
+			options = {};
+		}
+		if (!cb) {
+			if (typeof Promise !== "function") throw new TypeError("callback not provided");
+			return new Promise(function(resolve, reject) {
+				isexe(path, options || {}, function(er, is) {
+					if (er) reject(er);
+					else resolve(is);
+				});
+			});
+		}
+		core(path, options || {}, function(er, is) {
+			if (er) {
+				if (er.code === "EACCES" || options && options.ignoreErrors) {
+					er = null;
+					is = false;
+				}
+			}
+			cb(er, is);
+		});
+	}
+	function sync(path, options) {
+		try {
+			return core.sync(path, options || {});
+		} catch (er) {
+			if (options && options.ignoreErrors || er.code === "EACCES") return false;
+			else throw er;
+		}
+	}
+}));
+//#endregion
+//#region node_modules/which/which.js
+var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
+	const path$3 = __require("path");
+	const COLON = isWindows ? ";" : ":";
+	const isexe = require_isexe();
+	const getNotFoundError = (cmd) => Object.assign(/* @__PURE__ */ new Error(`not found: ${cmd}`), { code: "ENOENT" });
+	const getPathInfo = (cmd, opt) => {
+		const colon = opt.colon || COLON;
+		const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [...isWindows ? [process.cwd()] : [], ...(opt.path || process.env.PATH || 
+		/* istanbul ignore next: very unusual */ "").split(colon)];
+		const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
+		const pathExt = isWindows ? pathExtExe.split(colon) : [""];
+		if (isWindows) {
+			if (cmd.indexOf(".") !== -1 && pathExt[0] !== "") pathExt.unshift("");
+		}
+		return {
+			pathEnv,
+			pathExt,
+			pathExtExe
+		};
+	};
+	const which = (cmd, opt, cb) => {
+		if (typeof opt === "function") {
+			cb = opt;
+			opt = {};
+		}
+		if (!opt) opt = {};
+		const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+		const found = [];
+		const step = (i) => new Promise((resolve, reject) => {
+			if (i === pathEnv.length) return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+			const ppRaw = pathEnv[i];
+			const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+			const pCmd = path$3.join(pathPart, cmd);
+			const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+			resolve(subStep(p, i, 0));
+		});
+		const subStep = (p, i, ii) => new Promise((resolve, reject) => {
+			if (ii === pathExt.length) return resolve(step(i + 1));
+			const ext = pathExt[ii];
+			isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
+				if (!er && is) {
+					if (opt.all) found.push(p + ext);
+					else return resolve(p + ext);
+				}
+				return resolve(subStep(p, i, ii + 1));
+			});
+		});
+		return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
+	};
+	const whichSync = (cmd, opt) => {
+		opt = opt || {};
+		const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+		const found = [];
+		for (let i = 0; i < pathEnv.length; i++) {
+			const ppRaw = pathEnv[i];
+			const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+			const pCmd = path$3.join(pathPart, cmd);
+			const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+			for (let j = 0; j < pathExt.length; j++) {
+				const cur = p + pathExt[j];
+				try {
+					if (isexe.sync(cur, { pathExt: pathExtExe })) {
+						if (opt.all) found.push(cur);
+						else return cur;
+					}
+				} catch (ex) {}
+			}
+		}
+		if (opt.all && found.length) return found;
+		if (opt.nothrow) return null;
+		throw getNotFoundError(cmd);
+	};
+	module.exports = which;
+	which.sync = whichSync;
+}));
+//#endregion
+//#region node_modules/path-key/index.js
+var require_path_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const pathKey = (options = {}) => {
+		const environment = options.env || process.env;
+		if ((options.platform || process.platform) !== "win32") return "PATH";
+		return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
+	};
+	module.exports = pathKey;
+	module.exports.default = pathKey;
+}));
+//#endregion
+//#region node_modules/cross-spawn/lib/util/resolveCommand.js
+var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const path$2 = __require("path");
+	const which = require_which();
+	const getPathKey = require_path_key();
+	function resolveCommandAttempt(parsed, withoutPathExt) {
+		const env = parsed.options.env || process.env;
+		const cwd = process.cwd();
+		const hasCustomCwd = parsed.options.cwd != null;
+		const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
+		if (shouldSwitchCwd) try {
+			process.chdir(parsed.options.cwd);
+		} catch (err) {}
+		let resolved;
+		try {
+			resolved = which.sync(parsed.command, {
+				path: env[getPathKey({ env })],
+				pathExt: withoutPathExt ? path$2.delimiter : void 0
+			});
+		} catch (e) {} finally {
+			if (shouldSwitchCwd) process.chdir(cwd);
+		}
+		if (resolved) resolved = path$2.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+		return resolved;
+	}
+	function resolveCommand(parsed) {
+		return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
+	}
+	module.exports = resolveCommand;
+}));
+//#endregion
+//#region node_modules/cross-spawn/lib/util/escape.js
+var require_escape = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
+	function escapeCommand(arg) {
+		arg = arg.replace(metaCharsRegExp, "^$1");
+		return arg;
+	}
+	function escapeArgument(arg, doubleEscapeMetaChars) {
+		arg = `${arg}`;
+		arg = arg.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
+		arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
+		arg = `"${arg}"`;
+		arg = arg.replace(metaCharsRegExp, "^$1");
+		if (doubleEscapeMetaChars) arg = arg.replace(metaCharsRegExp, "^$1");
+		return arg;
+	}
+	module.exports.command = escapeCommand;
+	module.exports.argument = escapeArgument;
+}));
+//#endregion
+//#region node_modules/shebang-regex/index.js
+var require_shebang_regex = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	module.exports = /^#!(.*)/;
+}));
+//#endregion
+//#region node_modules/shebang-command/index.js
+var require_shebang_command = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const shebangRegex = require_shebang_regex();
+	module.exports = (string = "") => {
+		const match = string.match(shebangRegex);
+		if (!match) return null;
+		const [path, argument] = match[0].replace(/#! ?/, "").split(" ");
+		const binary = path.split("/").pop();
+		if (binary === "env") return argument;
+		return argument ? `${binary} ${argument}` : binary;
+	};
+}));
+//#endregion
+//#region node_modules/cross-spawn/lib/util/readShebang.js
+var require_readShebang = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const fs$1 = __require("fs");
+	const shebangCommand = require_shebang_command();
+	function readShebang(command) {
+		const size = 150;
+		const buffer = Buffer.alloc(size);
+		let fd;
+		try {
+			fd = fs$1.openSync(command, "r");
+			fs$1.readSync(fd, buffer, 0, size, 0);
+			fs$1.closeSync(fd);
+		} catch (e) {}
+		return shebangCommand(buffer.toString());
+	}
+	module.exports = readShebang;
+}));
+//#endregion
+//#region node_modules/cross-spawn/lib/parse.js
+var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const path$1 = __require("path");
+	const resolveCommand = require_resolveCommand();
+	const escape = require_escape();
+	const readShebang = require_readShebang();
+	const isWin = process.platform === "win32";
+	const isExecutableRegExp = /\.(?:com|exe)$/i;
+	const isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
+	function detectShebang(parsed) {
+		parsed.file = resolveCommand(parsed);
+		const shebang = parsed.file && readShebang(parsed.file);
+		if (shebang) {
+			parsed.args.unshift(parsed.file);
+			parsed.command = shebang;
+			return resolveCommand(parsed);
+		}
+		return parsed.file;
+	}
+	function parseNonShell(parsed) {
+		if (!isWin) return parsed;
+		const commandFile = detectShebang(parsed);
+		const needsShell = !isExecutableRegExp.test(commandFile);
+		if (parsed.options.forceShell || needsShell) {
+			const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
+			parsed.command = path$1.normalize(parsed.command);
+			parsed.command = escape.command(parsed.command);
+			parsed.args = parsed.args.map((arg) => escape.argument(arg, needsDoubleEscapeMetaChars));
+			parsed.args = [
+				"/d",
+				"/s",
+				"/c",
+				`"${[parsed.command].concat(parsed.args).join(" ")}"`
+			];
+			parsed.command = process.env.comspec || "cmd.exe";
+			parsed.options.windowsVerbatimArguments = true;
+		}
+		return parsed;
+	}
+	function parse(command, args, options) {
+		if (args && !Array.isArray(args)) {
+			options = args;
+			args = null;
+		}
+		args = args ? args.slice(0) : [];
+		options = Object.assign({}, options);
+		const parsed = {
+			command,
+			args,
+			options,
+			file: void 0,
+			original: {
+				command,
+				args
+			}
+		};
+		return options.shell ? parsed : parseNonShell(parsed);
+	}
+	module.exports = parse;
+}));
+//#endregion
+//#region node_modules/cross-spawn/lib/enoent.js
+var require_enoent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const isWin = process.platform === "win32";
+	function notFoundError(original, syscall) {
+		return Object.assign(/* @__PURE__ */ new Error(`${syscall} ${original.command} ENOENT`), {
+			code: "ENOENT",
+			errno: "ENOENT",
+			syscall: `${syscall} ${original.command}`,
+			path: original.command,
+			spawnargs: original.args
+		});
+	}
+	function hookChildProcess(cp, parsed) {
+		if (!isWin) return;
+		const originalEmit = cp.emit;
+		cp.emit = function(name, arg1) {
+			if (name === "exit") {
+				const err = verifyENOENT(arg1, parsed);
+				if (err) return originalEmit.call(cp, "error", err);
+			}
+			return originalEmit.apply(cp, arguments);
+		};
+	}
+	function verifyENOENT(status, parsed) {
+		if (isWin && status === 1 && !parsed.file) return notFoundError(parsed.original, "spawn");
+		return null;
+	}
+	function verifyENOENTSync(status, parsed) {
+		if (isWin && status === 1 && !parsed.file) return notFoundError(parsed.original, "spawnSync");
+		return null;
+	}
+	module.exports = {
+		hookChildProcess,
+		verifyENOENT,
+		verifyENOENTSync,
+		notFoundError
+	};
+}));
+//#endregion
+//#region node_modules/hono/dist/request/constants.js
+var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
+	const cp = __require("child_process");
+	const parse = require_parse();
+	const enoent = require_enoent();
+	function spawn(command, args, options) {
+		const parsed = parse(command, args, options);
+		const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
+		enoent.hookChildProcess(spawned, parsed);
+		return spawned;
+	}
+	function spawnSync(command, args, options) {
+		const parsed = parse(command, args, options);
+		const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
+		result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
+		return result;
+	}
+	module.exports = spawn;
+	module.exports.spawn = spawn;
+	module.exports.sync = spawnSync;
+	module.exports._parse = parse;
+	module.exports._enoent = enoent;
+})))(), 1);
 const GET_MATCH_RESULT = Symbol();
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/buffer.js
+//#region node_modules/hono/dist/utils/buffer.js
 const bufferToFormData = (arrayBuffer, contentType) => {
 	return new Response(arrayBuffer, { headers: { "Content-Type": contentType.replace(/^[^;]+/, (mediaType) => mediaType.toLowerCase()) } }).formData();
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/body.js
+//#region node_modules/hono/dist/utils/body.js
 const MAX_NESTED_OBJECTS = 1e4;
 const isRawRequest = (request) => "headers" in request;
 const parseBody = async (request, options = Object.create(null)) => {
@@ -6379,7 +6778,7 @@ const throwNestingLimitExceeded = () => {
 	throw new Error("Nesting limit exceeded");
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/url.js
+//#region node_modules/hono/dist/utils/url.js
 const splitPath = (path) => {
 	const paths = path.split("/");
 	if (paths[0] === "") paths.shift();
@@ -6569,7 +6968,7 @@ const getQueryParams = (url, key) => {
 };
 const decodeURIComponent_ = decodeURIComponent;
 //#endregion
-//#region ../stts/node_modules/hono/dist/request.js
+//#region node_modules/hono/dist/request.js
 var HonoRequest = class {
 	/**
 	* `.raw` can get the raw Request object.
@@ -6839,7 +7238,7 @@ var HonoRequest = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/html.js
+//#region node_modules/hono/dist/utils/html.js
 /**
 * @module
 * HTML utility.
@@ -6873,7 +7272,7 @@ const resolveCallback = async (str, phase, preserveCallbacks, context, buffer) =
 	else return resStr;
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/context.js
+//#region node_modules/hono/dist/context.js
 const TEXT_PLAIN = "text/plain; charset=UTF-8";
 const setDefaultContentType = (contentType, headers) => {
 	return {
@@ -7251,7 +7650,7 @@ var Context = class {
 	};
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/compose.js
+//#region node_modules/hono/dist/compose.js
 /**
 * Compose middleware functions into a single function based on `koa-compose` package.
 *
@@ -7300,7 +7699,7 @@ const compose = (middleware, onError, onNotFound) => {
 	};
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router.js
+//#region node_modules/hono/dist/router.js
 /**
 * Array of supported HTTP methods.
 */
@@ -7322,13 +7721,13 @@ const MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher 
 */
 var UnsupportedPathError = class extends Error {};
 //#endregion
-//#region ../stts/node_modules/hono/dist/utils/constants.js
+//#region node_modules/hono/dist/utils/constants.js
 /**
 * Constant used to mark a composed handler.
 */
 const COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 //#endregion
-//#region ../stts/node_modules/hono/dist/hono-base.js
+//#region node_modules/hono/dist/hono-base.js
 /**
 * @module
 * This module is the base module for the Hono object.
@@ -7672,10 +8071,10 @@ var Hono$1 = class Hono {
 	};
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/utils.js
+//#region node_modules/hono/dist/router/utils.js
 const createNullObject = () => Object.create(null);
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/matcher.js
+//#region node_modules/hono/dist/router/reg-exp-router/matcher.js
 const emptyParam = [];
 function match(method, path) {
 	const matchers = this.buildAllMatchers();
@@ -7692,7 +8091,7 @@ function match(method, path) {
 	return match(method, path);
 }
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/node.js
+//#region node_modules/hono/dist/router/reg-exp-router/node.js
 const LABEL_REG_EXP_STR = "[^/]+";
 const TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
 const PATH_ERROR = Symbol();
@@ -7780,7 +8179,7 @@ var Node$1 = class Node {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/trie.js
+//#region node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
 	#context = { varIndex: 0 };
 	#root = new Node$1();
@@ -7850,7 +8249,7 @@ var Trie = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/router.js
+//#region node_modules/hono/dist/router/reg-exp-router/router.js
 let wildcardRegExpCache = createNullObject();
 function buildWildcardRegExp(path) {
 	return wildcardRegExpCache[path] ??= new RegExp(`^${path.replace(/\/:[^/{}]+(?:\{\[\^\/]\+})?(?=[/{]|$)|\/?\*$|([.\\+*[^\]$()?{}|])/g, (match, metaChar) => metaChar ? `\\${metaChar}` : match === "/*" ? TAIL_WILDCARD_REG_EXP_STR : match === "*" ? ".*" : `/:${LABEL_REG_EXP_STR}`)}$`);
@@ -7944,7 +8343,7 @@ var RegExpRouter = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/smart-router/router.js
+//#region node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
 	name = "SmartRouter";
 	#routers = [];
@@ -7991,7 +8390,7 @@ var SmartRouter = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/trie-router/node.js
+//#region node_modules/hono/dist/router/trie-router/node.js
 const emptyParams = createNullObject();
 let order = 0;
 var Node = class Node {
@@ -8121,7 +8520,7 @@ var Node = class Node {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/router/trie-router/router.js
+//#region node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
 	name = "TrieRouter";
 	#node = new Node();
@@ -8133,7 +8532,7 @@ var TrieRouter = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/hono/dist/hono.js
+//#region node_modules/hono/dist/hono.js
 /**
 * The Hono class extends the functionality of the HonoBase class.
 * It sets up routing and allows for custom options to be passed.
@@ -8203,7 +8602,7 @@ var index_node_default = (/* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin
 	};
 })))(), 1)).default;
 //#endregion
-//#region ../stts/node_modules/xstate/dist/xstate-dev.esm.js
+//#region node_modules/xstate/dist/xstate-dev.esm.js
 function getGlobal() {
 	if (typeof globalThis !== "undefined") return globalThis;
 	if (typeof self !== "undefined") return self;
@@ -8220,7 +8619,7 @@ const devToolsAdapter = (service) => {
 	if (devTools) devTools.register(service);
 };
 //#endregion
-//#region ../stts/node_modules/xstate/dist/raise-97446fd4.esm.js
+//#region node_modules/xstate/dist/raise-97446fd4.esm.js
 var Mailbox = class {
 	constructor(_process) {
 		this._process = _process;
@@ -10186,7 +10585,7 @@ function raise(eventOrExpr, options) {
 	return raise;
 }
 //#endregion
-//#region ../stts/node_modules/xstate/dist/assign-b4b1f28f.esm.js
+//#region node_modules/xstate/dist/assign-b4b1f28f.esm.js
 function createSpawner(actorScope, { machine, context }, event, spawnedChildren) {
 	const spawn = (src, options) => {
 		if (typeof src === "string") {
@@ -10295,7 +10694,7 @@ function assign(assignment) {
 	return assign;
 }
 //#endregion
-//#region ../stts/node_modules/xstate/dist/StateMachine-521e1f66.esm.js
+//#region node_modules/xstate/dist/StateMachine-521e1f66.esm.js
 const cache = /* @__PURE__ */ new WeakMap();
 function memo$1(object, key, fn) {
 	let memoizedData = cache.get(object);
@@ -10782,7 +11181,7 @@ var StateMachine = class StateMachine {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/xstate/dist/log-ddf17a4a.esm.js
+//#region node_modules/xstate/dist/log-ddf17a4a.esm.js
 function resolveEmit(_, snapshot, args, actionParams, { event: eventOrExpr }) {
 	return [
 		snapshot,
@@ -11082,7 +11481,7 @@ function log(value = ({ context, event }) => ({
 	return log;
 }
 //#endregion
-//#region ../stts/node_modules/xstate/dist/xstate.esm.js
+//#region node_modules/xstate/dist/xstate.esm.js
 /**
 * Creates a state machine (statechart) with the given configuration.
 *
@@ -11169,7 +11568,7 @@ function setup({ schemas, actors, actions, guards, delays }) {
 	};
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/util.js
+//#region node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -11692,7 +12091,7 @@ function constantCatch(value) {
 	return fn;
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/core.js
+//#region node_modules/zod/v4/core/core.js
 var _a$1;
 const _zodDesc = {
 	value: void 0,
@@ -11798,7 +12197,7 @@ function config(newConfig) {
 	return globalConfig;
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/errors.js
+//#region node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -11914,7 +12313,7 @@ function formatError(error, mapper = (issue) => issue.message) {
 	return fieldErrors;
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/parse.js
+//#region node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
 	return {
 		callee: params?.callee ?? callee,
@@ -12117,7 +12516,7 @@ const _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
 	return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/regexes.js
+//#region node_modules/zod/v4/core/regexes.js
 /**
 * @deprecated CUID v1 is deprecated by its authors due to information leakage
 * (timestamps embedded in the id). Use {@link cuid2} instead.
@@ -12189,7 +12588,7 @@ const boolean$1 = /^(?:true|false)$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/checks.js
+//#region node_modules/zod/v4/core/checks.js
 const $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -12485,7 +12884,7 @@ const $ZodCheckOverwrite = /*@__PURE__*/ $constructor("$ZodCheckOverwrite", (ins
 	};
 });
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/doc.js
+//#region node_modules/zod/v4/core/doc.js
 var Doc = class {
 	constructor(args = [], closed = {}) {
 		this.content = [];
@@ -12519,14 +12918,14 @@ var Doc = class {
 	}
 };
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/versions.js
+//#region node_modules/zod/v4/core/versions.js
 const version = {
 	major: 4,
 	minor: 6,
 	patch: 5
 };
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/schemas.js
+//#region node_modules/zod/v4/core/schemas.js
 const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -13960,7 +14359,7 @@ function handleRefineResult(result, payload, input, inst) {
 	}
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/memoizer.js
+//#region node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
 	constructor() {
 		super(`Cannot parse a reference cycle that closes through a transform`);
@@ -14213,7 +14612,7 @@ function isBackEdge(ctx, value) {
 	return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/locales/en.js
+//#region node_modules/zod/v4/locales/en.js
 const error = () => {
 	const Sizable = {
 		string: {
@@ -14321,7 +14720,7 @@ function en_default() {
 	return { localeError: error() };
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/registries.js
+//#region node_modules/zod/v4/core/registries.js
 var _a;
 var $ZodRegistry = class {
 	constructor() {
@@ -14368,7 +14767,7 @@ function registry() {
 (_a = globalThis).__zod_globalRegistry ?? (_a.__zod_globalRegistry = registry());
 const globalRegistry = globalThis.__zod_globalRegistry;
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/api.js
+//#region node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -14877,7 +15276,7 @@ function _check(fn, params) {
 	return ch;
 }
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/to-json-schema.js
+//#region node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
 	for (const source of sources) for (const key of Reflect.ownKeys(source)) if (Object.prototype.propertyIsEnumerable.call(source, key)) assignProp(target, key, source[key]);
 	return target;
@@ -15321,7 +15720,7 @@ const createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params)
 	return finalize(ctx, schema);
 };
 //#endregion
-//#region ../stts/node_modules/zod/v4/core/json-schema-processors.js
+//#region node_modules/zod/v4/core/json-schema-processors.js
 const narrowMin = (agg, key, value) => {
 	if (agg[key] === void 0 || value > agg[key]) agg[key] = value;
 };
@@ -15769,7 +16168,7 @@ const optionalProcessor = (schema, ctx, _json, params) => {
 	seen.ref = def.innerType;
 };
 //#endregion
-//#region ../stts/node_modules/zod/v4/classic/errors.js
+//#region node_modules/zod/v4/classic/errors.js
 const _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
 	Object.defineProperty(proto, key, {
@@ -15819,7 +16218,7 @@ const initializer = (inst, issues) => {
 };
 const ZodRealError = /*@__PURE__*/ $constructor("ZodError", initializer, void 0, { Parent: Error });
 //#endregion
-//#region ../stts/node_modules/zod/v4/classic/parse.js
+//#region node_modules/zod/v4/classic/parse.js
 const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -15833,7 +16232,7 @@ const safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 const safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 const safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 //#endregion
-//#region ../stts/node_modules/zod/v4/classic/schemas.js
+//#region node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
 	if (!globalConfig.localeError) config(en_default());
 }
@@ -17184,10 +17583,9 @@ const deps = {
 	update() {
 		return new Promise((done) => {
 			const run = (args, next) => {
-				const p = spawn("claude", args, {
+				const p = (0, import_cross_spawn.default)("claude", args, {
 					stdio: "ignore",
-					windowsHide: true,
-					shell: true
+					windowsHide: true
 				});
 				const t = setTimeout(() => p.kill(), 12e4);
 				p.on("error", () => {});
@@ -17211,7 +17609,7 @@ const deps = {
 	remoteHead() {
 		return new Promise((done) => {
 			const repo = process.env["STTS_REPO"] ?? "https://github.com/markkennethbadilla/stts.git";
-			const p = spawn("git", [
+			const p = (0, import_cross_spawn.default)("git", [
 				"ls-remote",
 				repo,
 				"refs/heads/main"
@@ -17277,7 +17675,7 @@ function giveUpSlot() {
 async function handOver(to) {
 	deps.log(`live update: handing off to ${to}`);
 	httpServer?.close();
-	spawn(process.execPath, [join(to, "daemon.js")], {
+	(0, import_cross_spawn.default)(process.execPath, [join(to, "daemon.js")], {
 		detached: true,
 		stdio: "ignore",
 		windowsHide: true,
@@ -17857,7 +18255,7 @@ const piperClip = (text, voice, rate) => fetch(`http://127.0.0.1:${PIPER_PORT}/s
 function startPiper(voice) {
 	const voices = join(PIPER_HOME, "voices");
 	const py = join(PIPER_HOME, "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-	piper = spawn(py, [
+	piper = (0, import_cross_spawn.default)(py, [
 		...[
 			"-m",
 			"piper.http_server",
@@ -18020,7 +18418,7 @@ async function boot() {
 		if (to && !same(to, here)) {
 			if (newer(to)) {
 				deps.log(`daemon start redirected to the newest install ${to}`);
-				spawn(process.execPath, [join(to, "daemon.js")], {
+				(0, import_cross_spawn.default)(process.execPath, [join(to, "daemon.js")], {
 					detached: true,
 					stdio: "ignore",
 					windowsHide: true
