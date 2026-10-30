@@ -232,11 +232,11 @@ export function App() {
   const [autosend, setAutosend] = useSetting('autosend', '1');
   const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
-  const [cues, setCues] = useSetting('cues', 'words');
+  const [cues, setCues] = useSetting('cues', 'chime');
   // Speech recognition: Google's cloud service by default. On-device returned chopped and changed
   // words on long turns (2026-10-06 11:43: 32 s of speech came back as nine words) and none at all
   // in the real-Chrome test; the cloud heard every turn there.
-  const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.5');
+  const [earconVol, setEarconVol] = useSetting('earcon_vol', '0.25');
   const [raise, setRaise] = useSetting('raise', '0');
   // Barge-in (Mark 2026-10-13): on, the mic runs while the agent speaks (a headset); off, it is
   // muted during speech so a phone speaker's echo never comes back as his turn.
