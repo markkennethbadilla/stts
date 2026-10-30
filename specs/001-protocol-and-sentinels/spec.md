@@ -43,7 +43,7 @@ Sentinels are replies that are exactly one special word and mean a signal, not s
 | `__STTS_IDLE_ENDED__` | The page idle-ended (spec 005): voice is dormant, not ended. Say nothing, no stt; the next background result or finished task is spoken with tts `listen=true`, which reopens the window. Returned only to a call open at that moment; nothing is remembered |
 | `__STTS_NO_SPEECH__` | Nothing said within `idleSec`; listen again |
 | `__STTS_LISTEN_CONTINUES__` | The listen hit the time budget; call stt again, nothing is lost |
-| `__STTS_STOPPED__` | He pressed Stop during speech (followed by the part number) |
+| `__STTS_STOPPED__` | He pressed Stop during speech (followed by the part number). Stops only the speech in progress: a Stop while a listen is open (an stt, or a tts whose speech is done) keeps the listen open and resends it, so the next call never returns STOPPED from an earlier press. The tool descriptions tell agents it is never an end: call stt again at once. |
 | `__STTS_BACKGROUND_RESULT__` | A background helper finished; relay its result |
 
 The tool descriptions carry fixed notes (`ENDED_NOTE`, `NO_SPEECH_NOTE`, `CONTINUES_NOTE`, `NO_SLEEP_NOTE`, `TURN_NOTE`). Their wording is the contract agents read and is kept word for word.

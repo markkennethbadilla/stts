@@ -18,7 +18,7 @@ describe('contract matches the old repo', () => {
     expect(p.STT_DESCRIPTION).toBe(fixture.sttDescription);
     expect(p.TTS_DESCRIPTION).toBe(fixture.ttsDescription);
     for (const d of [p.STT_DESCRIPTION, p.TTS_DESCRIPTION]) {
-      for (const s of p.SENTINELS.filter((s) => s !== p.STOPPED)) expect(d).toContain(s);
+      for (const s of p.SENTINELS) expect(d).toContain(s);
       expect(d).toContain(p.TURN_NOTE);
       expect(d).toContain(p.NO_SLEEP_NOTE);
     }

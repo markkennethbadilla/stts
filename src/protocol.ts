@@ -34,7 +34,9 @@ export const ENDED_NOTE =
   'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.' +
   ` If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result, usually because you were busy: ` +
   'voice is dormant, not ended. Say nothing now and do not call stt. When a background result lands or you finish your work, ' +
-  'call tts (listen=true) with the update: that reopens the window and the loop continues.';
+  'call tts (listen=true) with the update: that reopens the window and the loop continues.' +
+  ` If the reply starts with ${STOPPED}, he pressed Stop on your speech only: voice continues. Call stt again at once, ` +
+  `without speaking. It is never an end, even when it repeats: keep calling stt; only ${CONVERSATION_ENDED} or his turn saying "end call" ends voice.`;
 
 export const NO_SPEECH_NOTE =
   ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window ` +

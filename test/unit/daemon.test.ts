@@ -250,6 +250,26 @@ describe('daemon', () => {
     expect(await (await speech).text()).toContain('what about payroll the HR module of Frappe');
   });
 
+  it('a Stop ends only speech in progress: later listens open for real (2026-10-30)', async () => {
+    const stop = () => page.onMessage(JSON.stringify({ type: 'stopped', part: 1 }));
+    const speech = post('/request', { kind: 'tts', text: 'a long answer', listen: true });
+    await tick();
+    stop();
+    expect(await (await speech).text()).toMatch(/^__STTS_STOPPED__ 1/);
+    // The stuck state: a Stop arriving again (a focused Stop button, Space or Enter) ended every later call.
+    for (let i = 0; i < 5; i++) {
+      const listen = post('/request', { kind: 'stt', ...(i ? { ack: i } : {}) });
+      await tick();
+      stop();
+      await tick();
+      speak(`still here ${i}`);
+      const text = await (await listen).text();
+      expect(text).not.toMatch(/STOPPED/);
+      expect(text).toContain(`still here ${i}`);
+    }
+    expect(logs).toContain('page stop with no speech playing: the listen stays open');
+  });
+
   it('a barge cuts the tts off and returns the turn with the barge note', async () => {
     const speech = post('/request', { kind: 'tts', text: 'a long answer' });
     await tick();

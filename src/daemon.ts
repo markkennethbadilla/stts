@@ -576,7 +576,17 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         settle(200, NO_SPEECH);
         return;
       case 'stopped':
-        settle(200, takeEnded() ? CONVERSATION_ENDED : `${STOPPED} ${m.part}`);
+        if (takeEnded()) return settle(200, CONVERSATION_ENDED);
+        // Stop stops only speech in progress (Mark 2026-10-30: after a Stop, every stt and tts
+        // returned STOPPED at once, five calls in a row, and the agent left voice). A stop that arrives
+        // on an open listen (an stt, or a tts whose speech is done) has no speech to stop: the listen
+        // stays open and is resent, since the page's Stop also closed its mic.
+        if (slot && (slot.body.kind === 'stt' || slot.listening)) {
+          deps.log('page stop with no speech playing: the listen stays open');
+          send();
+          return;
+        }
+        settle(200, `${STOPPED} ${m.part}`);
         return;
       case 'cancel':
       case 'close':

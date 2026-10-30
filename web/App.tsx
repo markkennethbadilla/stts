@@ -1031,6 +1031,8 @@ export function App() {
             aria-label="Stop"
             onClick={(e) => {
               if (!e.nativeEvent.isTrusted) return;
+              // Focus leaves Stop, so a later Space or Enter never presses it again (2026-10-30).
+              e.currentTarget.blur();
               // Stop over a Repeat silences it only: the agent's reply and listen are untouched.
               if (replaying.current) return skip();
               cutSpeech();
