@@ -118,6 +118,18 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/said after a stop$/);
   });
 
+  it('held speech returned by a tts listen flags the reply as never spoken, word for word (2026-10-30)', async () => {
+    // Mark spoke while the agent worked; its tts listen=true then returned his words at once and
+    // the reply never played, with no line saying so (17:38:52 local).
+    speak('what about MiniBoo');
+    const r = post('/request', { kind: 'tts', text: 'MiniBoo is a small model. It runs locally.', listen: true });
+    const text = await (await r).text();
+    expect(text).toMatch(TURN_PREFIX);
+    expect(text).toContain('what about MiniBoo');
+    expect(text).toContain(bargeLine(1, 1, 'MiniBoo is a small model. It runs locally.', false));
+    expect(sent.some((m) => m.type === 'request')).toBe(false);
+  });
+
   it('held speech comes back labelled heard, not typed', async () => {
     speak('mm');
     const r = post('/request', { kind: 'stt' });

@@ -17497,7 +17497,10 @@ function occupy(id, body, ms) {
 	if (held && isListen(body)) {
 		const h = held;
 		held = null;
+		const reply = body.kind === "tts" ? (body.text ?? "").trim() : "";
+		if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
 		hear(h, h.typed === true);
+		if (slot?.id === id) barge = null;
 	}
 	if (slot?.id === id) send();
 	return result;

@@ -449,7 +449,14 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
   if (held && isListen(body)) {
     const h = held;
     held = null;
+    // A tts whose reply is answered by held words never plays: say so, with the reply word for
+    // word, as a barge before any audio (Mark 2026-10-30 17:38: he never heard the answer and
+    // the agent never knew).
+    const reply = body.kind === 'tts' ? (body.text ?? '').trim() : '';
+    if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
     hear(h, h.typed === true);
+    // Still joining: the tts plays after all, so it was not cut off.
+    if (slot?.id === id) barge = null;
   }
   if (slot?.id === id) send();
   return result;
