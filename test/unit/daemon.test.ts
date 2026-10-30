@@ -148,7 +148,10 @@ describe('daemon', () => {
     await post('/notify');
     speak('shop now');
     expect(await (await r).text()).toContain('shop now');
+    sent.length = 0;
     expect(await (await post('/request', { kind: 'stt', ack: 1 })).text()).toBe(BACKGROUND_RESULT);
+    // The page was never sent that listen: no released, so no stray light or two-tone (Fable round 3).
+    expect(sent.some((m) => m.type === 'released')).toBe(false);
   });
 
   it('a Stop in the gap between two read-aloud parts stops the reading (e2e flake 2026-10-30)', async () => {

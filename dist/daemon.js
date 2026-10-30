@@ -17417,7 +17417,7 @@ function settle(status, text) {
 	});
 }
 function release(reason) {
-	if (slot && isListen(slot.body)) page?.({
+	if (slot?.sent && isListen(slot.body)) page?.({
 		type: "released",
 		reason
 	});

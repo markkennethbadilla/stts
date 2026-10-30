@@ -97,6 +97,12 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
 export const BARGE_MIN_MS = 600;
 /** Speech paused at his voice's start resumes after this long with no final (a cough, a door). */
 export const BARGE_HOLD_MS = 2500;
+/**
+ * A confirmed barge waits for his final, so the turn is his whole sentence (Fable review round 3:
+ * sending interim words at 2.5 s lost the rest of a long sentence). Past this with no final, the
+ * words heard so far go, and the recogniser's results are left unused so a late final still arrives.
+ */
+export const BARGE_FINAL_WAIT_MS = 10_000;
 
 /**
  * A final heard while the agent speaks: 'barge' cuts the speech off; 'short' (under 3 words) and

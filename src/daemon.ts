@@ -368,7 +368,8 @@ function settle(status: 200 | 504, text: string): void {
 }
 
 function release(reason: 'superseded' | 'timeout' | 'background'): void {
-  if (slot && isListen(slot.body)) page?.({ type: 'released', reason });
+  // Never for a listen the page was not sent: it would light and chime for nothing (Fable round 3).
+  if (slot?.sent && isListen(slot.body)) page?.({ type: 'released', reason });
 }
 
 // Self-heal (Mark 2026-10-10): a window closed by accident or crashed while a call is open is

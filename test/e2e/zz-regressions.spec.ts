@@ -24,8 +24,8 @@ async function reload(voice: Page) {
   await voice.waitForTimeout(300);
 }
 
-function wav(): Buffer {
-  const data = 8000 * 2;
+function wav(seconds = 1): Buffer {
+  const data = 8000 * 2 * seconds;
   const b = Buffer.alloc(44 + data);
   b.write('RIFF', 0);
   b.writeUInt32LE(36 + data, 4);
@@ -302,7 +302,8 @@ test('his voice starting over the speech pauses it at once; an echo final resume
 test('his first words over the speech stop it for good, final or not', async ({ voice, request }) => {
   const piper = createServer((req, res) => {
     req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+    // 30 s of audio: real playback runs in real time, so a 1 s clip ended before the barge on a busy run.
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
   });
   piper.listen(testPort + 1, '127.0.0.1');
   await once(piper, 'listening');
@@ -320,13 +321,19 @@ test('his first words over the speech stop it for good, final or not', async ({ 
   try {
     const speech = ask(request, {
       kind: 'tts',
-      text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
+      // Its own text: the earlier test's 1 s clips of the same words are cached.
+      text: 'Here is the long plan for the migration of every service to the new cluster.',
     });
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
     await expect.poll(count).toBeGreaterThan(0);
     // Past BARGE_MIN_MS into the clip: words sooner are its own echo, never a hard stop.
     await voice.clock.fastForward(700);
+    // A fast-forward through animation frames takes real seconds and the page clock runs on in real
+    // time, so the 10 s final wait is lengthened here; its fallback is covered by the spec.
+    await voice.evaluate(() => {
+      (globalThis as unknown as { __sttsBargeFinalWaitMs: number }).__sttsBargeFinalWaitMs = 600_000;
+    });
     const plays = await count();
     await voice.evaluate(() => {
       const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })
@@ -334,9 +341,21 @@ test('his first words over the speech stop it for good, final or not', async ({ 
       r.onspeechstart();
       r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'hold on a' }], { isFinal: false })] });
     });
+    // A long sentence: its final comes after 2.5 s. The speech stays stopped and the barge waits
+    // for the final, so every word arrives once (Fable round 3: the rest of the sentence was lost).
     await voice.clock.fastForward(3000);
     expect(await count()).toBe(plays);
-    expect(await (await speech).text()).toMatch(/hold on a/);
+    const long = 'hold on a second I need you to change the whole plan first';
+    await voice.evaluate((t) => {
+      const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
+    }, long);
+    const text = await (await speech).text();
+    expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${long}$`));
+    // The sentence is never sent again: nothing held for the next listen repeats it.
+    await voice.clock.fastForward(1500);
+    const held = (await (await voice.request.post('/held')).json()) as { text: string };
+    expect(held.text).not.toContain('whole plan');
   } finally {
     piper.close();
   }

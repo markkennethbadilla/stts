@@ -35,6 +35,7 @@ import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
 import {
+  BARGE_FINAL_WAIT_MS,
   BARGE_HOLD_MS,
   bargeText,
   bargeVerdict,
@@ -220,6 +221,8 @@ export function App() {
   const pending = useRef(false);
   // Words heard over the speech so far (interim included), for a barge sent by the hold timer.
   const bargeWords = useRef('');
+  // A barge sent on the final-wait fallback: its results are not marked used.
+  const keepResults = useRef(false);
   // The daemon request now on the page: a Stop names it, so a stale Stop never ends a later one.
   const reqId = useRef(0);
   // 1-based word of the clip now playing, from the voice's word boundary events; 0 when unknown.
@@ -372,7 +375,8 @@ export function App() {
           bargeWords.current = '';
           // A heard barge used these results: the recogniser's later final must not repeat them in
           // the next turn (Fable review 2026-10-30).
-          if (interrupted && source === 'heard') consumed.current = resultsSeen.current;
+          if (interrupted && source === 'heard' && !keepResults.current) consumed.current = resultsSeen.current;
+          keepResults.current = false;
           // The cut-off tts already returns this turn: its end must not open a listen.
           if (interrupted) listen.current.after = false;
           // Piper gives no word timings: estimate the word from the share of the clip played.
@@ -653,18 +657,23 @@ export function App() {
           confirmed.current = true;
           audio.current?.pause();
           clearTimeout(duckTimer.current);
-          duckTimer.current = setTimeout(() => {
-            if (!confirmed.current || !actor.getSnapshot().matches({ speech: 'playing' })) return;
-            confirmed.current = false;
-            pending.current = false;
-            ducked.current = null;
-            // The words heard by now, not the ones at confirmation (Fable review 2026-10-30).
-            send({
-              type: 'BARGE',
-              text: bargeText(heard.current.final, bargeWords.current),
-              part: listen.current.part,
-            });
-          }, BARGE_HOLD_MS);
+          duckTimer.current = setTimeout(
+            () => {
+              if (!confirmed.current || !actor.getSnapshot().matches({ speech: 'playing' })) return;
+              confirmed.current = false;
+              pending.current = false;
+              ducked.current = null;
+              // No final in time: the words heard by now go, and the results stay unused so the late
+              // final still reaches the next turn (the daemon drops a repeat).
+              keepResults.current = true;
+              send({
+                type: 'BARGE',
+                text: bargeText(heard.current.final, bargeWords.current),
+                part: listen.current.part,
+              });
+            },
+            (globalThis as { __sttsBargeFinalWaitMs?: number }).__sttsBargeFinalWaitMs ?? BARGE_FINAL_WAIT_MS,
+          );
         }
         if (!final) return;
         const verdict = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
