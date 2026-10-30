@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:http';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { testPort } from '../../playwright.config.ts';
-import { CONVERSATION_ENDED } from '../../src/protocol.ts';
+import { CONVERSATION_ENDED, NO_SPEECH } from '../../src/protocol.ts';
 import { toClips } from '../../src/sentences.ts';
 import { daemonLog, expect, test } from './fixtures.ts';
 
@@ -356,6 +356,13 @@ test('his first words over the speech stop it for good, final or not', async ({ 
     await voice.clock.fastForward(1500);
     const held = (await (await voice.request.post('/held')).json()) as { text: string };
     expect(held.text).not.toContain('whole plan');
+    // The second listen after the barge opens and runs its idle timer like any other (proof the
+    // earlier hang was the test's, not the window's).
+    const turn = Number(/turn (\d+)/.exec(text)?.[1]);
+    const second = ask(request, { kind: 'stt', ack: turn, idleSec: 2 });
+    await expect(voice.getByLabel('speakNow')).toBeVisible();
+    await voice.clock.fastForward(2500);
+    expect(await (await second).text()).toBe(NO_SPEECH);
   } finally {
     piper.close();
   }
