@@ -6276,7 +6276,6 @@ var Launcher = class Launcher {
 	}
 };
 //#endregion
-<<<<<<< Updated upstream
 //#region node_modules/isexe/windows.js
 var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = isexe;
@@ -6678,9 +6677,6 @@ var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(
 	module.exports._parse = parse;
 	module.exports._enoent = enoent;
 })))(), 1);
-=======
-//#region node_modules/hono/dist/request/constants.js
->>>>>>> Stashed changes
 const GET_MATCH_RESULT = Symbol();
 //#endregion
 //#region node_modules/hono/dist/utils/buffer.js
