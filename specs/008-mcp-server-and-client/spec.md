@@ -29,7 +29,7 @@ flowchart TD
   E -->|other status| H[tool error with the body text]
 ```
 
-The daemon is started detached and hidden (`node dist/daemon.js`), and the client waits up to 20 seconds for it to answer a ping before failing with `stts daemon did not start`: a cold start after a long idle, redirected to the newest install (two node launches), took over 5 seconds and failed the call (2026-10-11 22:32 UTC). The request waits the budget plus 5 seconds.
+The daemon is started detached and hidden (`node dist/daemon.js`), and the client waits up to 20 seconds for it to answer a ping before failing with `stts daemon did not start`: a cold start after a long idle, redirected to the newest install (two node launches), took over 5 seconds and failed the call (2026-10-11 22:32 UTC). The client also watches the spawned process: if it exits non-zero while the client waits (syntax error, bad install), the client asks whatever answers on the port to shut down, spawns once more, and on a second early exit fails at once with `stts daemon exited at start with code N` (about 0.2 s, not 20 s). 2026-11-04: a merge conflict marker committed in `dist/daemon.js` made every call wait the full 20 s; dist is build output, so rebuild with `npx tsdown && npx vite build` and grep it for `<<<<<<<` before committing. The request waits the budget plus 5 seconds.
 
 ## What it reads and writes
 
