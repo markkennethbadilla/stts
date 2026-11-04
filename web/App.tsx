@@ -560,6 +560,7 @@ export function App() {
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
+              autoGainControl: false,
               ...(want === 'default' ? {} : { deviceId: want }),
             },
           })

@@ -229,12 +229,12 @@ export const LiveWaveform = ({
                 deviceId: { exact: deviceId },
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true,
+                autoGainControl: false,
               }
             : {
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true,
+                autoGainControl: false,
               },
         });
         streamRef.current = stream;
