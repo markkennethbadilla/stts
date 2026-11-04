@@ -36,6 +36,16 @@ afterEach(() => {
 });
 
 describe('page machine', () => {
+  it('a one-off notice speaks with the mic off; a plain tts still starts it for barge-in', () => {
+    const n = start();
+    n.actor.send({ type: 'ENQUEUE', clips: ['video done'], notice: true });
+    vi.advanceTimersByTime(3000);
+    expect(n.startMic).not.toHaveBeenCalled();
+    const p = start();
+    p.actor.send({ type: 'ENQUEUE', clips: ['hello'] });
+    vi.advanceTimersByTime(3000);
+    expect(p.startMic).toHaveBeenCalled();
+  });
   it('mute: nothing restarts the mic while paused', () => {
     const { actor, startMic } = start();
     actor.send({ type: 'PAUSE', trusted: true });

@@ -19,7 +19,7 @@ flowchart LR
   C -->|same word list| R[readsUnfinished]
 ```
 
-- The gateway entry lives in mkb-agentops and points at `dist/mcp.js` with `STTS_WHO=agent`, so a helper agent cannot close Mark's window.
+- The gateway entry lives in mkb-agentops and points at `dist/mcp.js` with `STTS_WHO=agent`, so a helper agent cannot close Mark's window. One exception, the one-off notice (Mark 2026-11-05): a tts with close and no listen, sent while no voice window is open (or into a window only notices have used), is marked `notice` by the daemon, speaks with the mic off and closes, from any caller. A window a listen or a plain tts has used is a conversation window and is never closed this way.
 - Both paths share one daemon, so only one conversation is ever live.
 - The callbot imports `src/sentences.ts`. Its `turn.mjs` keeps the same `readsUnfinished` word list; a parity test checks they match.
 - Mic mute (spec 005) is stts only: muting drops every word heard or held, and only speech after unmute counts. The callbot has no mute; Mark mutes in the meeting, so it never receives his stream. Recorded in the callbot's spec 004 parity table.

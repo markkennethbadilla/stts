@@ -168,7 +168,8 @@ export type PageEvent =
   | { type: 'SET_AUTOSEND'; on: boolean }
   | { type: 'SET_HOLD'; ms: number | null }
   // listen: the tts opens a listen after it, so the mic running during the speech stays on.
-  | { type: 'ENQUEUE'; clips: string[]; listen?: boolean }
+  // notice: a one-off notice (speak, then close): the mic never runs for it (Mark 2026-11-05).
+  | { type: 'ENQUEUE'; clips: string[]; listen?: boolean; notice?: boolean }
   | { type: 'CLIP_ENDED' }
   | { type: 'CLIP_FAILED'; reason: string }
   | { type: 'STOP' }
@@ -187,6 +188,8 @@ export interface PageContext {
   autosend: boolean;
   // Barge-in (Mark 2026-10-13): the mic runs while the agent speaks. Off, it is muted during speech.
   bargeIn: boolean;
+  // The speech playing is a one-off notice: no mic during it, no barge (Mark 2026-11-05).
+  notice: boolean;
   // The hold_ms setting; null keeps the defaults (0.7 s, or 1 s when the words read unfinished).
   holdMs: number | null;
   wantListen: boolean;
@@ -228,7 +231,11 @@ const quiet = stateIn({ speech: 'idle' });
 const playing = stateIn({ speech: 'playing' });
 // The mic runs during a listen and while the agent speaks (so speaking over it barges in). With
 // barge-in off it never runs during speech: a phone speaker's echo cannot come back as his turn.
-const listenOrSpeech = or([({ context }: { context: PageContext }) => context.wantListen, playing]);
+// A one-off notice's speech never starts the mic: it only speaks, then the window closes.
+const listenOrSpeech = or([
+  ({ context }: { context: PageContext }) => context.wantListen,
+  and([playing, ({ context }: { context: PageContext }) => !context.notice]),
+]);
 const bargeOrQuiet = or([({ context }: { context: PageContext }) => context.bargeIn, not(playing)]);
 const now = () => Date.now();
 
@@ -275,6 +282,7 @@ export const pageMachine = setup({
   context: {
     autosend: true,
     bargeIn: true,
+    notice: false,
     holdMs: null,
     wantListen: false,
     working: false,
@@ -542,6 +550,7 @@ export const pageMachine = setup({
               actions: assign({
                 queue: ({ event }) => [...event.clips],
                 sentence: 1,
+                notice: ({ event }) => event.notice === true,
                 wantListen: ({ context, event }) => context.wantListen || event.listen === true,
                 working: false,
               }),

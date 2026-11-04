@@ -17310,7 +17310,7 @@ const ttsShape = {
 	part: number().int().min(1).optional().describe("Start at this part of long content (1 is the start). Use the number a previous call returned."),
 	listen: boolean().optional().describe("After speaking, listen and return the next transcript"),
 	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet."),
-	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen."),
+	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen. A one-off notice (close, no listen, no voice window open) speaks with the mic off and then closes, from any caller."),
 	rate: number().min(.5).max(2).optional().describe("Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as his default. Omit unless the user asks for a speed change; omitting keeps his saved setting."),
 	volume: number().min(0).max(1).optional().describe("Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as his default. Omit unless the user asks for a volume change; omitting keeps his saved setting."),
 	idleSec
@@ -17319,7 +17319,8 @@ const RequestBody = object({
 	kind: _enum(["stt", "tts"]),
 	...ttsShape,
 	ack: sttShape.ack,
-	who: _enum(["session", "agent"]).default("session")
+	who: _enum(["session", "agent"]).default("session"),
+	notice: boolean().optional()
 }).refine((b) => b.kind === "stt" || [
 	b.text,
 	b.file,
@@ -17754,6 +17755,7 @@ let carry = "";
 let keepCarry = false;
 let page = null;
 let windowOpening = false;
+let noticeWindow = false;
 let windowTimer;
 const adopted = process.env["STTS_ADOPT"] === "1";
 const PAGE_GRACE_MS = 8e3;
@@ -17950,6 +17952,7 @@ function attachPage(sendToPage) {
 	const detach = () => {
 		if (page !== sendToPage) return;
 		page = null;
+		noticeWindow = false;
 		pageGoneAt = Date.now();
 		if (Date.now() - attachedAt > 3e4) reopenTries = 0;
 		reopenSoon("window gone mid-call");
@@ -18170,7 +18173,13 @@ app.post("/request", async (c) => {
 	const parsed = RequestBody.safeParse(await c.req.json().catch(() => null));
 	if (!parsed.success) return c.text(parsed.error.message, 400);
 	const body = parsed.data;
-	if (body.who === "agent" && body.close) body.close = false;
+	const notice = body.kind === "tts" && body.close === true && body.listen !== true && (!page && !windowOpening || noticeWindow);
+	body.notice = notice;
+	if (notice) noticeWindow = true;
+	else {
+		noticeWindow = false;
+		if (body.who === "agent" && body.close) body.close = false;
+	}
 	if (body.start) setEnded(false);
 	else if (takeEnded()) return c.text(CONVERSATION_ENDED);
 	const t = turns.getSnapshot().context;
@@ -18214,6 +18223,7 @@ app.post("/request", async (c) => {
 		const r = await occupy(id, {
 			kind: "tts",
 			who: body.who,
+			notice: body.notice === true,
 			text: parts[i] ?? "",
 			part: i + 1,
 			listen: false,

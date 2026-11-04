@@ -21619,7 +21619,7 @@ const ttsShape = {
 	part: number().int().min(1).optional().describe("Start at this part of long content (1 is the start). Use the number a previous call returned."),
 	listen: boolean().optional().describe("After speaking, listen and return the next transcript"),
 	start: boolean().optional().describe("True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet."),
-	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen."),
+	close: boolean().optional().describe("Close the voice window after speaking. Use on the last message of a conversation, never with listen. A one-off notice (close, no listen, no voice window open) speaks with the mic off and then closes, from any caller."),
 	rate: number().min(.5).max(2).optional().describe("Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as his default. Omit unless the user asks for a speed change; omitting keeps his saved setting."),
 	volume: number().min(0).max(1).optional().describe("Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as his default. Omit unless the user asks for a volume change; omitting keeps his saved setting."),
 	idleSec
@@ -21628,7 +21628,8 @@ const RequestBody = object({
 	kind: _enum(["stt", "tts"]),
 	...ttsShape,
 	ack: sttShape.ack,
-	who: _enum(["session", "agent"]).default("session")
+	who: _enum(["session", "agent"]).default("session"),
+	notice: boolean().optional()
 }).refine((b) => b.kind === "stt" || [
 	b.text,
 	b.file,

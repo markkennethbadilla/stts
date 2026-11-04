@@ -301,6 +301,8 @@ let carry = '';
 let keepCarry = false; // speech after a timeout release belongs to the next listen
 let page: ((m: DaemonMessage) => void) | null = null;
 let windowOpening = false;
+// The window was opened by a one-off notice and no conversation has used it since (Mark 2026-11-05).
+let noticeWindow = false;
 let windowTimer: ReturnType<typeof setTimeout> | undefined;
 // An adopted daemon (a live update) starts with the window still open on its way back.
 const adopted = process.env['STTS_ADOPT'] === '1';
@@ -519,6 +521,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
   const detach = (): void => {
     if (page !== sendToPage) return;
     page = null;
+    noticeWindow = false;
     pageGoneAt = Date.now();
     // An adopted daemon holds no Chrome handle: the window closing shows as the page not coming back.
     // A page that stayed up 30 s was not a crash loop: the next reopen waits the shortest time again.
@@ -796,7 +799,22 @@ app.post('/request', async (c) => {
   const parsed = RequestBody.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.text(parsed.error.message, 400);
   const body = parsed.data;
-  if (body.who === 'agent' && body.close) body.close = false; // spec 026: only the session closes
+  // One-off notice (Mark 2026-11-05: "if it's used one off, it should be muted ... so it can close"): a
+  // speak-only tts with close, sent while no voice window is open (or into a window a notice opened),
+  // speaks with the mic off and then closes, whoever sent it. It can never close a conversation window:
+  // a window a listen or a plain tts has used is not a notice window. Otherwise spec 026 holds: only
+  // the session closes.
+  const notice =
+    body.kind === 'tts' &&
+    body.close === true &&
+    body.listen !== true &&
+    ((!page && !windowOpening) || noticeWindow);
+  body.notice = notice;
+  if (notice) noticeWindow = true;
+  else {
+    noticeWindow = false;
+    if (body.who === 'agent' && body.close) body.close = false; // spec 026: only the session closes
+  }
   if (body.start) setEnded(false);
   else if (takeEnded()) return c.text(CONVERSATION_ENDED);
 
@@ -850,6 +868,7 @@ app.post('/request', async (c) => {
     const partBody: RequestBody = {
       kind: 'tts',
       who: body.who,
+      notice: body.notice === true,
       text: parts[i] ?? '',
       part: i + 1,
       listen: false,

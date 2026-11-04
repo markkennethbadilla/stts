@@ -406,6 +406,36 @@ describe('daemon', () => {
     expect(sent.some((m) => m.type === 'close')).toBe(false);
   });
 
+  it('a one-off notice from a helper agent, with no window open, speaks with the mic off and closes', async () => {
+    page.detach();
+    const r = post('/request', { kind: 'tts', text: 'the video is done', close: true, who: 'agent' });
+    await tick();
+    sent = [];
+    page = attachPage((m) => void sent.push(m));
+    page.onMessage(JSON.stringify({ type: 'ready' }));
+    await tick();
+    const req = sent.find((m) => m.type === 'request');
+    expect(req?.type === 'request' && req.body.notice).toBe(true);
+    expect(req?.type === 'request' && req.body.close).toBe(true);
+    speak('');
+    await r;
+    expect(sent.at(-1)).toEqual({ type: 'close' });
+  });
+
+  it('a notice can never close a conversation window', async () => {
+    const l = post('/request', { kind: 'stt' });
+    await tick();
+    speak('hello');
+    await l;
+    const r = post('/request', { kind: 'tts', text: 'bye', close: true, who: 'agent' });
+    await tick();
+    const req = sent.filter((m) => m.type === 'request').at(-1);
+    expect(req?.type === 'request' && req.body.notice).toBe(false);
+    speak('');
+    await r;
+    expect(sent.some((m) => m.type === 'close')).toBe(false);
+  });
+
   it('a session tts with close shuts the window once it has spoken', async () => {
     const r = post('/request', { kind: 'tts', text: 'bye', close: true });
     await tick();

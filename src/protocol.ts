@@ -194,7 +194,7 @@ export const ttsShape = {
   close: z
     .boolean()
     .optional()
-    .describe('Close the voice window after speaking. Use on the last message of a conversation, never with listen.'),
+    .describe('Close the voice window after speaking. Use on the last message of a conversation, never with listen. A one-off notice (close, no listen, no voice window open) speaks with the mic off and then closes, from any caller.'),
   rate: z
     .number()
     .min(0.5)
@@ -220,6 +220,8 @@ export const RequestBody = z
     ...ttsShape,
     ack: sttShape.ack,
     who: z.enum(['session', 'agent']).default('session'),
+    // Set by the daemon, never by a caller: a one-off notice (speak, mic off, close). See /request.
+    notice: z.boolean().optional(),
   })
   .refine((b) => b.kind === 'stt' || [b.text, b.file, b.url].filter((v) => v !== undefined).length === 1, {
     message: 'give exactly one of text, file or url',

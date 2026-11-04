@@ -843,7 +843,7 @@ export function App() {
       ttsAt.current = performance.now();
       audioStarted.current = false;
       listen.current.idleSec = b.idleSec ?? 200;
-      actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true });
+      actor.send({ type: 'ENQUEUE', clips, listen: b.listen === true, notice: b.notice === true });
     };
     connect();
     return () => {
