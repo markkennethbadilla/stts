@@ -18,12 +18,21 @@ export const daemonGone = (e: unknown): boolean => {
   return typeof code === 'string' && DAEMON_GONE.has(code);
 };
 
-export function spawnDaemon(): void {
-  spawn(process.execPath, [fileURLToPath(new URL('./daemon.js', import.meta.url))], {
+export function spawnDaemon(): { exitCode: () => number | null } {
+  const child = spawn(process.execPath, [fileURLToPath(new URL('./daemon.js', import.meta.url))], {
     detached: true,
-    stdio: 'ignore',
+    stdio: 'ignore', // SILENT-OK: the daemon logs itself (spec 012); its exit code is read below
     windowsHide: true,
-  }).unref();
+  });
+  let code: number | null = null;
+  child.on('exit', (c) => {
+    code = c ?? 1;
+  });
+  child.on('error', () => {
+    code = 1;
+  });
+  child.unref();
+  return { exitCode: () => code };
 }
 
 // ours: this install. stale: another install, no window open. busy: another install mid-conversation.
@@ -50,13 +59,23 @@ export async function ensureDaemon(): Promise<void> {
   if (s === 'stale') {
     await fetch(`${daemonUrl()}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(2000) }).catch(() => {});
   }
-  spawnDaemon();
+  // A daemon that dies at once (syntax error, bad install) fails the call in about 100 ms, after one
+  // retry that first retires whatever answers on the port. No 20 s wait for a dead process.
   // 20 s: a cold start after a long idle (two node launches when the start is redirected) took
   // over 5 s and failed the call (2026-10-11 22:32 UTC).
-  for (let i = 0; i < 200; i++) {
-    await sleep(100);
-    const now = await ping();
-    if (now === 'ours' || now === 'busy') return;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const child = spawnDaemon();
+    for (let i = 0; i < 200; i++) {
+      await sleep(100);
+      const now = await ping();
+      if (now === 'ours' || now === 'busy') return;
+      const code = child.exitCode();
+      if (code !== null && code !== 0) {
+        if (attempt === 1) throw new Error(`stts daemon exited at start with code ${code}`);
+        await fetch(`${daemonUrl()}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(500) }).catch(() => {}); // SILENT-OK: nothing may answer; the retry spawns anyway
+        break;
+      }
+    }
   }
   throw new Error('stts daemon did not start');
 }
