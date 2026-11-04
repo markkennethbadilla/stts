@@ -21704,11 +21704,20 @@ const daemonGone = (e) => {
 	return typeof code === "string" && DAEMON_GONE.has(code);
 };
 function spawnDaemon() {
-	spawn(process.execPath, [fileURLToPath(new URL("./daemon.js", import.meta.url))], {
+	const child = spawn(process.execPath, [fileURLToPath(new URL("./daemon.js", import.meta.url))], {
 		detached: true,
 		stdio: "ignore",
 		windowsHide: true
-	}).unref();
+	});
+	let code = null;
+	child.on("exit", (c) => {
+		code = c ?? 1;
+	});
+	child.on("error", () => {
+		code = 1;
+	});
+	child.unref();
+	return { exitCode: () => code };
 }
 async function ping() {
 	let res;
@@ -21730,11 +21739,22 @@ async function ensureDaemon() {
 		method: "POST",
 		signal: AbortSignal.timeout(2e3)
 	}).catch(() => {});
-	spawnDaemon();
-	for (let i = 0; i < 200; i++) {
-		await setTimeout$1(100);
-		const now = await ping();
-		if (now === "ours" || now === "busy") return;
+	for (let attempt = 0; attempt < 2; attempt++) {
+		const child = spawnDaemon();
+		for (let i = 0; i < 200; i++) {
+			await setTimeout$1(100);
+			const now = await ping();
+			if (now === "ours" || now === "busy") return;
+			const code = child.exitCode();
+			if (code !== null && code !== 0) {
+				if (attempt === 1) throw new Error(`stts daemon exited at start with code ${code}`);
+				await fetch(`${daemonUrl()}/api/shutdown`, {
+					method: "POST",
+					signal: AbortSignal.timeout(500)
+				}).catch(() => {});
+				break;
+			}
+		}
 	}
 	throw new Error("stts daemon did not start");
 }
