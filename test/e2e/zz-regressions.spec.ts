@@ -249,6 +249,53 @@ test('a clip that arrives after its speech was cut off never plays over the new 
   }
 });
 
+// Mark 2026-11-05: the engine sends only a final at the end of his sentence, so the 2.5 s hold resumed
+// the speech while he was still talking. It stays paused until his final, then cuts off for good.
+test('a long sentence over the speech keeps it paused until his final, then barges', async ({ voice, request }) => {
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  await voice.evaluate(() => {
+    const g = globalThis as unknown as Record<string, number>;
+    g['__plays'] = 0;
+    const p = HTMLMediaElement.prototype;
+    const play = p.play;
+    p.play = function (this: HTMLMediaElement) {
+      g['__plays'] = (g['__plays'] ?? 0) + 1;
+      return play.call(this);
+    };
+  });
+  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
+  try {
+    const speech = ask(request, { kind: 'tts', text: 'A long reply about the hold that he talks over for a while.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await expect.poll(count).toBeGreaterThan(0);
+    await voice.clock.fastForward(700);
+    const plays = await count();
+    await voice.evaluate(() =>
+      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
+    );
+    // Past the old 2.5 s hold with no words yet: the speech must stay paused.
+    await voice.clock.fastForward(4000);
+    expect(await count()).toBe(plays);
+    const said = 'no wait I want you to explain the other option first';
+    await voice.evaluate((t) => {
+      const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
+    }, said);
+    const text = await (await speech).text();
+    expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${said}$`));
+    expect(text).toContain('interrupted your speech at part 1 sentence 1');
+    expect(await count()).toBe(plays);
+  } finally {
+    piper.close();
+  }
+});
+
 // Mark 2026-10-15: barge-in was slow; speech stopped only after his whole sentence was decoded.
 // It now pauses the moment his voice starts, and resumes if the final turns out to be echo.
 test('his voice starting over the speech pauses it at once; an echo final resumes it', async ({ voice, request }) => {
