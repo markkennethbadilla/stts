@@ -30,6 +30,7 @@ flowchart TD
 - `part=N` starts at part N; a part past the end is refused with the part count.
 - No new part starts after half the budget (spec 003). The reply notes keep their exact text: `Read parts A to B of N. To go on, call tts again with the same file and part=B+1.`, `He stopped it during part P of N. To resume there, call tts with the same file and part=P.`, `Read to the end (part N of N).`
 - A newer request supersedes the read between parts.
+- Barge-in is the text path's: every part is an ordinary tts in the slot, so his words over a part cut it off at once and the call returns his turn, the `interrupted ... at part P sentence S` line and the unspoken rest of that part (Mark 2026-11-05). Covered by the daemon test "a spoken barge cuts a file read-aloud off" and the e2e "speaking over a file read cuts it off like a text tts".
 
 ## What it reads and writes
 

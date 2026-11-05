@@ -167,6 +167,30 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/^__STTS_STOPPED__ 2 He stopped it during part 2 of \d+/);
   });
 
+  it('a spoken barge cuts a file read-aloud off like a text tts: his turn, unspoken rest, resume part', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stts-read-'));
+    const file = join(dir, 'read.txt');
+    writeFileSync(file, Array.from({ length: 40 }, (_, i) => `This is sentence number ${i} read out loud.`).join(' '));
+    const r = post('/request', { kind: 'tts', file, listen: true });
+    await vi.waitFor(() => expect(slotId()).not.toBeNull());
+    page.onMessage(
+      JSON.stringify({
+        type: 'complete',
+        text: 'stop, wait a moment',
+        startAt: 0,
+        endAt: 1000,
+        source: 'heard',
+        interrupted: { part: 1, sentence: 2, started: true },
+      }),
+    );
+    speak('');
+    const text = await (await r).text();
+    expect(text).toMatch(TURN_PREFIX);
+    expect(text).toContain('stop, wait a moment');
+    expect(text).toContain('at part 1 sentence 2');
+    expect(text).toMatch(/\nunspoken: This is sentence number 1 read out loud\./);
+  });
+
   it('a stale Stop for an older request never ends the open one (review 5)', async () => {
     const t = post('/request', { kind: 'tts', text: 'a long answer', listen: true });
     await tick();

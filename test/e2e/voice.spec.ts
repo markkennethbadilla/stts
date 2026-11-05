@@ -156,6 +156,50 @@ test('a typed message is returned by stt as a turn', async ({ voice, request }) 
   expect(daemonLog()).toMatch(/page typed turn \d+/);
 });
 
+// Mark 2026-11-05: speaking over a file read did not cut it off; only Stop did. A file or url read
+// barges in exactly like a text tts: his turn, the unspoken rest and the part to resume.
+test('speaking over a file read cuts it off like a text tts', async ({ voice, request }) => {
+  const held: (() => void)[] = [];
+  let clips = 0;
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      clips++;
+      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+      if (clips > 1) held.push(send);
+      else send();
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    mkdirSync(dataRoot, { recursive: true });
+    const file = join(dataRoot, 'barge.txt');
+    writeFileSync(file, Array.from({ length: 30 }, (_, i) => `Barge sentence ${i} is read aloud now.`).join(' '));
+    const read = ask(request, { kind: 'tts', file, listen: true });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await expect.poll(() => clips).toBeGreaterThan(0);
+    await voice.clock.fastForward(700);
+    await voice.evaluate(() => {
+      const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })
+        .__rec;
+      r.onspeechstart();
+      r.onresult({
+        resultIndex: 0,
+        results: [Object.assign([{ transcript: 'wait stop reading please' }], { isFinal: true })],
+      });
+    });
+    const text = await (await read).text();
+    expect(text.split('\n')[0]).toMatch(/\] wait stop reading please$/);
+    expect(text).toContain('interrupted your speech at part 1 sentence');
+    expect(text).toMatch(/\nunspoken: .*Barge sentence 26 is read aloud now\.$/);
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});
+
 test('typing during speech cuts it off and the tts returns the turn with the barge note', async ({
   voice,
   request,
