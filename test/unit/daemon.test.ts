@@ -184,6 +184,15 @@ describe('daemon', () => {
     expect(await (await post('/request', { kind: 'stt', ack: 1 })).text()).toBe(BACKGROUND_RESULT);
   });
 
+  it('a page nospeech while he is speaking is not silence (Mark 2026-11-08)', async () => {
+    const listen = post('/request', { kind: 'stt' });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'talking', on: true }));
+    page.onMessage(JSON.stringify({ type: 'nospeech' }));
+    speak('do it for all platforms');
+    expect(await (await listen).text()).toContain('do it for all platforms');
+  });
+
   it('a background result held while he spoke goes when he stops with no turn (Mark 2026-11-08)', async () => {
     const listen = post('/request', { kind: 'stt' });
     await tick();

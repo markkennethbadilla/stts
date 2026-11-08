@@ -630,6 +630,12 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         return;
       }
       case 'nospeech':
+        // His words are forming (talking light on): the page's idle timer fired on a listen with
+        // interim words but no final. Not silence; his turn is coming (Mark 2026-11-08 22:03).
+        if (slot && isListen(slot.body) && talking()) {
+          deps.log('page nospeech ignored: he is speaking');
+          return;
+        }
         turns.send({ type: 'nospeech' });
         settle(200, NO_SPEECH);
         return;
