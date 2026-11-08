@@ -18157,8 +18157,15 @@ function backgroundResult() {
 	turns.send({ type: "background" });
 	settle(200, BACKGROUND_RESULT);
 }
+let listenSession = "";
+app.post("/session", (c) => {
+	listenSession = c.req.query("id") ?? "";
+	return c.text("ok");
+});
 app.post("/notify", (c) => {
+	const from = c.req.query("session") ?? "";
 	const notify = () => {
+		if (from && listenSession && from !== listenSession) return;
 		if (!slot || !isListen(slot.body)) return;
 		if (slot.body.kind === "tts" && !slot.listening) {
 			slot.background = true;

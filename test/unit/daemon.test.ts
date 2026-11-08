@@ -173,6 +173,17 @@ describe('daemon', () => {
     }
   });
 
+  it('a wake from another Claude session never ends this listen (Mark 2026-11-08)', async () => {
+    const listen = post('/request', { kind: 'stt' });
+    await tick();
+    await post('/session?id=mine');
+    await post('/notify?session=other');
+    expect(sent.some((m) => m.type === 'released')).toBe(false);
+    await post('/notify?session=mine');
+    expect(await (await listen).text()).toBe(BACKGROUND_RESULT);
+    await post('/session?id=');
+  });
+
   it('a background result waits while he is speaking: his turn first, then the result (Mark 2026-11-08)', async () => {
     const listen = post('/request', { kind: 'stt' });
     await tick();

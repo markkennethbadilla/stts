@@ -4,7 +4,7 @@ const spawned = vi.fn();
 vi.mock('node:child_process', () => ({
   spawn: () => {
     spawned();
-    return { unref() {} };
+    return { unref() {}, on() {} };
   },
 }));
 

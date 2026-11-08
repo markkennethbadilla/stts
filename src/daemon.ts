@@ -778,8 +778,18 @@ function backgroundResult(): void {
   turns.send({ type: 'background' });
   settle(200, BACKGROUND_RESULT);
 }
+// The Claude session that last started a stt or tts (PreToolUse hook). /notify from any other session is
+// ignored: the plugin hook is global, so another session's agent would wake this listen (Mark 2026-11-08).
+// Unknown (no hook seen, or a hook without an id) wakes as before: a result is never lost.
+let listenSession = '';
+app.post('/session', (c) => {
+  listenSession = c.req.query('id') ?? '';
+  return c.text('ok');
+});
 app.post('/notify', (c) => {
+  const from = c.req.query('session') ?? '';
   const notify = () => {
+    if (from && listenSession && from !== listenSession) return;
     if (!slot || !isListen(slot.body)) return;
     // A tts still speaking is never cut short (Mark 2026-10-15: the call returned mid-speech and the
     // agent's next tts was highlighted over the old audio). The result waits for its listen to open.
