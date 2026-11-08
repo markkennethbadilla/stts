@@ -54,6 +54,8 @@ async function listen(request: APIRequestContext) {
   try {
     await ask(request, { kind: 'tts', text: 'Okay.' });
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
   return ask(request, { kind: 'stt' });
@@ -160,6 +162,8 @@ test('a fragment of the long sentence being spoken is echo, not a barge', async 
     expect(await (await speech).text()).not.toMatch(/\[turn/);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -203,6 +207,8 @@ test('a new tts mid-speech cuts the old speech off; only the new clips follow', 
     expect(said).not.toContain('Old three is here.');
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -245,6 +251,8 @@ test('a clip that arrives after its speech was cut off never plays over the new 
     expect(await voice.evaluate(() => (globalThis as { __plays?: number }).__plays)).toBe(1);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -292,6 +300,8 @@ test('a long sentence over the speech keeps it paused until his final, then barg
     expect(text).toContain('interrupted your speech at part 1 sentence 1');
     expect(await count()).toBe(plays);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -340,6 +350,8 @@ test('his voice starting over the speech pauses it at once; an echo final resume
     await voice.getByLabel(/Skip/).click();
     expect(await (await speech).text()).not.toMatch(/\[turn/);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -411,6 +423,8 @@ test('his first words over the speech stop it for good, final or not', async ({ 
     await voice.clock.fastForward(2500);
     expect(await (await second).text()).toBe(NO_SPEECH);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -456,6 +470,8 @@ test('the first clip is short and synthesised alone; the rest follow one at a ti
     expect(daemonLog()).toMatch(/first audio \d+ms after the tts, clip of 11 chars/);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -495,6 +511,8 @@ test('spoken cues: Speak when the listen opens, Stop when the turn is sent, noth
     expect(await (await reply).text()).toMatch(/that is all for now$/);
     await expect.poll(() => said.includes('Stop.')).toBe(true);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -524,6 +542,8 @@ test('spoken cue: Speak plays when the light goes green right after the agent sp
     await voice.clock.fastForward(1500);
     expect(await (await reply).text()).toMatch(/thanks that works$/);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });

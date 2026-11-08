@@ -194,7 +194,9 @@ export const ttsShape = {
   close: z
     .boolean()
     .optional()
-    .describe('Close the voice window after speaking. Use on the last message of a conversation, never with listen. A one-off notice (close, no listen, no voice window open) speaks with the mic off and then closes, from any caller.'),
+    .describe(
+      'Close the voice window after speaking. Use on the last message of a conversation, never with listen. A one-off notice (close, no listen, no voice window open) speaks with the mic off and then closes, from any caller.',
+    ),
   rate: z
     .number()
     .min(0.5)

@@ -844,10 +844,7 @@ app.post('/request', async (c) => {
   // a window a listen or a plain tts has used is not a notice window. Otherwise spec 026 holds: only
   // the session closes.
   const notice =
-    body.kind === 'tts' &&
-    body.close === true &&
-    body.listen !== true &&
-    ((!page && !windowOpening) || noticeWindow);
+    body.kind === 'tts' && body.close === true && body.listen !== true && ((!page && !windowOpening) || noticeWindow);
   body.notice = notice;
   if (notice) noticeWindow = true;
   else {

@@ -76,11 +76,15 @@ test('only a stop that reaches the session as a task-notification pokes the daem
     });
   expect(await run(launch('Workflow'))).toBe(0);
   expect(hits).toBe(3);
-  expect(urls[2]).toBe('/notify?session=&watch=C:\\Users\\Work\\.claude\\projects\\p\\2d6e02ce/workflows/wf_e0902567-376.json');
+  expect(urls[2]).toBe(
+    '/notify?session=&watch=C:\\Users\\Work\\.claude\\projects\\p\\2d6e02ce/workflows/wf_e0902567-376.json',
+  );
   expect(await run(JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'no run here' }))).toBe(0);
   expect(hits).toBe(3);
   // Every wake names its session; a listening tool call posts /session (spec 007).
-  expect(await run(JSON.stringify({ hook_event_name: 'SubagentStop', session_id: 's1', agent_type: 'general-purpose' }))).toBe(0);
+  expect(
+    await run(JSON.stringify({ hook_event_name: 'SubagentStop', session_id: 's1', agent_type: 'general-purpose' })),
+  ).toBe(0);
   expect(urls[3]).toBe('/notify?session=s1');
   expect(await run(JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's1' }))).toBe(0);
   expect(urls[4]).toBe('/session?id=s1');

@@ -10,7 +10,8 @@
     "check": "biome ci . && tsc --noEmit && npm test",
     "test": "markdownlint-cli2 && vitest run && npm run build && playwright test",
     "e2e": "playwright test",
-    "gate": "trunk check --ci --no-fix --all && npm run check && git diff --exit-code -- dist"
+    "gate": "trunk check --ci --no-fix --all && biome ci . && tsc --noEmit && markdownlint-cli2 && vitest run && npm run build && npm run e2e:smoke && git diff --exit-code -- dist",
+    "e2e:smoke": "playwright test --grep @smoke"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",

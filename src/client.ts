@@ -72,7 +72,9 @@ export async function ensureDaemon(): Promise<void> {
       const code = child.exitCode();
       if (code !== null && code !== 0) {
         if (attempt === 1) throw new Error(`stts daemon exited at start with code ${code}`);
-        await fetch(`${daemonUrl()}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(500) }).catch(() => {}); // SILENT-OK: nothing may answer; the retry spawns anyway
+        await fetch(`${daemonUrl()}/api/shutdown`, { method: 'POST', signal: AbortSignal.timeout(500) }).catch(
+          () => {},
+        ); // SILENT-OK: nothing may answer; the retry spawns anyway
         break;
       }
     }

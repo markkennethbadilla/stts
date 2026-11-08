@@ -10,7 +10,7 @@ import { daemonLog, expect, test } from './fixtures.ts';
 const ask = (request: APIRequestContext, data: object) =>
   request.post('/request', { data: { who: 'session', ...data }, timeout: 150_000 });
 
-test('a listen produces a turn', async ({ voice, request }) => {
+test('a listen produces a turn', { tag: '@smoke' }, async ({ voice, request }) => {
   const reply = ask(request, { kind: 'stt' });
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await voice.evaluate(() => (globalThis as unknown as { __say: (t: string) => void }).__say('hello there world'));
@@ -135,6 +135,8 @@ test('a file is read in parts and resumed', async ({ voice, request }) => {
     expect(await rest.text()).toBe(readNotes.end(n));
     expect(clips).toBeGreaterThanOrEqual(n);
   } finally {
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -144,7 +146,7 @@ const keyboardMode = async (voice: import('@playwright/test').Page) => {
   await expect(voice.getByLabel('Message')).toBeVisible();
 };
 
-test('a typed message is returned by stt as a turn', async ({ voice, request }) => {
+test('a typed message is returned by stt as a turn', { tag: '@smoke' }, async ({ voice, request }) => {
   await keyboardMode(voice);
   const reply = ask(request, { kind: 'stt' });
   await expect(voice.getByLabel('speakNow')).toBeVisible();
@@ -196,6 +198,8 @@ test('speaking over a file read cuts it off like a text tts', async ({ voice, re
     expect(text).toMatch(/\nunspoken: .*Barge sentence 26 is read aloud now\.$/);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -225,11 +229,16 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
     expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
 
-test('speaking over the agent cuts it off; its own echo and short words do not', async ({ voice, request }) => {
+test('speaking over the agent cuts it off; its own echo and short words do not', { tag: '@smoke' }, async ({
+  voice,
+  request,
+}) => {
   // Hold every clip so the speech is still playing when the words arrive.
   const held: (() => void)[] = [];
   const piper = createServer((req, res) => {
@@ -255,6 +264,8 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
@@ -317,6 +328,8 @@ test('Repeat replays the last reply from the page alone; Stop over it leaves the
     expect(await (await ask(request, { kind: 'tts', text: 'A brand new reply.' })).text()).toBe(readNotes.spoken);
   } finally {
     for (const send of held.splice(0)) send();
+    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
     piper.close();
   }
 });
