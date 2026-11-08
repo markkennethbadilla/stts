@@ -234,6 +234,8 @@ export const PageMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('relisten') }),
   // The light went green: the speech of a tts with listen has played and only its listen is left.
   z.object({ type: z.literal('listening') }),
+  // He is speaking (words heard, turn not sent yet) or stopped without a turn: a background result waits.
+  z.object({ type: z.literal('talking'), on: z.boolean() }),
   z.object({
     type: z.literal('complete'),
     text: z.string(),

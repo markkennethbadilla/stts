@@ -154,6 +154,45 @@ describe('daemon', () => {
     expect(sent.some((m) => m.type === 'released')).toBe(false);
   });
 
+  it('words still joining when the listen times out reach the next stt (Mark 2026-11-08)', async () => {
+    vi.useFakeTimers();
+    try {
+      process.env['STTS_REQUEST_TIMEOUT_MS'] = '1000';
+      const listen = post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(1);
+      speak('I want to go to the');
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(await (await listen).text()).toBe(LISTEN_CONTINUES);
+      delete process.env['STTS_REQUEST_TIMEOUT_MS'];
+      await vi.advanceTimersByTimeAsync(3500);
+      const next = post('/request', { kind: 'stt', ack: 0 });
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(await (await next).text()).toContain('I want to go to the');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a background result waits while he is speaking: his turn first, then the result (Mark 2026-11-08)', async () => {
+    const listen = post('/request', { kind: 'stt' });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'talking', on: true }));
+    await post('/notify');
+    expect(sent.some((m) => m.type === 'released')).toBe(false);
+    speak('shop now');
+    expect(await (await listen).text()).toContain('shop now');
+    expect(await (await post('/request', { kind: 'stt', ack: 1 })).text()).toBe(BACKGROUND_RESULT);
+  });
+
+  it('a background result held while he spoke goes when he stops with no turn (Mark 2026-11-08)', async () => {
+    const listen = post('/request', { kind: 'stt' });
+    await tick();
+    page.onMessage(JSON.stringify({ type: 'talking', on: true }));
+    await post('/notify');
+    page.onMessage(JSON.stringify({ type: 'talking', on: false }));
+    expect(await (await listen).text()).toBe(BACKGROUND_RESULT);
+  });
+
   it('a Stop in the gap between two read-aloud parts stops the reading (e2e flake 2026-10-30)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stts-read-'));
     const file = join(dir, 'read.txt');

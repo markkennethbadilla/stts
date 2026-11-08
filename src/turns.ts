@@ -19,6 +19,7 @@ type Ctx = {
 export type TurnsEvent =
   | ({ type: 'heard' } & Heard)
   | { type: 'answered' }
+  | { type: 'unsent' }
   | { type: 'nospeech' }
   | { type: 'continues' }
   | { type: 'background' };
@@ -75,7 +76,12 @@ export const turnsMachine = setup({
   }),
   initial: 'idle',
   // nospeech, continues and background are not turns: no handler, nothing changes.
-  on: { answered: { actions: assign({ answered: true }) } },
+  on: {
+    answered: { actions: assign({ answered: true }) },
+    // A finished turn nobody received is handed back (held for the next listen): forget it so the
+    // dedupe never drops its words when they are heard again.
+    unsent: { actions: assign({ last: null, answered: true }) },
+  },
   states: {
     idle: { on: { heard: { guard: 'fresh', target: 'check', actions: 'take' } } },
     check: {

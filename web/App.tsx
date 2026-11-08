@@ -897,6 +897,9 @@ export function App() {
     // The light's every change in the log, so a wrong colour can be traced to its event.
     log(`light ${turn}`);
     if (turn === 'speakNow') post({ type: 'listening' });
+    // While his words are forming, the daemon holds a background result until his turn is sent.
+    if (turn === 'heard') post({ type: 'talking', on: true });
+    else if (prev === 'heard') post({ type: 'talking', on: false });
     if (turn === 'speakNow' && prev === 'agentSpeaking') void playCue('listen');
     if (turn === 'heard' && cues === 'chime') void playCue('captured');
     if (turn === 'background') void playCue('background');

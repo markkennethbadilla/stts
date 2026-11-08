@@ -329,9 +329,12 @@ function watchTurns(): void {
     barge = null;
     if (slot && (isListen(slot.body) || line) && c.reply) settle(200, line ? `${c.reply}\n${line}` : c.reply);
     else {
-      // The listen went away while joining: keep the words for the next one.
-      carry = `${carry} ${c.last?.text ?? ''}`.trim();
-      turns.send({ type: 'answered' });
+      // The listen went away while joining (a background result, a timeout): hold the finished turn
+      // whole for the next listen, which returns it at once. It used to wait in carry for more speech,
+      // so the next stt never delivered it (Mark 2026-11-08 21:48).
+      const h = c.last;
+      if (h) held = held ? joinHeld(held, h) : h;
+      turns.send({ type: 'unsent' });
     }
   });
 }
@@ -348,6 +351,7 @@ export function resetTurns(): void {
   barge = null;
   typedNext = false;
   backgroundNext = false;
+  talkingAt = 0;
   stopBetween = 0;
   clearTimeout(reopenTimer);
   reopenTries = 0;
@@ -541,7 +545,13 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       // Unmute: the page lost track of an open listen; resend only a listen, never a tts (a replay).
       case 'listening':
         if (slot) slot.listening = true;
-        if (slot?.background) backgroundResult();
+        if (slot?.background && !talking()) backgroundResult();
+        return;
+      case 'talking':
+        talkingAt = m.on ? Date.now() : 0;
+        // He stopped with no turn coming (noise, a cancelled word): the held result goes now.
+        if (!m.on && slot?.background && isListen(slot.body) && !turns.getSnapshot().matches('joining'))
+          backgroundResult();
         return;
       case 'relisten':
         if (slot && isListen(slot.body)) send();
@@ -552,6 +562,7 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
       case 'settings':
         return;
       case 'complete': {
+        talkingAt = 0;
         const said = m.text.trim();
         const typed = m.source === 'typed';
         const h: Heard = { text: m.text, startAt: m.startAt, endAt: m.endAt, typed };
@@ -750,6 +761,12 @@ app.post('/held', (c) => {
 // (PostToolUse hook on Workflow) releases it when that run's state file turns completed or failed: Claude
 // Code fires no hook when a workflow ends, and writes that file just before the task-notification (spec 007).
 const watched = new Set<string>();
+// His words are forming (the page's heard light), or a turn is joining. Stale after 30 s: a lost
+// "off" never holds a result for good.
+let talkingAt = 0;
+const TALKING_MAX_MS = 30_000;
+const talking = (): boolean =>
+  turns.getSnapshot().matches('joining') || (talkingAt > 0 && Date.now() - talkingAt < TALKING_MAX_MS);
 function backgroundResult(): void {
   release('background');
   turns.send({ type: 'background' });
@@ -761,6 +778,12 @@ app.post('/notify', (c) => {
     // A tts still speaking is never cut short (Mark 2026-10-15: the call returned mid-speech and the
     // agent's next tts was highlighted over the old audio). The result waits for its listen to open.
     if (slot.body.kind === 'tts' && !slot.listening) {
+      slot.background = true;
+      return;
+    }
+    // He is mid-sentence (Mark 2026-11-08): the result waits for his turn, which returns first; the
+    // next listen then returns the result.
+    if (talking()) {
       slot.background = true;
       return;
     }
