@@ -96,13 +96,11 @@ export function isEcho(final: string, spoken: readonly string[]): boolean {
 /** A final this soon after its clip started is the clip's own echo, never a barge. */
 export const BARGE_MIN_MS = 600;
 /**
- * Speech paused at his voice's start resumes after this long with no final (a cough, a door).
- * The daemon engine (spec 014) sends no interim words, only a final when his segment ends, so a
- * 2.5 s hold resumed the speech under any sentence longer than that and the barge came late or as a
- * plain turn after the reply ended (Mark 2026-11-05). The pause also stops the echo, so an echo
- * segment ends and is judged within a second; this cap only covers a segment with no words.
+ * Speech paused at his voice's start resumes after this long with no words (a cough, a door).
+ * The engine sends interim words about every 0.4 s, so his first words confirm the barge well
+ * inside this hold, and a sound with no words resumes the speech at once (nowords, spec 014).
  */
-export const BARGE_HOLD_MS = 20_000;
+export const BARGE_HOLD_MS = 3000;
 /**
  * A confirmed barge waits for his final, so the turn is his whole sentence (Fable review round 3:
  * sending interim words at 2.5 s lost the rest of a long sentence). Past this with no final, the

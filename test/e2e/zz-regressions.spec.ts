@@ -287,7 +287,13 @@ test('a long sentence over the speech keeps it paused until his final, then barg
     await voice.evaluate(() =>
       (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
     );
-    // Past the old 2.5 s hold with no words yet: the speech must stay paused.
+    // His first interim words confirm the barge: past the 3 s hold the speech must stay paused.
+    await voice.evaluate(() => {
+      const r = (globalThis as unknown as { __rec: { keepsAudio: boolean; onresult: (e: unknown) => void } }).__rec;
+      // Like the daemon engine: a recogniser restart loses no audio, so interim words are not kept twice.
+      r.keepsAudio = true;
+      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'no wait I want' }], { isFinal: false })] });
+    });
     await voice.clock.fastForward(4000);
     expect(await count()).toBe(plays);
     const said = 'no wait I want you to explain the other option first';
@@ -301,6 +307,46 @@ test('a long sentence over the speech keeps it paused until his final, then barg
     expect(await count()).toBe(plays);
   } finally {
     // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
+    piper.close();
+  }
+});
+
+test('a sound with no words over the speech resumes it at once @smoke', async ({ voice, request }) => {
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  await voice.evaluate(() => {
+    const g = globalThis as unknown as Record<string, number>;
+    g['__plays'] = 0;
+    const p = HTMLMediaElement.prototype;
+    const play = p.play;
+    p.play = function (this: HTMLMediaElement) {
+      g['__plays'] = (g['__plays'] ?? 0) + 1;
+      return play.call(this);
+    };
+  });
+  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
+  try {
+    const speech = ask(request, { kind: 'tts', text: 'A long reply that a cough interrupts for a moment.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await expect.poll(count).toBeGreaterThan(0);
+    await voice.clock.fastForward(700);
+    const plays = await count();
+    await voice.evaluate(() =>
+      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
+    );
+    await voice.clock.fastForward(500);
+    expect(await count()).toBe(plays);
+    await voice.evaluate(() => (globalThis as unknown as { __rec: { onnowords: () => void } }).__rec.onnowords());
+    expect(await count()).toBe(plays + 1);
+    await voice.getByLabel('Stop').click();
+    expect(await (await speech).text()).toContain('__STTS_STOPPED__');
+  } finally {
     piper.closeAllConnections();
     piper.close();
   }

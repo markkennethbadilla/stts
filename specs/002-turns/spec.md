@@ -23,7 +23,9 @@ stateDiagram-v2
 ```
 
 - **Dropped:** speech that ended before the last turn ended (stale), or the same text ending within 1 second of the last (duplicate).
-- **Join:** if the speech reads unfinished (spec 001), the machine waits `STTS_JOIN_SEC` seconds (default 3) for more, up to 3 joins, then returns all of it as one turn.
+- **Join:** if the speech reads unfinished (spec 001), the machine waits `STTS_JOIN_SEC` seconds (default 4) for more, up to 3 joins, then returns all of it as one turn. The wait never ends while he is talking again (the page's `talking`, sent with every interim word): it starts over until his next words arrive. One thought was returned as three turns when he paused about 4 s after "not just" and the 3 s wait ran out as he resumed (log 2026-11-13 00:10 UTC).
+- **Held words settle first.** Words held while no listen was open are not returned the instant a listen opens when they ended under 1.5 s ago or he is talking: they wait 1.5 s (the full join wait when they read unfinished) for the rest and join it. Before, a listen that opened mid-sentence returned the first half at once and the rest came as a second turn.
+- Parity (spec 076): the callbot holds a turn while Recall partials or speech events show the room talking (`isQuiet`), has no window for live words and no listen-open race (its buffer flushes on quiet only); its join wait is the same 4 s.
 - **Ack gate:** after a turn is returned it is unanswered. A tts call answers it. An stt call while it is unanswered gets status 409 with `turn N is unanswered. Answer it now with tts (listen=true), or, if it needs no spoken answer, call stt with ack=N.` An stt with `ack=N` passes and marks it answered.
 - No-speech, listen-continues and background-result replies are not turns and change nothing.
 - **A listen is for the next new turn, never for permission (Mark 2026-11-08).** An agent that announces an action starts that work in the same turn as the tts call and never waits for a go-ahead; only a wall stops it. Parity: skill `talk-hands-free-with-stts` loop step 2.

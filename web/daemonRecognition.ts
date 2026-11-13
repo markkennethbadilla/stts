@@ -15,6 +15,8 @@ const workletUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'text/java
 type AsrEvent =
   | { type: 'speechstart' }
   | { type: 'final'; text: string }
+  | { type: 'interim'; text: string }
+  | { type: 'nowords' }
   | { type: 'error'; error: string }
   | { type: 'flushed' };
 type Result = ArrayLike<{ transcript: string }> & { isFinal: boolean };
@@ -120,7 +122,7 @@ function connect(): void {
     if (sock !== s || muted) return;
     const ev = JSON.parse(String(e.data)) as AsrEvent;
     if (active) active.handle(ev);
-    else backlog.push(ev);
+    else if (ev.type !== 'interim') backlog.push(ev);
   };
   s.onclose = () => {
     if (sock === s) log('asr socket closed, reconnecting');
@@ -160,7 +162,10 @@ export class DaemonRecognition {
   onspeechend: (() => void) | null = null;
   onaudiostart: (() => void) | null = null;
   onresult: ((e: { resultIndex: number; results: ArrayLike<Result> }) => void) | null = null;
+  onnowords: (() => void) | null = null;
+  keepsAudio = true;
   private results: Result[] = [];
+  private live = '';
 
   start(_track?: MediaStreamTrack): void {
     active = this;
@@ -181,7 +186,17 @@ export class DaemonRecognition {
   handle(e: AsrEvent): void {
     if (e.type === 'speechstart') this.onspeechstart?.();
     else if (e.type === 'error') this.onerror?.({ error: e.error });
-    else if (e.type === 'final') {
+    else if (e.type === 'interim') {
+      this.live = e.text;
+      const shown = [...this.results, Object.assign([{ transcript: e.text }], { isFinal: false })];
+      this.onresult?.({ resultIndex: this.results.length, results: shown });
+    } else if (e.type === 'nowords') {
+      const kept = this.live;
+      this.live = '';
+      if (kept) this.handle({ type: 'final', text: kept });
+      else this.onnowords?.();
+    } else if (e.type === 'final') {
+      this.live = '';
       this.results.push(Object.assign([{ transcript: e.text }], { isFinal: true }));
       this.onresult?.({ resultIndex: this.results.length - 1, results: this.results });
       this.onspeechend?.();

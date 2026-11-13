@@ -28,7 +28,10 @@ it.skipIf(!installed)(
     const f = Float32Array.from(pcm, (v) => v / 32768);
     const events: AsrEvent[] = [];
     const e = createEngine(dataDir, (ev) => events.push(ev));
-    for (let i = 0; i < f.length; i += 777) e.push(f.subarray(i, i + 777));
+    for (let i = 0, n = 0; i < f.length; i += 777, n++) {
+      e.push(f.subarray(i, i + 777));
+      if (n % 8 === 7) await new Promise((r) => setTimeout(r, 150));
+    }
     e.push(new Float32Array(16000));
     await new Promise((r) => setTimeout(r, 8000));
     const text = events
@@ -36,6 +39,10 @@ it.skipIf(!installed)(
       .map((x) => (x as { text: string }).text)
       .join(' ');
     expect(events[0]).toEqual({ type: 'speechstart' });
+    const firstFinal = events.findIndex((x) => x.type === 'final');
+    const interims = events.slice(0, firstFinal).filter((x) => x.type === 'interim');
+    expect(interims.length).toBeGreaterThan(1);
+    expect((interims[0] as { text: string }).text.toLowerCase()).toMatch(/^well/);
     expect(text.toLowerCase()).toMatch(/well, i don't wish to see it any more, observed ph(o)?ebe.*old portrait/);
   },
   60_000,

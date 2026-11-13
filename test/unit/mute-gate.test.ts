@@ -53,6 +53,34 @@ vi.stubGlobal(
 );
 URL.createObjectURL = () => 'blob:x';
 
+describe('live words', () => {
+  it('interim words show as a growing unfinished result, the final replaces it; no words is reported', async () => {
+    const { DaemonRecognition } = await import('../../web/daemonRecognition.ts');
+    const r = new DaemonRecognition();
+    const seen: string[] = [];
+    let nowords = 0;
+    r.onresult = (e) => {
+      const last = e.results[e.results.length - 1] as ArrayLike<{ transcript: string }> & { isFinal: boolean };
+      seen.push(`${e.results.length}:${last.isFinal ? 'final' : 'interim'}:${last[0]?.transcript}`);
+    };
+    r.onnowords = () => nowords++;
+    r.handle({ type: 'interim', text: 'I see' });
+    r.handle({ type: 'interim', text: 'I see the words' });
+    r.handle({ type: 'final', text: 'I see the words as I speak.' });
+    r.handle({ type: 'nowords' });
+    r.handle({ type: 'interim', text: 'kept' });
+    r.handle({ type: 'nowords' });
+    expect(seen).toEqual([
+      '1:interim:I see',
+      '1:interim:I see the words',
+      '1:final:I see the words as I speak.',
+      '2:interim:kept',
+      '2:final:kept',
+    ]);
+    expect(nowords).toBe(1);
+  });
+});
+
 describe('mute gate', () => {
   // Mark 2026-10-18: "after I say something and mute right after, it never sends it".
   it('sends speech from before the mute, drops speech during it; only after unmute is a turn', async () => {

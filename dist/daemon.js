@@ -17120,6 +17120,8 @@ const PRE_ROLL = 4800;
 const KEEP = 352e3;
 const MODEL = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 const WINDOW = 512;
+const INTERIM_EVERY = 6400;
+const INTERIM_LEAD = 9600;
 const asrPaths = (dataDir) => ({
 	addon: join(dataDir, "asr", "node_modules", "sherpa-onnx-node"),
 	model: join(dataDir, "models", MODEL),
@@ -17163,7 +17165,7 @@ function preload(dataDir) {
 	} catch {}
 }
 /** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
-function createEngine(dataDir, emit) {
+function createEngine(dataDir, emit, log = () => {}) {
 	let vad;
 	try {
 		vad = new (load(dataDir)).Vad({
@@ -17192,17 +17194,49 @@ function createEngine(dataDir, emit) {
 	let speaking = false;
 	const kept = [];
 	let fedTotal = 0;
-	const before = (start) => {
-		const from = Math.max(0, start - PRE_ROLL);
-		const out = new Float32Array(start - from);
+	const span = (from, to) => {
+		const out = new Float32Array(Math.max(0, to - from));
 		for (const c of kept) {
 			const a = Math.max(from, c.at);
-			const b = Math.min(start, c.at + c.s.length);
+			const b = Math.min(to, c.at + c.s.length);
 			if (a < b) out.set(c.s.subarray(a - c.at, b - c.at), a - from);
 		}
 		return out;
 	};
+	const before = (start) => span(Math.max(0, start - PRE_ROLL), start);
+	const decode = async (samples) => {
+		const st = recognizer?.createStream();
+		if (!st || !recognizer) return "";
+		st.acceptWaveform({
+			samples,
+			sampleRate: SAMPLE_RATE
+		});
+		return (await recognizer.decodeAsync(st)).text.trim();
+	};
 	let chain = Promise.resolve();
+	let from = 0;
+	let interimAt = 0;
+	let interimBusy = false;
+	let lastInterim = "";
+	let gen = 0;
+	let segments = 0;
+	const interim = () => {
+		if (interimBusy || fedTotal - interimAt < INTERIM_EVERY) return;
+		interimBusy = true;
+		interimAt = fedTotal;
+		const mine = gen;
+		const samples = span(from, fedTotal);
+		chain = chain.then(async () => {
+			const text = mine === gen ? await decode(samples) : "";
+			interimBusy = false;
+			if (mine !== gen || !text || text === lastInterim) return;
+			lastInterim = text;
+			emit({
+				type: "interim",
+				text
+			});
+		});
+	};
 	const drain = () => {
 		while (!vad.isEmpty()) {
 			const seg = vad.front();
@@ -17211,18 +17245,18 @@ function createEngine(dataDir, emit) {
 			const samples = new Float32Array(pre.length + seg.samples.length);
 			samples.set(pre);
 			samples.set(seg.samples, pre.length);
+			gen++;
+			segments++;
+			lastInterim = "";
+			from = seg.start + seg.samples.length;
 			chain = chain.then(async () => {
-				const st = recognizer?.createStream();
-				if (!st || !recognizer) return;
-				st.acceptWaveform({
-					samples,
-					sampleRate: SAMPLE_RATE
-				});
-				const text = (await recognizer.decodeAsync(st)).text.trim();
-				if (text) emit({
+				const t0 = Date.now();
+				const text = await decode(samples);
+				log(`asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words`);
+				emit(text ? {
 					type: "final",
 					text
-				});
+				} : { type: "nowords" });
 			});
 		}
 	};
@@ -17241,9 +17275,21 @@ function createEngine(dataDir, emit) {
 			while (kept.length && (kept[0]?.at ?? 0) < fedTotal - KEEP) kept.shift();
 			pending = all.slice(i);
 			const now = vad.isDetected();
-			if (now && !speaking) emit({ type: "speechstart" });
-			speaking = now;
+			if (now && !speaking) {
+				emit({ type: "speechstart" });
+				from = Math.max(0, fedTotal - INTERIM_LEAD);
+				interimAt = fedTotal;
+				segments = 0;
+			}
 			drain();
+			if (now) interim();
+			else if (speaking && segments === 0) {
+				gen++;
+				lastInterim = "";
+				log("asr sound with no speech segment");
+				chain = chain.then(() => emit({ type: "nowords" }));
+			}
+			speaking = now;
 		},
 		flush() {
 			vad.flush();
@@ -17449,7 +17495,8 @@ function toClips(text, max) {
 	if (one.length > 40) one = one.slice(0, cutAt(one, 40));
 	return [one, ...toParts(t.slice(one.length), max)];
 }
-const joinSec = () => Number(process.env["STTS_JOIN_SEC"] ?? 3);
+const joinSec = () => Number(process.env["STTS_JOIN_SEC"] ?? 4);
+const OPEN_SETTLE_MS = 1500;
 const dropped = (c, h) => {
 	const ref = c.pending ?? c.last;
 	if (!ref) return false;
@@ -17462,10 +17509,11 @@ const turnsMachine = setup({
 		events: {},
 		input: {}
 	},
-	delays: { join: ({ context }) => context.joinMs },
+	delays: { join: ({ context: c }) => c.pending?.open && !readsUnfinished(c.pending.text) ? Math.min(OPEN_SETTLE_MS, c.joinMs) : c.joinMs },
 	guards: {
 		fresh: ({ context, event }) => event.type === "heard" && !dropped(context, event),
-		wantsJoin: ({ context }) => context.pending !== null && context.joins < 3 && readsUnfinished(context.pending.text)
+		wantsJoin: ({ context }) => context.pending !== null && context.joins < 3 && (context.pending.open === true || readsUnfinished(context.pending.text)),
+		stillTalking: ({ context }) => context.talking()
 	},
 	actions: {
 		take: assign(({ context: c, event }) => {
@@ -17476,12 +17524,14 @@ const turnsMachine = setup({
 					text: `${p.text} ${event.text}`,
 					startAt: p.startAt,
 					endAt: event.endAt,
-					typed: event.typed
+					typed: event.typed,
+					open: event.open
 				} : {
 					text: event.text,
 					startAt: event.startAt,
 					endAt: event.endAt,
-					typed: event.typed
+					typed: event.typed,
+					open: event.open
 				},
 				joins: p ? c.joins + 1 : 0
 			};
@@ -17504,6 +17554,7 @@ const turnsMachine = setup({
 	id: "turns",
 	context: ({ input }) => ({
 		joinMs: (input.joinSec ?? joinSec()) * 1e3,
+		talking: input.talking ?? (() => false),
 		id: 0,
 		answered: true,
 		last: null,
@@ -17533,10 +17584,14 @@ const turnsMachine = setup({
 			actions: "finish"
 		}] },
 		joining: {
-			after: { join: {
+			after: { join: [{
+				guard: "stillTalking",
+				target: "joining",
+				reenter: true
+			}, {
 				target: "idle",
 				actions: "finish"
-			} },
+			}] },
 			on: { heard: {
 				guard: "fresh",
 				target: "check",
@@ -17776,7 +17831,10 @@ const WINDOW_OPEN_MS = 15e3;
 let held = null;
 let barge = null;
 let typedNext = false;
-let turns = createActor(turnsMachine, { input: {} }).start();
+let talkingAt = 0;
+const TALKING_MAX_MS = 3e4;
+const talkingNow = () => talkingAt > 0 && Date.now() - talkingAt < TALKING_MAX_MS;
+let turns = createActor(turnsMachine, { input: { talking: talkingNow } }).start();
 let reported = 0;
 function watchTurns() {
 	turns.subscribe((s) => {
@@ -17799,7 +17857,7 @@ watchTurns();
 /** Tests only: a fresh turns machine and no carry. */
 function resetTurns() {
 	turns.stop();
-	turns = createActor(turnsMachine, { input: {} }).start();
+	turns = createActor(turnsMachine, { input: { talking: talkingNow } }).start();
 	reported = 0;
 	carry = "";
 	keepCarry = false;
@@ -17919,7 +17977,11 @@ function occupy(id, body, ms) {
 		held = null;
 		const reply = body.kind === "tts" ? (body.text ?? "").trim() : "";
 		if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
-		hear(h, h.typed === true);
+		const open = h.typed !== true && (talkingNow() || Date.now() - h.endAt < 1500);
+		hear(open ? {
+			...h,
+			open
+		} : h, h.typed === true);
 		if (slot?.id === id && reply && turns.getSnapshot().matches("joining")) return result;
 		if (slot?.id === id) barge = null;
 	}
@@ -17953,7 +18015,8 @@ function hear(h, typed) {
 		text,
 		startAt: h.startAt,
 		endAt: h.endAt,
-		typed
+		typed,
+		open: h.open
 	});
 }
 function attachPage(sendToPage) {
@@ -18149,9 +18212,7 @@ app.post("/held", (c) => {
 	return c.json({ text });
 });
 const watched = /* @__PURE__ */ new Set();
-let talkingAt = 0;
-const TALKING_MAX_MS = 3e4;
-const talking = () => turns.getSnapshot().matches("joining") || talkingAt > 0 && Date.now() - talkingAt < TALKING_MAX_MS;
+const talking = () => turns.getSnapshot().matches("joining") || talkingNow();
 function backgroundResult() {
 	release("background");
 	turns.send({ type: "background" });
@@ -18377,7 +18438,7 @@ app.get("/asr", upgradeWebSocket(() => {
 			engine = createEngine(dataDir, (ev) => {
 				if (ev.type === "error") deps.log(`asr ${ev.error}`);
 				ws.send(JSON.stringify(ev));
-			});
+			}, deps.log);
 		},
 		onMessage: (e) => {
 			const d = e.data;

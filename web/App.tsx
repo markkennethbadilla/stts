@@ -113,6 +113,8 @@ type Recognition = {
   onspeechstart: (() => void) | null;
   onspeechend: (() => void) | null;
   onaudiostart: (() => void) | null;
+  onnowords?: (() => void) | null;
+  keepsAudio?: boolean;
   onresult:
     | ((e: {
         resultIndex: number;
@@ -174,7 +176,7 @@ export function App() {
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
   // error cut utterances off in the real Chrome test (2026-10-06), and the next session starts empty.
   const keepLive = (): void => {
-    if (!liveWords.current) return;
+    if (!liveWords.current || rec.current?.keepsAudio) return;
     heard.current.final = `${heard.current.final} ${liveWords.current}`.trim();
     liveWords.current = '';
     actor.send({ type: 'RESULT', text: heard.current.final });
@@ -623,6 +625,14 @@ export function App() {
       }
     };
     r.onspeechend = () => mine() && send({ type: 'SPEECH_END', text: heard.current.final });
+    r.onnowords = () => {
+      if (!mine()) return;
+      if (!heard.current.final && !liveWords.current) heard.current.startAt = 0;
+      if (pending.current && !confirmed.current) {
+        log('speech resumed: a sound with no words');
+        unduck();
+      }
+    };
     r.onresult = (e) => {
       if (!mine()) return;
       let live = '';
@@ -648,14 +658,15 @@ export function App() {
         // the speech never resumes, and if no final comes in BARGE_HOLD_MS the barge goes with the
         // words heard so far.
         const words = `${final} ${live}`.trim();
+        const grew = words !== '' && words !== bargeWords.current;
         if (words) bargeWords.current = words;
         const startedAt = spokenLog.current.findLast((x) => x.text === clip)?.at ?? 0;
         if (
           pending.current &&
-          !confirmed.current &&
-          confirmsBarge(words, clip, recentSpoken(), Date.now() - startedAt)
+          (confirmed.current ? grew : confirmsBarge(words, clip, recentSpoken(), Date.now() - startedAt))
         ) {
           confirmed.current = true;
+          setInterim(words);
           audio.current?.pause();
           clearTimeout(duckTimer.current);
           duckTimer.current = setTimeout(
@@ -698,6 +709,7 @@ export function App() {
         }
         // Confirmed by his words: the speech stays stopped until the barge goes.
         if (!confirmed.current) unduck();
+        if (v === 'echo' && !heard.current.final) heard.current.startAt = 0;
         if (v === 'echo' && echoLogged.current !== clip) {
           echoLogged.current = clip;
           log('echo discarded');
@@ -724,6 +736,7 @@ export function App() {
       heard.current.startAt ||= Date.now();
       if (final) heard.current.final = `${heard.current.final} ${final}`.trim();
       liveWords.current = live;
+      if (live) post({ type: 'talking', on: true });
       const shown = `${heard.current.final} ${live}`.trim();
       setInterim(shown);
       shownWords.current = Math.max(shownWords.current, shown.split(/\s+/).filter(Boolean).length);
@@ -942,14 +955,15 @@ export function App() {
     }
     // Mute (spec 005, Mark 2026-10-18): what he said before the mute, finals and the words in flight,
     // is his turn (or held by the daemon for the next listen); only audio while muted is dropped.
-    const before = `${heard.current.final} ${liveWords.current}`.trim();
+    const before = heard.current.final;
+    const live = liveWords.current;
     const startAt = heard.current.startAt || Date.now();
     heard.current.final = '';
     heard.current.startAt = 0;
     liveWords.current = '';
     setInterim('');
     setMuted(true, (flushed) => {
-      const text = [before, ...flushed].join(' ').trim();
+      const text = [before, ...(flushed.length ? flushed : [live])].join(' ').trim();
       if (!text) return;
       log(`mute sent the words before it, ${text.split(/\s+/).length} words`);
       ls.push('history_prompts', text);

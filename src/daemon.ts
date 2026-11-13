@@ -50,7 +50,7 @@ import {
   TURN_PREFIX,
 } from './protocol.ts';
 import { CLIP_CHARS, toClips, toParts } from './sentences.ts';
-import { ackGate, type Heard, turnsMachine } from './turns.ts';
+import { ackGate, type Heard, OPEN_SETTLE_MS, turnsMachine } from './turns.ts';
 
 export const port = Number(process.env['STTS_PORT'] ?? DEFAULT_PORT);
 const budgetMs = () => Number(process.env['STTS_REQUEST_TIMEOUT_MS'] ?? REQUEST_TIMEOUT_MS);
@@ -316,7 +316,10 @@ let barge: string | null = null; // the cut-off line for a turn that interrupted
 let typedNext = false; // the next finished turn was typed, for the "page typed turn N" log line
 
 // Turn ids, dedupe, join and the ack gate live in the turns machine.
-let turns = createActor(turnsMachine, { input: {} }).start();
+let talkingAt = 0;
+const TALKING_MAX_MS = 30_000;
+const talkingNow = (): boolean => talkingAt > 0 && Date.now() - talkingAt < TALKING_MAX_MS;
+let turns = createActor(turnsMachine, { input: { talking: talkingNow } }).start();
 let reported = 0;
 function watchTurns(): void {
   turns.subscribe((s) => {
@@ -343,7 +346,7 @@ watchTurns();
 /** Tests only: a fresh turns machine and no carry. */
 export function resetTurns(): void {
   turns.stop();
-  turns = createActor(turnsMachine, { input: {} }).start();
+  turns = createActor(turnsMachine, { input: { talking: talkingNow } }).start();
   reported = 0;
   carry = '';
   keepCarry = false;
@@ -474,7 +477,8 @@ function occupy(id: number, body: RequestBody, ms: number): Promise<Reply> {
     // the agent never knew).
     const reply = body.kind === 'tts' ? (body.text ?? '').trim() : '';
     if (reply) barge = bargeLine(body.part ?? 1, 1, reply, false);
-    hear(h, h.typed === true);
+    const open = h.typed !== true && (talkingNow() || Date.now() - h.endAt < OPEN_SETTLE_MS);
+    hear(open ? { ...h, open } : h, h.typed === true);
     // Held words that read unfinished are still joining: the tts must not play, or the join's end
     // would settle it mid-speech with no line (Fable review 1). It stays unsent and settles, with the
     // not-spoken line, when the join ends.
@@ -510,7 +514,7 @@ function hear(h: Heard, typed: boolean): void {
   carry = '';
   keepCarry = false;
   typedNext = typed;
-  turns.send({ type: 'heard', text, startAt: h.startAt, endAt: h.endAt, typed });
+  turns.send({ type: 'heard', text, startAt: h.startAt, endAt: h.endAt, typed, open: h.open });
 }
 
 // The page side of /ws. Returns the frame handler; the caller wires close to detach().
@@ -769,10 +773,7 @@ app.post('/held', (c) => {
 const watched = new Set<string>();
 // His words are forming (the page's heard light), or a turn is joining. Stale after 30 s: a lost
 // "off" never holds a result for good.
-let talkingAt = 0;
-const TALKING_MAX_MS = 30_000;
-const talking = (): boolean =>
-  turns.getSnapshot().matches('joining') || (talkingAt > 0 && Date.now() - talkingAt < TALKING_MAX_MS);
+const talking = (): boolean => turns.getSnapshot().matches('joining') || talkingNow();
 function backgroundResult(): void {
   release('background');
   turns.send({ type: 'background' });
@@ -1035,10 +1036,14 @@ app.get(
     let engine: ReturnType<typeof createEngine> | null = null;
     return {
       onOpen: (_e, ws) => {
-        engine = createEngine(dataDir, (ev) => {
-          if (ev.type === 'error') deps.log(`asr ${ev.error}`);
-          ws.send(JSON.stringify(ev));
-        });
+        engine = createEngine(
+          dataDir,
+          (ev) => {
+            if (ev.type === 'error') deps.log(`asr ${ev.error}`);
+            ws.send(JSON.stringify(ev));
+          },
+          deps.log,
+        );
       },
       onMessage: (e) => {
         const d = e.data;

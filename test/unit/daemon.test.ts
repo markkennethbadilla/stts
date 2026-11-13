@@ -118,6 +118,27 @@ describe('daemon', () => {
     expect(await (await r).text()).toMatch(/said after a stop$/);
   });
 
+  it('words held a moment before the listen opened wait for the rest of his sentence', async () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.now();
+      page.onMessage(
+        JSON.stringify({ type: 'complete', text: 'it is hard to replace tools.', startAt: now - 900, endAt: now }),
+      );
+      const r = post('/request', { kind: 'stt' });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(slotId()).not.toBeNull();
+      page.onMessage(JSON.stringify({ type: 'talking', on: true }));
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(slotId()).not.toBeNull();
+      const t = Date.now();
+      page.onMessage(JSON.stringify({ type: 'complete', text: 'People use them daily.', startAt: t - 900, endAt: t }));
+      expect(await (await r).text()).toMatch(/it is hard to replace tools\. People use them daily\.$/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('held speech returned by a tts listen flags the reply as never spoken, word for word (2026-10-30)', async () => {
     // Mark spoke while the agent worked; its tts listen=true then returned his words at once and
     // the reply never played, with no line saying so (17:38:52 local).
@@ -166,7 +187,7 @@ describe('daemon', () => {
       delete process.env['STTS_REQUEST_TIMEOUT_MS'];
       await vi.advanceTimersByTimeAsync(3500);
       const next = post('/request', { kind: 'stt', ack: 0 });
-      await vi.advanceTimersByTimeAsync(3500);
+      await vi.advanceTimersByTimeAsync(4500);
       expect(await (await next).text()).toContain('I want to go to the');
     } finally {
       vi.useRealTimers();

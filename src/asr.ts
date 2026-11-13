@@ -15,10 +15,14 @@ const PRE_ROLL = 0.3 * 16000;
 const KEEP = 22 * 16000;
 export const MODEL = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8';
 const WINDOW = 512; // Silero's window at 16 kHz
+const INTERIM_EVERY = 0.4 * 16000;
+const INTERIM_LEAD = 0.6 * 16000;
 
 export type AsrEvent =
   | { type: 'speechstart' }
   | { type: 'final'; text: string }
+  | { type: 'interim'; text: string }
+  | { type: 'nowords' }
   | { type: 'error'; error: string }
   // Every final for the audio pushed before a flush has been sent (spec 005: mute keeps pre-mute speech).
   | { type: 'flushed' };
@@ -87,6 +91,7 @@ export function preload(dataDir: string): void {
 export function createEngine(
   dataDir: string,
   emit: (e: AsrEvent) => void,
+  log: (line: string) => void = () => {},
 ): { push(s: Float32Array): void; flush(): void } {
   let vad: InstanceType<Sherpa['Vad']>;
   try {
@@ -120,18 +125,44 @@ export function createEngine(
   // first word ("colour", live test 2026-10-07).
   const kept: { at: number; s: Float32Array }[] = [];
   let fedTotal = 0;
-  const before = (start: number): Float32Array => {
-    const from = Math.max(0, start - PRE_ROLL);
-    const out = new Float32Array(start - from);
+  const span = (from: number, to: number): Float32Array => {
+    const out = new Float32Array(Math.max(0, to - from));
     for (const c of kept) {
       const a = Math.max(from, c.at);
-      const b = Math.min(start, c.at + c.s.length);
+      const b = Math.min(to, c.at + c.s.length);
       if (a < b) out.set(c.s.subarray(a - c.at, b - c.at), a - from);
     }
     return out;
   };
+  const before = (start: number): Float32Array => span(Math.max(0, start - PRE_ROLL), start);
+  const decode = async (samples: Float32Array): Promise<string> => {
+    const st = recognizer?.createStream();
+    if (!st || !recognizer) return '';
+    st.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
+    return (await recognizer.decodeAsync(st)).text.trim();
+  };
   // Decodes run one after another, so finals arrive in the order he spoke them.
   let chain = Promise.resolve();
+  let from = 0;
+  let interimAt = 0;
+  let interimBusy = false;
+  let lastInterim = '';
+  let gen = 0;
+  let segments = 0;
+  const interim = (): void => {
+    if (interimBusy || fedTotal - interimAt < INTERIM_EVERY) return;
+    interimBusy = true;
+    interimAt = fedTotal;
+    const mine = gen;
+    const samples = span(from, fedTotal);
+    chain = chain.then(async () => {
+      const text = mine === gen ? await decode(samples) : '';
+      interimBusy = false;
+      if (mine !== gen || !text || text === lastInterim) return;
+      lastInterim = text;
+      emit({ type: 'interim', text });
+    });
+  };
   const drain = (): void => {
     while (!vad.isEmpty()) {
       const seg = vad.front();
@@ -140,12 +171,17 @@ export function createEngine(
       const samples = new Float32Array(pre.length + seg.samples.length);
       samples.set(pre);
       samples.set(seg.samples, pre.length);
+      gen++;
+      segments++;
+      lastInterim = '';
+      from = seg.start + seg.samples.length;
       chain = chain.then(async () => {
-        const st = recognizer?.createStream();
-        if (!st || !recognizer) return;
-        st.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
-        const text = (await recognizer.decodeAsync(st)).text.trim();
-        if (text) emit({ type: 'final', text });
+        const t0 = Date.now();
+        const text = await decode(samples);
+        log(
+          `asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words`,
+        );
+        emit(text ? { type: 'final', text } : { type: 'nowords' });
       });
     }
   };
@@ -161,9 +197,21 @@ export function createEngine(
       while (kept.length && (kept[0]?.at ?? 0) < fedTotal - KEEP) kept.shift();
       pending = all.slice(i);
       const now = vad.isDetected();
-      if (now && !speaking) emit({ type: 'speechstart' });
-      speaking = now;
+      if (now && !speaking) {
+        emit({ type: 'speechstart' });
+        from = Math.max(0, fedTotal - INTERIM_LEAD);
+        interimAt = fedTotal;
+        segments = 0;
+      }
       drain();
+      if (now) interim();
+      else if (speaking && segments === 0) {
+        gen++;
+        lastInterim = '';
+        log('asr sound with no speech segment');
+        chain = chain.then(() => emit({ type: 'nowords' }));
+      }
+      speaking = now;
     },
     // Mute: the utterance still in the VAD is cut off where the audio stopped and decoded now.
     flush() {

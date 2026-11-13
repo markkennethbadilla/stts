@@ -49,6 +49,31 @@ describe('turns', () => {
     expect(ctx().id).toBe(2);
     expect(ctx().last?.text).toBe('and');
   });
+  it('the join never ends while he is talking again', () => {
+    const clock = new SimulatedClock();
+    let talking = false;
+    const a = createActor(turnsMachine, { input: { joinSec: 3, talking: () => talking }, clock }).start();
+    a.send({ type: 'heard', text: 'the thing about that is not just', startAt: T, endAt: T + 500 });
+    talking = true;
+    clock.increment(5000);
+    expect(a.getSnapshot().context.id).toBe(0);
+    a.send({ type: 'heard', text: 'replace tools.', startAt: T + 5000, endAt: T + 6000 });
+    expect(a.getSnapshot().context.last?.text).toBe('the thing about that is not just replace tools.');
+  });
+  it('words held just before a listen opened wait 1.5 s for the rest, finished or not', () => {
+    const { a, ctx, clock } = start();
+    a.send({ type: 'heard', text: 'it is hard to replace tools.', startAt: T, endAt: T + 500, open: true });
+    expect(ctx().id).toBe(0);
+    clock.increment(1000);
+    a.send({ type: 'heard', text: 'People use them daily.', startAt: T + 900, endAt: T + 1500 });
+    expect(ctx().id).toBe(1);
+    expect(ctx().last?.text).toBe('it is hard to replace tools. People use them daily.');
+    a.send({ type: 'heard', text: 'All done.', startAt: T + 9000, endAt: T + 9500, open: true });
+    clock.increment(1499);
+    expect(ctx().id).toBe(1);
+    clock.increment(1);
+    expect(ctx().id).toBe(2);
+  });
   it('joins at most 3 times', () => {
     const { hear, ctx } = start();
     hear('so', T);
