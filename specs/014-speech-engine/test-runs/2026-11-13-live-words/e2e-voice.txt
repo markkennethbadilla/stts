@@ -1,0 +1,28 @@
+[WebServer] [plugin builtin:vite-reporter] 
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+[WebServer] npm notice
+[WebServer] npm notice New major version of npm available! 11.20.0 -> 12.2.2
+[WebServer] npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+[WebServer] npm notice To update run: npm install -g npm@12.2.2
+[WebServer] npm notice
+
+
+Running 11 tests using 1 worker
+
+[1/11] test\e2e\voice.spec.ts:13:1 › a listen produces a turn @smoke
+[2/11] test\e2e\voice.spec.ts:29:1 › pause survives 3 listens and the watchdog
+[3/11] test\e2e\voice.spec.ts:49:1 › the barge-in button toggles, is saved, and matches the settings switch
+[4/11] test\e2e\voice.spec.ts:61:1 › an untrusted End click is ignored
+[5/11] test\e2e\voice.spec.ts:68:1 › /notify produces a background result
+[6/11] test\e2e\voice.spec.ts:95:1 › a file is read in parts and resumed
+[7/11] test\e2e\voice.spec.ts:149:1 › a typed message is returned by stt as a turn @smoke
+[8/11] test\e2e\voice.spec.ts:163:1 › speaking over a file read cuts it off like a text tts
+[9/11] test\e2e\voice.spec.ts:207:1 › typing during speech cuts it off and the tts returns the turn with the barge note
+[10/11] test\e2e\voice.spec.ts:238:1 › speaking over the agent cuts it off; its own echo and short words do not @smoke
+[11/11] test\e2e\voice.spec.ts:273:1 › Repeat replays the last reply from the page alone; Stop over it leaves the listen open
+  11 passed (55.7s)
+exit 0

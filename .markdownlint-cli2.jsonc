@@ -14,5 +14,5 @@
       ]
     }
   },
-  "globs": ["specs/**/*.md"]
+  "globs": ["specs/*/spec.md"]
 }

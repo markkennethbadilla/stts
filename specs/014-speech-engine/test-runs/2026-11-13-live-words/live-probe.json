@@ -1,0 +1,84 @@
+{
+  "speechMs": 7435,
+  "clickAt": 9674,
+  "events": [
+    {
+      "atMs": 868,
+      "type": "speechstart"
+    },
+    {
+      "atMs": 1537,
+      "type": "interim",
+      "text": "Well I don't wish to"
+    },
+    {
+      "atMs": 1988,
+      "type": "interim",
+      "text": "Well, I don't wish to see it anymore."
+    },
+    {
+      "atMs": 2555,
+      "type": "interim",
+      "text": "Well, I don't wish to see it anymore, observed."
+    },
+    {
+      "atMs": 3015,
+      "type": "interim",
+      "text": "Well, I don't wish to see it anymore, observed Feeling."
+    },
+    {
+      "atMs": 3613,
+      "type": "interim",
+      "text": "Well, I don't wish to see it any more, observed Phebe."
+    },
+    {
+      "atMs": 4161,
+      "type": "interim",
+      "text": "Well, I don't wish to see it any more, observed Phoebe, turning away."
+    },
+    {
+      "atMs": 4626,
+      "type": "interim",
+      "text": "Well, I don't wish to see it any more, observed Phoebe, turning away her eyes."
+    },
+    {
+      "atMs": 5183,
+      "type": "interim",
+      "text": "Well, I don't wish to see it any more, observed Phebe, turning away her eyes."
+    },
+    {
+      "atMs": 5623,
+      "type": "final",
+      "text": "Well, I don't wish to see it any more, observed Phoebe, turning away her eyes,"
+    },
+    {
+      "atMs": 5689,
+      "type": "speechstart"
+    },
+    {
+      "atMs": 6236,
+      "type": "interim",
+      "text": "It is certainly very"
+    },
+    {
+      "atMs": 6808,
+      "type": "interim",
+      "text": "It is certainly very likely."
+    },
+    {
+      "atMs": 7273,
+      "type": "interim",
+      "text": "It is certainly very like the old poet."
+    },
+    {
+      "atMs": 7859,
+      "type": "interim",
+      "text": "It is certainly very like the old portrait."
+    },
+    {
+      "atMs": 8391,
+      "type": "final",
+      "text": "It is certainly very like the old portrait,"
+    }
+  ]
+}

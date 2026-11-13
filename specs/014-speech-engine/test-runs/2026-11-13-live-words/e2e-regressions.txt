@@ -1,0 +1,36 @@
+[WebServer] [plugin builtin:vite-reporter] 
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+[WebServer] npm notice
+[WebServer] npm notice New major version of npm available! 11.20.0 -> 12.2.2
+[WebServer] npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+[WebServer] npm notice To update run: npm install -g npm@12.2.2
+[WebServer] npm notice
+
+
+Running 19 tests using 1 worker
+
+[1/19] test\e2e\zz-regressions.spec.ts:64:1 › at a narrow width the Send button sits under the box, and the box keeps the row
+[2/19] test\e2e\zz-regressions.spec.ts:72:1 › leading words survive: interim then final, and two finals, all reach the turn
+[3/19] test\e2e\zz-regressions.spec.ts:106:1 › Dark Reader is locked out and the theme setting applies
+[4/19] test\e2e\zz-regressions.spec.ts:118:1 › an automatic mic restart plays no chime
+[5/19] test\e2e\zz-regressions.spec.ts:142:1 › a fragment of the long sentence being spoken is echo, not a barge
+[6/19] test\e2e\zz-regressions.spec.ts:173:1 › a new tts mid-speech cuts the old speech off; only the new clips follow
+[7/19] test\e2e\zz-regressions.spec.ts:218:1 › a clip that arrives after its speech was cut off never plays over the new tts
+[8/19] test\e2e\zz-regressions.spec.ts:262:1 › a long sentence over the speech keeps it paused until his final, then barges
+[9/19] test\e2e\zz-regressions.spec.ts:315:1 › a sound with no words over the speech resumes it at once @smoke
+[10/19] test\e2e\zz-regressions.spec.ts:357:1 › his voice starting over the speech pauses it at once; an echo final resumes it
+[11/19] test\e2e\zz-regressions.spec.ts:407:1 › his first words over the speech stop it for good, final or not
+[12/19] test\e2e\zz-regressions.spec.ts:480:1 › the first clip is short and synthesised alone; the rest follow one at a time, in order
+[13/19] test\e2e\zz-regressions.spec.ts:525:1 › spoken cues: Speak when the listen opens, Stop when the turn is sent, nothing on a restart
+[14/19] test\e2e\zz-regressions.spec.ts:566:1 › spoken cue: Speak plays when the light goes green right after the agent speaks
+[15/19] test\e2e\zz-regressions.spec.ts:597:1 › a pause mid-sentence loses nothing: both parts arrive, short or long pause
+[16/19] test\e2e\zz-regressions.spec.ts:618:1 › 30 s of continuous speech is one turn, even when the recogniser goes quiet for seconds
+[17/19] test\e2e\zz-regressions.spec.ts:645:1 › every header button has a tooltip and responds
+[18/19] test\e2e\zz-regressions.spec.ts:669:1 › a mic plugged in later is listed, picking it switches the open mic, unplugging it falls back
+[19/19] test\e2e\zz-regressions.spec.ts:736:1 › End reaches the open listen once; the next call carries on
+  19 passed (47.7s)
+exit 0

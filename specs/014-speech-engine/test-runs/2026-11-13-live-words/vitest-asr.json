@@ -1,0 +1,62 @@
+{
+  "numTotalTestSuites": 1,
+  "numPassedTestSuites": 1,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 2,
+  "numPassedTests": 2,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794530336343,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "a missing engine says how to install it, once, and takes audio without throwing",
+          "status": "passed",
+          "title": "a missing engine says how to install it, once, and takes audio without throwing",
+          "duration": 7.820600000000013,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 hears every word, in odd-sized chunks, with nothing dropped across chunk edges",
+          "status": "passed",
+          "title": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 hears every word, in odd-sized chunks, with nothing dropped across chunk edges",
+          "duration": 15907.465199999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794530336976,
+      "endTime": 1794530352891.465,
+      "status": "passed",
+      "message": "",
+      "name": "A:/personal-markkennethbadilla/stts-wt-voice-critique/test/unit/asr.test.ts"
+    }
+  ]
+}
