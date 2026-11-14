@@ -1,11 +1,9 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { app, attachPage, checkForUpdate, deps, installedDir, isLatest, liveUpdate } from '../../src/daemon.ts';
 
-const src = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src');
 const handoffs: string[] = [];
 let updates = 0;
 deps.log = () => {};
