@@ -26,7 +26,13 @@ const venvPy = join(piperHome, 'venv', win ? 'Scripts/python.exe' : 'bin/python'
 const asrDir = join(dataDir, 'asr');
 
 const say = (step, msg) => console.log(`${step} install ${msg}`);
-const run = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8', shell: win && cmd === 'npm' });
+const run = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true });
+const npmCli = () =>
+  [
+    process.env['npm_execpath'],
+    join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].find((p) => p?.endsWith('.js') && existsSync(p));
 
 export function missing() {
   const out = [];
@@ -117,7 +123,10 @@ export async function install() {
     const pj = join(asrDir, 'node_modules', 'sherpa-onnx-node', 'package.json');
     if (existsSync(pj) && JSON.parse(readFileSync(pj, 'utf8')).version === v) return;
     mkdirSync(asrDir, { recursive: true });
-    const r = run('npm', [
+    const cli = npmCli();
+    if (!cli) throw new Error('npm not found beside node; install Node.js with npm');
+    const r = run(process.execPath, [
+      cli,
       'install',
       '--prefix',
       asrDir,
