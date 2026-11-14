@@ -31,7 +31,7 @@ flowchart LR
 - An install that still has the data folder under its upstream name is moved in place to `%LOCALAPPDATA%\stts` by mkb-agentops `setup-stts.ps1` (profile and settings kept, nothing downloaded again).
 - Dependencies are pinned to exact versions; Renovate keeps them current (`package.json`, and the `install.json` packages through the custom managers in `renovate.json`).
 
-### Public repo rules
+**Public repo rules.**
 
 Every change to stts, by any agent, is checked against these before it is pushed:
 
