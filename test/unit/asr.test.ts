@@ -37,7 +37,8 @@ it.skipIf(!installed)(
     const e = createEngine(p, (ev) => events.push(ev));
     for (let i = 0, n = 0; i < f.length; i += 777, n++) {
       e.push(f.subarray(i, i + 777));
-      if (n % 8 === 7) await new Promise((r) => setTimeout(r, 150));
+      // The speed of speech: faster, a busy machine finishes no live decode before the segment ends.
+      if (n % 3 === 2) await new Promise((r) => setTimeout(r, 146));
     }
     e.push(new Float32Array(16000));
     for (let i = 0; i < 100 && !events.some((x) => x.type === 'final' && /portrait/.test(x.text)); i++)
