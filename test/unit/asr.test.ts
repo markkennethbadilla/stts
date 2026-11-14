@@ -15,7 +15,7 @@ it('a missing engine says how to install it, once, and takes audio without throw
   e.push(new Float32Array(1600));
   expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({ type: 'error' });
-  expect((events[0] as { error: string }).error).toMatch(/setup-stts\.ps1 -Apply/);
+  expect((events[0] as { error: string }).error).toMatch(/scripts\/install\.mjs/);
 });
 
 // Needs the installed engine (mkb-agentops setup-stts.ps1); skipped where it is not installed.
