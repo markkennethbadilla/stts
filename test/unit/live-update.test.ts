@@ -97,11 +97,14 @@ it('the installed daemon refuses an older client shutdown; another install accep
   expect(isLatest()).toBe(false);
   const ok = await app.request('/api/shutdown', { method: 'POST' });
   expect(ok.status).toBe(200);
+  // A temp install, not the repo's dist/: the push gate rebuilds dist/ while the tests run.
+  const plugin = mkdtempSync(join(tmpdir(), 'stts-plugin-'));
+  mkdirSync(join(plugin, 'dist'));
+  writeFileSync(join(plugin, 'dist', 'daemon.js'), '');
   process.env['STTS_INSTALLS'] = (() => {
     const f = join(mkdtempSync(join(tmpdir(), 'stts-live-')), 'i.json');
-    writeFileSync(f, JSON.stringify({ plugins: { 'stts@x': [{ installPath: join(src, '..', 'test', '..') }] } }));
+    writeFileSync(f, JSON.stringify({ plugins: { 'stts@x': [{ installPath: plugin }] } }));
     return f;
   })();
-  // ponytail: the installPath/dist convention means src/ never matches; isLatest is covered by installedDir + same().
-  expect(installedDir()).toBe(join(src, '..', 'dist'));
+  expect(installedDir()).toBe(join(plugin, 'dist'));
 });
