@@ -261,3 +261,67 @@ test('Repeat replays the last reply from the page alone; Stop over it leaves the
     piper.close();
   }
 });
+
+test('the message box keeps focus through speech, a listen, a background result, Send, Stop and Repeat', async ({
+  voice,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  let hold = false;
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+      if (hold) held.push(send);
+      else send();
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  const box = voice.getByLabel('Message');
+  try {
+    await expect(box).toBeFocused();
+    // Win+H dictation types into whatever holds focus: keyboard typing stands in for it.
+    await voice.keyboard.type('first words');
+    await expect(box).toHaveValue('first words');
+    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another one there.', listen: true });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect(box).toBeFocused();
+    await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 30_000 });
+    await expect(box).toBeFocused();
+    // Sent with a mouse click on Send: the button disables as the box empties, and focus stays in the box.
+    await voice.keyboard.type(' and more');
+    await voice.getByRole('button', { name: 'Send' }).click();
+    const turn = await (await speech).text();
+    expect(turn).toMatch(/\] first words and more\n?/);
+    await expect(box).toBeFocused();
+    const bg = ask(request, { kind: 'stt', ack: Number(/\[turn (\d+)/.exec(turn)?.[1]) });
+    await expect(voice.getByLabel('speakNow')).toBeVisible();
+    await request.post('/notify');
+    expect(await (await bg).text()).toBe(BACKGROUND_RESULT);
+    await expect(voice.getByLabel('background')).toBeVisible();
+    await expect(box).toBeFocused();
+    hold = true;
+    const stopped = ask(request, { kind: 'tts', text: 'Held speech that is stopped.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await voice.getByRole('button', { name: 'Stop' }).click();
+    expect(await (await stopped).text()).toMatch(new RegExp(`^${STOPPED}`));
+    await expect(box).toBeFocused();
+    for (const send of held.splice(0)) send();
+    hold = false;
+    await voice.getByRole('button', { name: 'Repeat last reply' }).click();
+    await expect(box).toBeFocused();
+    await voice.getByRole('button', { name: 'Skip to listening (Esc)' }).click();
+    await voice.getByRole('button', { name: 'Settings' }).click();
+    await expect(voice.getByLabel('Theme')).toBeVisible();
+    await voice.keyboard.press('Escape');
+    await expect(box).toBeFocused();
+    // The words typed after all that still land in the box.
+    await voice.keyboard.type('still here');
+    await expect(box).toHaveValue('still here');
+  } finally {
+    for (const send of held.splice(0)) send();
+    piper.close();
+  }
+});

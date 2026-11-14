@@ -740,22 +740,31 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // The message box is uncontrolled: the DOM holds the text and draft only mirrors it (Send's state,
+  // SET_TYPING). Controlled, React reset the box to the last rendered text on every input and caught
+  // up about 300 ms later while the agent spoke, so dictated or typed letters were lost ("first words"
+  // arrived as "fis") and an Enter in that gap sent nothing (e2e, 2026-10-10).
+  const box = useRef<HTMLTextAreaElement | null>(null);
   // History browsing fills the box, so an old prompt can be sent again.
   useEffect(() => {
-    if (browse?.side === 'prompts') setDraft(ls.list('history_prompts')[browse.i] ?? '');
+    if (browse?.side !== 'prompts') return;
+    const t = ls.list('history_prompts')[browse.i] ?? '';
+    if (box.current) box.current.value = t;
+    setDraft(t);
   }, [browse]);
-  const box = useRef<HTMLTextAreaElement | null>(null);
 
   const typeDraft = (text: string): void => {
     setDraft(text);
     actor.send({ type: 'SET_TYPING', on: text.trim() !== '' });
   };
   const sendDraft = (): void => {
-    const text = draft.trim();
+    const text = (box.current?.value ?? '').trim();
     if (!text) return;
     actor.send({ type: 'TYPED', text, part: listen.current.part });
     setBrowse(null);
+    if (box.current) box.current.value = '';
     typeDraft('');
+    box.current?.focus();
   };
 
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
@@ -778,6 +787,12 @@ export function App() {
     // DOM containment, not the React tree: the settings popover is portalled outside main.
     <main
       className="@container relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background text-foreground"
+      // A mouse press on a window button never takes the cursor out of the box: Win+H dictation types
+      // into whatever holds focus, and the Send button, disabled once the box empties, dropped focus to
+      // the page after every send (live focus log, Mark 2026-10-10). Tab and Enter still reach buttons.
+      onMouseDown={(e) => {
+        if (e.currentTarget.contains(e.target as Node) && (e.target as Element).closest('button')) e.preventDefault();
+      }}
       onClick={(e) => {
         const t = e.target as Element;
         // A drag that selected words to copy keeps its selection.
@@ -816,9 +831,12 @@ export function App() {
               if (replaying.current) return skip();
               audio.current?.pause();
               listen.current.after = false;
+              // stopped goes out first: STOP ends the speech at once, and the page's empty complete for
+              // that end reached the daemon first, so a stopped tts returned "Spoken." and a read-aloud
+              // went on to its next part (the CI flake in "a file is read in parts", 2026-10-10).
+              post({ type: 'stopped', part: listen.current.part });
               send({ type: 'STOP' });
               speechSynthesis.cancel();
-              post({ type: 'stopped', part: listen.current.part });
             }}
           >
             <CircleStop />
@@ -839,7 +857,7 @@ export function App() {
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Settings" />}>
               <Settings2 />
             </PopoverTrigger>
-            <PopoverContent className="grid w-[min(18rem,calc(100vw-1rem))] gap-4">
+            <PopoverContent finalFocus={box} className="grid w-[min(18rem,calc(100vw-1rem))] gap-4">
               <Row label="Theme">
                 <Select value={theme} onValueChange={(v) => v && setTheme(String(v))}>
                   <SelectTrigger className="w-40 max-w-full" aria-label="Theme">
@@ -1012,7 +1030,6 @@ export function App() {
           className="max-h-40 min-w-0 bg-card/80 text-[clamp(0.875rem,0.8rem+0.6cqw,1rem)] placeholder:truncate"
           autoFocus
           ref={box}
-          value={draft}
           onChange={(e) => typeDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
