@@ -1,0 +1,8 @@
+22:=== Speech engine sherpa-onnx-node 1.13.8, onnx-asr 0.12.0, model A:\models\parakeet\parakeet-tdt-0.6b-v3-int8 (shared, nothing downloaded; ~20s first run)
+23:  [1/5] sherpa-onnx-node 1.13.8 [OK]
+24:  [2/5] onnx-asr 0.12.0 [OK]
+25:  [3/5] blessed model at A:\models\parakeet\parakeet-tdt-0.6b-v3-int8 [OK]
+26:  [4/5] silero_vad.onnx [OK]
+27:  [OK] recycled the old per-account model C:\Users\Work\AppData\Local\stts\models\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+28:  [5/5] no per-account Parakeet copy [OK]
+31:All stts steps completed.

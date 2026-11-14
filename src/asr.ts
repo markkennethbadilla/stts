@@ -216,13 +216,16 @@ export function createEngine(
       samples.set(seg.samples, pre.length);
       gen++;
       segments++;
+      const seen = lastInterim;
       lastInterim = '';
       from = seg.start + seg.samples.length;
       chain = chain.then(async () => {
         const t0 = Date.now();
-        const text = await decode(p, samples);
+        const heard = await decode(p, samples);
+        // The v3 model sometimes decodes a whole segment to nothing after reading its start correctly: keep the live words.
+        const text = heard || seen;
         log(
-          `asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words`,
+          `asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words${heard || !seen ? '' : ' (decode empty, live words kept)'}`,
         );
         emit(text ? { type: 'final', text } : { type: 'nowords' });
       });
