@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { type AsrEvent, asrPaths, createEngine, MODEL } from '../../src/asr';
 
 // The real data folder (the test setup points LOCALAPPDATA at a scratch folder).
-const dataDir = process.env['STTS_ASR_DATA'] ?? join(homedir(), 'AppData', 'Local', 'cc-gc-stts');
+const dataDir = process.env['STTS_ASR_DATA'] ?? join(homedir(), 'AppData', 'Local', 'stts');
 
 it('a missing engine says how to install it, once, and takes audio without throwing', () => {
   const events: AsrEvent[] = [];

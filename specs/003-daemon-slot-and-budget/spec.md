@@ -43,7 +43,7 @@ sequenceDiagram
 
 ## What it reads and writes
 
-Reads environment `STTS_PORT`, `STTS_REQUEST_TIMEOUT_MS`, `STTS_JOIN_SEC`, `STTS_PIPER_HOME`. Writes the Chrome profile and `daemon.log` (spec 012) under `%LOCALAPPDATA%\cc-gc-stts\` (on Linux `~/.local/share/cc-gc-stts/`). Serves `dist/web/` and `dist/earcon/`.
+Reads environment `STTS_PORT`, `STTS_REQUEST_TIMEOUT_MS`, `STTS_JOIN_SEC`, `STTS_PIPER_HOME` (the Piper venv), `STTS_MODELS_DIR` (model folder; else `modelsDir` in `<data>/config.json`, else `<data>/models`). Writes the Chrome profile and `daemon.log` (spec 012) under `%LOCALAPPDATA%\stts\` (on Linux `~/.local/share/stts/`). Serves `dist/web/` and `dist/earcon/`.
 
 ## How to run, check and hand over
 

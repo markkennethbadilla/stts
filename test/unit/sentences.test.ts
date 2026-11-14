@@ -84,7 +84,7 @@ describe('toClips', () => {
     expect(toClips('x'.repeat(2500), 120).map((x) => x.length)).toEqual([1000, 1000, 500]);
   });
   it('CRLF and a Windows path lose nothing', () => {
-    const t = 'Open C:\\Users\\Mark\\AppData\\Local\\cc-gc-stts\\daemon.log and read the tail.\r\nThen stop.';
+    const t = 'Open C:\\Users\\Mark\\AppData\\Local\\stts\\daemon.log and read the tail.\r\nThen stop.';
     expect(joined(toClips(t, 120))).toBe(squash(t));
   });
   it('5 MB keeps every character and the limits', () => {

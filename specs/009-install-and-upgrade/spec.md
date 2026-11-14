@@ -23,8 +23,10 @@ flowchart LR
 - Upgrade: `/plugin update stts@stts-marketplace`. On the next call the client sees a different `X-Stts-Dir` and replaces the old daemon, unless a conversation is open, in which case the old one finishes first (spec 008).
 - Build: `npm run build` runs tsdown and Vite. tsdown bundles `src/mcp.ts` and `src/daemon.ts` into two self-contained files, `dist/mcp.js` and `dist/daemon.js`, with every runtime dependency inlined (only Node builtins stay external, target Node 20), and copies the earcons to `dist/earcon/` and the icons and manifest to `dist/web/`. Vite builds the page into `dist/web/`.
 - `dist/` is committed to git. `/plugin install` only copies the repository, with no `npm install` and no build, so the committed `dist/` is what runs. `node_modules/` stays ignored. Every change to `src/`, `web/` or `public/` is committed together with the rebuilt `dist/`; the push gate runs `npm run build` and then `git diff --exit-code -- dist`, so a stale `dist/` fails the build.
-- Data stays in `%LOCALAPPDATA%\cc-gc-stts\`: the Chrome profile (mic grant and settings), Piper, and `daemon.log`. Back up `profile` before moving or deleting it.
-- Piper is installed separately into `<data>/piper/venv` with voices in `<data>/piper/voices`; the gateway setup in mkb-agentops provides it.
+- Data stays in `%LOCALAPPDATA%\stts\`: the Chrome profile (mic grant and settings), Piper, and `daemon.log`. Back up `profile` before moving or deleting it.
+- Piper is installed separately into `<data>/piper/venv`; the gateway setup in mkb-agentops provides it.
+- Models (Piper voices in `<models>/piper/<voice>.onnx` plus `.onnx.json`) live in one models folder: env `STTS_MODELS_DIR`, else `modelsDir` in `<data>/config.json`, else `<data>/models`. Our install writes `config.json` with `A:\models`, the shared blessed store (mkb-winops spec 061), so no account keeps its own copy.
+- An install that still has the data folder under its upstream name is moved in place to `%LOCALAPPDATA%\stts` by mkb-agentops `setup-stts.ps1` (profile and settings kept, nothing downloaded again).
 - Dependencies are pinned to exact versions; Renovate keeps them current.
 
 ## What it reads and writes

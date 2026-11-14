@@ -5,7 +5,7 @@
 - Risk tier: Standard (a local voice tool, no money, auth or tenant data).
 - System: stts daemon, speech engine and voice page; local, Windows 11, Node 26.13.
 - Build: commit 4264316 (worktree `voice-critique`, since pushed to `main`).
-- Engine: sherpa-onnx 1.13.8, Parakeet TDT 0.6B v2 int8, Silero VAD, installed in `%LOCALAPPDATA%\cc-gc-stts`.
+- Engine: sherpa-onnx 1.13.8, Parakeet TDT 0.6B v2 int8, Silero VAD, installed in `%LOCALAPPDATA%\stts`.
 - Date: 2026-11-13, Manila.
 - In scope: the five complaints in the handoff (voice stops, no live words, cut turns, long turn spans, misheard words).
 - Entry check: engine installed, build green, test daemon answers on its spare port.

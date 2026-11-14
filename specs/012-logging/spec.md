@@ -52,7 +52,7 @@ flowchart LR
 
 ## What it reads and writes
 
-Appends to `%LOCALAPPDATA%\cc-gc-stts\daemon.log` (on Linux `~/.local/share/cc-gc-stts/daemon.log`). There is no rotation.
+Appends to `%LOCALAPPDATA%\stts\daemon.log` (on Linux `~/.local/share/stts/daemon.log`). There is no rotation.
 
 ## How to run, check and hand over
 

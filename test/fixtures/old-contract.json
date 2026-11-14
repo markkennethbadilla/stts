@@ -1,5 +1,5 @@
 {
-  "source": "cc-gc-stts src/protocol.ts and src/stts-mcp-server.ts, captured 2026-10-05; descriptions updated 2026-10-05 for barge-in (BARGE_NOTE)",
+  "source": "upstream 1.0.0 src/protocol.ts and src/stts-mcp-server.ts, captured 2026-10-05; descriptions updated 2026-10-05 for barge-in (BARGE_NOTE)",
   "sentinels": {
     "CONVERSATION_ENDED": "__STTS_CONVERSATION_ENDED__",
     "NO_SPEECH": "__STTS_NO_SPEECH__",

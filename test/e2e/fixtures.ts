@@ -7,8 +7,8 @@ import { dataRoot } from '../../playwright.config.ts';
 
 export const logFile =
   process.platform === 'win32'
-    ? join(dataRoot, 'cc-gc-stts', 'daemon.log')
-    : join(dataRoot, '.local', 'share', 'cc-gc-stts', 'daemon.log');
+    ? join(dataRoot, 'stts', 'daemon.log')
+    : join(dataRoot, '.local', 'share', 'stts', 'daemon.log');
 export const daemonLog = (): string => readFileSync(logFile, 'utf-8');
 
 let clockStep = 0;

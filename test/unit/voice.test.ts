@@ -1,15 +1,15 @@
-// GET /voice/list reads the Piper voices folder; a refused clip and a page fallback are logged.
+// GET /voice/list reads the Piper voices folder (<modelsDir>/piper); a refused clip and a page fallback are logged.
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { createActor } from 'xstate';
 
-const home = mkdtempSync(join(tmpdir(), 'stts-piper-'));
-mkdirSync(join(home, 'voices'));
+const models = mkdtempSync(join(tmpdir(), 'stts-models-'));
+mkdirSync(join(models, 'piper'));
 for (const f of ['en_US-amy-medium.onnx', 'en_GB-jenny_dioco-medium.onnx', 'en_GB-jenny_dioco-medium.onnx.json'])
-  writeFileSync(join(home, 'voices', f), '');
-process.env['STTS_PIPER_HOME'] = home;
+  writeFileSync(join(models, 'piper', f), '');
+process.env['STTS_MODELS_DIR'] = models;
 const { app, attachPage, deps } = await import('../../src/daemon.ts');
 const { pageMachine } = await import('../../web/machine');
 const logged: string[] = [];

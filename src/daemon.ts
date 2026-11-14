@@ -57,8 +57,17 @@ const budgetMs = () => Number(process.env['STTS_REQUEST_TIMEOUT_MS'] ?? REQUEST_
 const here = dirname(fileURLToPath(import.meta.url));
 export const dataDir =
   process.platform === 'win32'
-    ? join(process.env['LOCALAPPDATA'] ?? homedir(), 'cc-gc-stts')
-    : join(homedir(), '.local', 'share', 'cc-gc-stts');
+    ? join(process.env['LOCALAPPDATA'] ?? homedir(), 'stts')
+    : join(homedir(), '.local', 'share', 'stts');
+const configModelsDir = (): string | undefined => {
+  try {
+    return (JSON.parse(readFileSync(join(dataDir, 'config.json'), 'utf8')) as { modelsDir?: string }).modelsDir;
+  } catch {
+    return undefined;
+  }
+};
+export const modelsDir = process.env['STTS_MODELS_DIR'] ?? configModelsDir() ?? join(dataDir, 'models');
+const VOICES = join(modelsDir, 'piper');
 const profileDir =
   process.env['STTS_PROFILE_DIR'] ?? join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
 const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
@@ -949,7 +958,7 @@ const piperClip = (text: string, voice: string, rate: number) =>
   }).catch(() => null);
 
 function startPiper(voice: string): void {
-  const voices = join(PIPER_HOME, 'voices');
+  const voices = VOICES;
   const py = join(PIPER_HOME, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
   const args = ['-m', 'piper.http_server', '--host', '127.0.0.1', '--port', String(PIPER_PORT)];
   piper = spawn(py, [...args, '-m', join(voices, `${voice}.onnx`), '--data-dir', voices, '--sentence-silence', '0.2'], {
@@ -968,7 +977,7 @@ function startPiper(voice: string): void {
 
 // The Piper voices installed: every .onnx in the voices folder, by name, sorted.
 app.get('/voice/list', async (c) => {
-  const files = await readdir(join(PIPER_HOME, 'voices')).catch(() => [] as string[]);
+  const files = await readdir(VOICES).catch(() => [] as string[]);
   return c.json(
     files
       .filter((f) => f.endsWith('.onnx'))

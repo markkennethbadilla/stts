@@ -8,6 +8,6 @@ import { afterEach, beforeEach } from 'vitest';
 const data = join(tmpdir(), `stts-unit-${process.pid}`);
 process.env['LOCALAPPDATA'] = data;
 process.env['HOME'] = data;
-const clear = () => rmSync(join(data, 'cc-gc-stts', 'ended'), { force: true });
+const clear = () => rmSync(join(data, 'stts', 'ended'), { force: true });
 beforeEach(clear);
 afterEach(clear);
