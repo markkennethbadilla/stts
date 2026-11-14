@@ -17606,7 +17606,16 @@ const ackGate = (c, ack) => c.answered || ack === c.id ? null : unansweredError(
 const port = Number(process.env["STTS_PORT"] ?? 15986);
 const budgetMs = () => Number(process.env["STTS_REQUEST_TIMEOUT_MS"] ?? 24e4);
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = process.platform === "win32" ? join(process.env["LOCALAPPDATA"] ?? homedir(), "cc-gc-stts") : join(homedir(), ".local", "share", "cc-gc-stts");
+const dataDir = process.platform === "win32" ? join(process.env["LOCALAPPDATA"] ?? homedir(), "stts") : join(homedir(), ".local", "share", "stts");
+const configModelsDir = () => {
+	try {
+		return JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")).modelsDir;
+	} catch {
+		return;
+	}
+};
+const modelsDir = process.env["STTS_MODELS_DIR"] ?? configModelsDir() ?? join(dataDir, "models");
+const VOICES = join(modelsDir, "piper");
 const profileDir = process.env["STTS_PROFILE_DIR"] ?? join(dataDir, port === 15986 ? "profile" : `profile-${port}`);
 const PIPER_PORT = Number(process.env["STTS_PIPER_PORT"] ?? 15987);
 const PIPER_HOME = process.env["STTS_PIPER_HOME"] ?? join(dataDir, "piper");
@@ -18359,7 +18368,7 @@ const piperClip = (text, voice, rate) => fetch(`http://127.0.0.1:${PIPER_PORT}/s
 	signal: AbortSignal.timeout(2e4)
 }).catch(() => null);
 function startPiper(voice) {
-	const voices = join(PIPER_HOME, "voices");
+	const voices = VOICES;
 	const py = join(PIPER_HOME, "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 	piper = (0, import_cross_spawn.default)(py, [
 		...[
@@ -18387,7 +18396,7 @@ function startPiper(voice) {
 	});
 }
 app.get("/voice/list", async (c) => {
-	const files = await readdir(join(PIPER_HOME, "voices")).catch(() => []);
+	const files = await readdir(VOICES).catch(() => []);
 	return c.json(files.filter((f) => f.endsWith(".onnx")).map((f) => f.slice(0, -5)).sort());
 });
 app.post("/voice/warm", async (c) => {
@@ -18538,4 +18547,4 @@ async function boot() {
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
 //#endregion
-export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, joinHeld, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
+export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, joinHeld, liveUpdate, loadText, modelsDir, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
