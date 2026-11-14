@@ -109,7 +109,7 @@ describe('read-aloud', () => {
     };
     const r = await request({ kind: 'tts', who: 'session', file: file('s2.txt', long), part: 2 });
     expect(r).toBe(
-      `${STOPPED} 2 He stopped it during part 2 of 3. To resume there, call tts with the same file and part=2.`,
+      `${STOPPED} 2 The user stopped it during part 2 of 3. To resume there, call tts with the same file and part=2.`,
     );
   });
 

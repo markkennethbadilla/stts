@@ -1,5 +1,32 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "rangeStrategy": "pin"
+  "extends": [
+    "config:recommended"
+  ],
+  "rangeStrategy": "pin",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "install.json Python packages (PyPI), fetched by scripts/install.mjs",
+      "managerFilePatterns": [
+        "/^install\\.json$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>piper-tts)\\[http\\]\": \"(?<currentValue>[^\"]+)\"",
+        "\"(?<depName>onnx-asr)\": \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "install.json npm packages, fetched by scripts/install.mjs",
+      "managerFilePatterns": [
+        "/^install\\.json$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>sherpa-onnx-node)\": \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "npm"
+    }
+  ]
 }

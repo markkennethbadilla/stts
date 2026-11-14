@@ -29,49 +29,49 @@ export const SENTINELS = [
 
 // Tool-description notes. The text is the contract agents read; keep it word for word.
 export const ENDED_NOTE =
-  ` If the reply is exactly ${CONVERSATION_ENDED}, he pressed End conversation: the ` +
+  ` If the reply is exactly ${CONVERSATION_ENDED}, the user pressed End conversation: the ` +
   'window has already shut down, so do not speak, do not call stt or tts again, and stop. ' +
-  'The only other end is his turn saying "end call". A closed or crashed window is not an end: the next call reopens it.' +
-  ` If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after his idle-end setting (default 15 minutes) passed with no turn from him and no background result, usually because you were busy: ` +
+  'The only other end is the user's turn saying "end call". A closed or crashed window is not an end: the next call reopens it.' +
+  ` If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after the user's idle-end setting (default 15 minutes) passed with no turn from the user and no background result, usually because you were busy: ` +
   'voice is dormant, not ended. Say nothing now and do not call stt. When a background result lands or you finish your work, ' +
   'call tts (listen=true) with the update: that reopens the window and the loop continues.' +
-  ` If the reply starts with ${STOPPED}, he pressed Stop on your speech only: voice continues. Call stt again at once, ` +
-  `without speaking. It is never an end, even when it repeats: keep calling stt; only ${CONVERSATION_ENDED} or his turn saying "end call" ends voice.`;
+  ` If the reply starts with ${STOPPED}, the user pressed Stop on your speech only: voice continues. Call stt again at once, ` +
+  `without speaking. It is never an end, even when it repeats: keep calling stt; only ${CONVERSATION_ENDED} or the user's turn saying "end call" ends voice.`;
 
 export const NO_SPEECH_NOTE =
-  ` If the reply is exactly ${NO_SPEECH}, he has said nothing yet within idleSec: the window ` +
+  ` If the reply is exactly ${NO_SPEECH}, the user has said nothing yet within idleSec: the window ` +
   'is still open and listening. If a background result has finished, relay it with tts (listen=true); ' +
   'otherwise call stt again without speaking. It never means the conversation ended.' +
   ` If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). ` +
-  'Anything he was saying is kept for that listen.';
+  'Anything the user was saying is kept for that listen.';
 
 export const CONTINUES_NOTE =
   ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually ` +
-  'because he is still talking. Nothing he said is lost: call stt again at once, without speaking, ' +
-  'and it returns everything he said.';
+  'because the user is still talking. Nothing the user said is lost: call stt again at once, without speaking, ' +
+  'and it returns everything the user said.';
 
 export const NO_SLEEP_NOTE =
-  ' Never sleep or block on another tool to wait for him: to wait, call stt again (the default ' +
-  `idleSec, ${DEFAULT_IDLE_SEC}, is already the longest), so you answer the moment he stops talking. ` +
+  ' Never sleep or block on another tool to wait for the user: to wait, call stt again (the default ' +
+  `idleSec, ${DEFAULT_IDLE_SEC}, is already the longest), so you answer the moment the user stops talking. ` +
   'Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. ' +
-  'A message he types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.';
+  'A message the user types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.';
 
 export const TURN_NOTE =
-  ' Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when he typed it. The protocol is listen, answer that exact turn at once, listen: ' +
+  ' Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when the user typed it. The protocol is listen, answer that exact turn at once, listen: ' +
   'your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer ' +
-  '(not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask him to finish a sentence: ' +
+  '(not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask the user to finish a sentence: ' +
   'the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said ' +
-  'while no listen was open for the next listen, so nothing he says is lost. ' +
-  'Mark hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), ' +
-  'a tick when his turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. ' +
+  'while no listen was open for the next listen, so nothing the user says is lost. ' +
+  'The user hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), ' +
+  'a tick when the user's turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. ' +
   'Do not announce "listening" or "got it" yourself.';
 
 export const BARGE_NOTE =
-  ' If he types or speaks while you are talking, your speech stops at once and the call returns his message as the next turn, ' +
-  'followed by a line saying where it cut you off and, after "unspoken:", the words of yours he never heard, word for word. ' +
+  ' If the user types or speaks while you are talking, your speech stops at once and the call returns the user's message as the next turn, ' +
+  'followed by a line saying where it cut you off and, after "unspoken:", the words of yours the user never heard, word for word. ' +
   'Treat that message as an addition or a steer: answer it, then briefly repeat those unspoken words (shortened, in your own ' +
-  'words) in the same tts, so he does not miss them; if the line says your reply was not spoken at all, speak that reply ' +
-  'folded together with your answer. Skip the repeat when he said stop, abort, halt or never mind. Then continue the task ' +
+  'words) in the same tts, so the user does not miss them; if the line says your reply was not spoken at all, speak that reply ' +
+  'folded together with your answer. Skip the repeat when the user said stop, abort, halt or never mind. Then continue the task ' +
   'you were cut off from, unless it explicitly says stop, abort, halt or never mind.';
 
 export const bargeLine = (part: number, sentence: number, unspoken = '', started = true, word = 0): string => {
@@ -81,8 +81,8 @@ export const bargeLine = (part: number, sentence: number, unspoken = '', started
   const rest = unspoken.trim();
   const repeat = rest
     ? started
-      ? '; after answering, briefly repeat the unspoken words below unless he said stop or never mind'
-      : '; speak that reply folded together with your answer unless he said stop or never mind'
+      ? '; after answering, briefly repeat the unspoken words below unless the user said stop or never mind'
+      : '; speak that reply folded together with your answer unless the user said stop or never mind'
     : '';
   return `(${where}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind${repeat})${rest ? `\nunspoken: ${rest}` : ''}`;
 };
@@ -139,8 +139,8 @@ export const SUPERSEDED = 'superseded';
 export const readNotes = {
   stopped: (part: number, of: number, where: string): string =>
     of > 1
-      ? `He stopped it during part ${part} of ${of}. To resume there, call tts with ${where} and part=${part}.`
-      : 'He stopped it.',
+      ? `The user stopped it during part ${part} of ${of}. To resume there, call tts with ${where} and part=${part}.`
+      : 'The user stopped it.',
   outOfTime: (from: number, to: number, of: number, where: string): string =>
     `Read parts ${from} to ${to} of ${of}. To go on, call tts again with ${where} and part=${to + 1}.`,
   end: (of: number): string => `Read to the end (part ${of} of ${of}).`,
@@ -154,7 +154,7 @@ export const idleSec = z
   .max(200)
   .optional()
   .describe(
-    `Seconds to wait for speech before returning ${NO_SPEECH} (default ${DEFAULT_IDLE_SEC}, 0 waits until he speaks).`,
+    `Seconds to wait for speech before returning ${NO_SPEECH} (default ${DEFAULT_IDLE_SEC}, 0 waits until the user speaks).`,
   );
 
 export const sttShape = {
@@ -163,7 +163,7 @@ export const sttShape = {
     .boolean()
     .optional()
     .describe(
-      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
+      'True only on the first call after the user starts voice (/stts). After the user pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
     ),
   ack: z
     .number()
@@ -189,7 +189,7 @@ export const ttsShape = {
     .boolean()
     .optional()
     .describe(
-      'True only on the first call after Mark starts voice (/stts). After he pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
+      'True only on the first call after the user starts voice (/stts). After the user pressed End conversation the next call returns __STTS_CONVERSATION_ENDED__ once; start=true discards an End no call has received yet.',
     ),
   close: z
     .boolean()
@@ -203,7 +203,7 @@ export const ttsShape = {
     .max(2)
     .optional()
     .describe(
-      'Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as his default. Omit unless the user asks for a speed change; omitting keeps his saved setting.',
+      'Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as the user's default. Omit unless the user asks for a speed change; omitting keeps the user's saved setting.',
     ),
   volume: z
     .number()
@@ -211,7 +211,7 @@ export const ttsShape = {
     .max(1)
     .optional()
     .describe(
-      'Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as his default. Omit unless the user asks for a volume change; omitting keeps his saved setting.',
+      'Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as the user's default. Omit unless the user asks for a volume change; omitting keeps the user's saved setting.',
     ),
   idleSec,
 };
@@ -246,13 +246,13 @@ export const PageMessage = z.discriminatedUnion('type', [
     // Absent means heard, so an old page still validates. Typed is the keyboard box.
     source: z.enum(['typed', 'heard']).optional(),
     // Set when the message cut the agent's speech off (a barge): where it stopped.
-    // started: false when no audio of the cut-off reply had played yet (his turn came first).
+    // started: false when no audio of the cut-off reply had played yet (the user's turn came first).
     interrupted: z
       .object({
         part: z.number().int().min(1),
         sentence: z.number().int().min(1),
         started: z.boolean().optional(),
-        // The word of that sentence he cut in on, from the voice's word boundary events (1-based);
+        // The word of that sentence the user cut in on, from the voice's word boundary events (1-based);
         // absent when the voice gives no word timings (Piper): the cut is then the sentence.
         word: z.number().int().min(1).optional(),
       })

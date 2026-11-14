@@ -31,6 +31,7 @@ export default defineConfig({
       STTS_MODELS_DIR: join(dataRoot, 'no-models'),
       STTS_LIVE_UPDATE: '0',
       STTS_NO_WINDOW: '1',
+      STTS_NO_INSTALL: '1',
       LOCALAPPDATA: dataRoot,
       HOME: dataRoot,
     },

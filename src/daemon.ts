@@ -74,6 +74,33 @@ const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
 const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
 const asr = asrPaths(dataDir, modelsDir);
 
+// A user who never ran our setup gets the pinned voice and speech parts on the first start
+// (scripts/install.mjs, spec 009); an install that has them all exits at once.
+function installMissing(): void {
+  const script = join(here, '..', 'scripts', 'install.mjs');
+  if (process.env['STTS_NO_INSTALL'] === '1' || !existsSync(script)) return;
+  const c = spawn(process.execPath, [script, '--auto'], {
+    stdio: ['ignore', 'pipe', 'pipe'], // SILENT-OK: stdin only; stdout and stderr go to daemon.log
+    windowsHide: true,
+    env: { ...process.env, STTS_DATA_DIR: dataDir, STTS_MODELS_DIR: modelsDir, STTS_PIPER_HOME: PIPER_HOME },
+  });
+  let fetched = false;
+  const lines = (d: Buffer) => {
+    for (const l of String(d).split(/\r?\n/)) {
+      if (!l.trim()) continue;
+      if (l.startsWith('START install')) fetched = true;
+      deps.log(l);
+    }
+  };
+  c.stdout?.on('data', lines);
+  c.stderr?.on('data', lines);
+  c.on('error', (e) => deps.log(`FAIL install could not start: ${String(e)}`));
+  c.on('exit', (code) => {
+    if (code !== 0) deps.log(`FAIL install exit ${code}`);
+    else if (fetched) preload(asr, deps.log);
+  });
+}
+
 // Swappable side effects, so the tests run with no Chrome, no Piper and no exit.
 export const deps = {
   log(line: string): void {
@@ -1092,8 +1119,12 @@ export function start(p: number = port): void {
   } catch {}
   const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
     deps.log(`daemon start pid ${process.pid}`);
-    // The speech engine loads now, before any window or speech (spec 014).
-    setTimeout(() => preload(asr, deps.log), 0);
+    // The speech engine loads now, before any window or speech (spec 014); a part still missing is
+    // fetched first (spec 009), then the engine loads.
+    setTimeout(() => {
+      preload(asr, deps.log);
+      installMissing();
+    }, 0);
   });
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;

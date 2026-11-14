@@ -49,9 +49,9 @@ describe('readsUnfinished', () => {
 describe('read notes', () => {
   it('formats', () => {
     expect(p.readNotes.stopped(2, 5, 'the same file')).toBe(
-      'He stopped it during part 2 of 5. To resume there, call tts with the same file and part=2.',
+      'The user stopped it during part 2 of 5. To resume there, call tts with the same file and part=2.',
     );
-    expect(p.readNotes.stopped(1, 1, 'the same text')).toBe('He stopped it.');
+    expect(p.readNotes.stopped(1, 1, 'the same text')).toBe('The user stopped it.');
     expect(p.readNotes.outOfTime(1, 3, 9, 'the same url')).toBe(
       'Read parts 1 to 3 of 9. To go on, call tts again with the same url and part=4.',
     );

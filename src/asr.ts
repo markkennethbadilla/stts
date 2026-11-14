@@ -2,7 +2,7 @@
 // NVIDIA Parakeet TDT 0.6B v3 int8, all on this machine. The page streams echo-cancelled 16 kHz
 // audio over /asr; every VAD segment is decoded, in order, so nothing heard is ever dropped.
 // Replaces Chrome's Web Speech recogniser, which lost words on restarts (Mark 2026-10-07).
-// sherpa-onnx is the voice detector only; the words come from the one shared model copy under A:\models, read by onnx-asr in asr_worker.py.
+// sherpa-onnx is the voice detector only; the words come from Parakeet in the models folder (modelsDir), read by onnx-asr in asr_worker.py.
 import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -67,7 +67,7 @@ const waiting: ((text: string) => void)[] = [];
 /** Loads the addon once per daemon; throws a plain message when a part is missing. */
 function load(p: AsrPaths): Sherpa {
   for (const f of [p.addon, join(p.model, 'encoder-model.int8.onnx'), p.vad, p.python])
-    if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); run mkb-agentops setup-stts.ps1 -Apply`);
+    if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); the first start fetches it (see daemon.log), or run node scripts/install.mjs`);
   sherpa ??= createRequire(import.meta.url)(p.addon) as Sherpa;
   return sherpa;
 }
@@ -165,7 +165,7 @@ export function createEngine(
     return { push: () => {}, flush: () => emit({ type: 'flushed' }) };
   }
   if (!worker && Date.now() < downUntil)
-    emit({ type: 'error', error: `speech worker failed (${lastFail}); run mkb-agentops setup-stts.ps1 -Apply` });
+    emit({ type: 'error', error: `speech worker failed (${lastFail}); see daemon.log; node scripts/install.mjs --check lists missing parts` });
   let pending = new Float32Array(0);
   let speaking = false;
   // Recent audio by absolute sample index, for the pre-roll: Silero marks a segment's start just

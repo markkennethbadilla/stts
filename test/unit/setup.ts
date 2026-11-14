@@ -8,6 +8,7 @@ import { afterEach, beforeEach } from 'vitest';
 const data = join(tmpdir(), `stts-unit-${process.pid}`);
 process.env['LOCALAPPDATA'] = data;
 process.env['HOME'] = data;
+process.env['STTS_NO_INSTALL'] = '1';
 const clear = () => rmSync(join(data, 'stts', 'ended'), { force: true });
 beforeEach(clear);
 afterEach(clear);

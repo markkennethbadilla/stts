@@ -1,0 +1,35 @@
+{
+  "$comment": "Pinned parts that scripts/install.mjs fetches (stts spec 009). Renovate bumps the package versions (renovate.json); a model or voice change updates its revision, files and SHA256 together.",
+  "python": {
+    "piper-tts[http]": "1.8.0",
+    "onnx-asr": "0.12.0"
+  },
+  "npm": {
+    "sherpa-onnx-node": "1.13.8"
+  },
+  "voice": {
+    "dir": "piper",
+    "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium",
+    "files": {
+      "en_GB-jenny_dioco-medium.onnx": "469c630d209e139dd392a66bf4abde4ab86390a0269c1e47b4e5d7ce81526b01",
+      "en_GB-jenny_dioco-medium.onnx.json": "a9a7a93a317c9a3cb6563e37eb057df9ef09c06188a8a4341b0fcb58cba54dd4"
+    }
+  },
+  "asrModel": {
+    "dir": "parakeet/parakeet-tdt-0.6b-v3-int8",
+    "source": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce",
+    "files": {
+      "encoder-model.int8.onnx": "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09",
+      "decoder_joint-model.int8.onnx": "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70",
+      "nemo128.onnx": "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f",
+      "vocab.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+      "config.json": "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466"
+    }
+  },
+  "vad": {
+    "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models",
+    "files": {
+      "silero_vad.onnx": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+    }
+  }
+}

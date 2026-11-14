@@ -244,7 +244,7 @@ describe('daemon', () => {
     page.onMessage(JSON.stringify({ type: 'complete', text: '', startAt: 0, endAt: 0 }));
     expect(slotId()).toBeNull();
     page.onMessage(JSON.stringify({ type: 'stopped', part: 1, id }));
-    expect(await (await r).text()).toMatch(/^__STTS_STOPPED__ 2 He stopped it during part 2 of \d+/);
+    expect(await (await r).text()).toMatch(/^__STTS_STOPPED__ 2 The user stopped it during part 2 of \d+/);
   });
 
   it('a spoken barge cuts a file read-aloud off like a text tts: his turn, unspoken rest, resume part', async () => {
