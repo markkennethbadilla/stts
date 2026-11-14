@@ -60,6 +60,7 @@ export type AsrPaths = ReturnType<typeof asrPaths>;
 let sherpa: Sherpa | null = null;
 let worker: ChildProcess | null = null;
 let downUntil = 0;
+let lastFail = '';
 let wlog: (line: string) => void = () => {};
 const waiting: ((text: string) => void)[] = [];
 
@@ -93,7 +94,8 @@ function startWorker(p: AsrPaths): ChildProcess {
     if (worker !== w) return;
     worker = null;
     downUntil = Date.now() + 30_000;
-    wlog(`asr worker FAIL ${why} ${err.trim().split('\n').pop() ?? ''}`);
+    lastFail = `${why} ${err.trim().split('\n').pop() ?? ''}`;
+    wlog(`asr worker FAIL ${lastFail}`);
     for (const f of waiting.splice(0)) f('');
   };
   w.on('error', (e) => gone(String(e)));
@@ -162,6 +164,8 @@ export function createEngine(
     emit({ type: 'error', error });
     return { push: () => {}, flush: () => emit({ type: 'flushed' }) };
   }
+  if (!worker && Date.now() < downUntil)
+    emit({ type: 'error', error: `speech worker failed (${lastFail}); run mkb-agentops setup-stts.ps1 -Apply` });
   let pending = new Float32Array(0);
   let speaking = false;
   // Recent audio by absolute sample index, for the pre-roll: Silero marks a segment's start just
