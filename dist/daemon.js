@@ -18,6 +18,8 @@ import * as net from "net";
 import { STATUS_CODES } from "node:http";
 import { homedir as homedir$1 } from "os";
 import childProcess, { execFileSync, execSync, spawn, spawnSync } from "child_process";
+import { spawn as spawn$1 } from "node:child_process";
+import { createInterface } from "node:readline";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -51,7 +53,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
-//#region node_modules/@hono/node-server/dist/index.mjs
+//#region ../stts/node_modules/@hono/node-server/dist/index.mjs
 var RequestError = class extends Error {
 	constructor(message, options) {
 		super(message, options);
@@ -556,7 +558,7 @@ var serve = (options, listeningListener) => {
 	return server;
 };
 //#endregion
-//#region node_modules/hono/dist/utils/mime.js
+//#region ../stts/node_modules/hono/dist/utils/mime.js
 /**
 * @module
 * MIME utility.
@@ -625,7 +627,7 @@ const baseMimes = {
 	glb: "model/gltf-binary"
 };
 //#endregion
-//#region node_modules/@hono/node-server/dist/serve-static.mjs
+//#region ../stts/node_modules/@hono/node-server/dist/serve-static.mjs
 var COMPRESSIBLE_CONTENT_TYPE_REGEX = /^\s*(?:text\/[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
 var ENCODINGS = {
 	br: ".br",
@@ -751,7 +753,7 @@ var serveStatic = (options = { root: "" }) => {
 	};
 };
 //#endregion
-//#region node_modules/hono/dist/helper/websocket/index.js
+//#region ../stts/node_modules/hono/dist/helper/websocket/index.js
 /**
 * Create a WebSocket adapter/helper
 */
@@ -775,7 +777,7 @@ const defineWebSocketHelper = (handler) => {
 	});
 };
 //#endregion
-//#region node_modules/ws/lib/constants.js
+//#region ../stts/node_modules/ws/lib/constants.js
 var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const BINARY_TYPES = [
 		"nodebuffer",
@@ -798,7 +800,7 @@ var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/ws/lib/buffer-util.js
+//#region ../stts/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { EMPTY_BUFFER } = require_constants();
 	const FastBuffer = Buffer[Symbol.species];
@@ -898,7 +900,7 @@ var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	} catch (e) {}
 }));
 //#endregion
-//#region node_modules/ws/lib/limiter.js
+//#region ../stts/node_modules/ws/lib/limiter.js
 var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const kDone = Symbol("kDone");
 	const kRun = Symbol("kRun");
@@ -949,7 +951,7 @@ var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = Limiter;
 }));
 //#endregion
-//#region node_modules/ws/lib/permessage-deflate.js
+//#region ../stts/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const zlib = __require("zlib");
 	const bufferUtil = require_buffer_util();
@@ -1285,7 +1287,7 @@ var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module
 	}
 }));
 //#endregion
-//#region node_modules/ws/lib/validation.js
+//#region ../stts/node_modules/ws/lib/validation.js
 var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { isUtf8 } = __require("buffer");
 	const { hasBlob } = require_constants();
@@ -1481,7 +1483,7 @@ var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	} catch (e) {}
 }));
 //#endregion
-//#region node_modules/ws/lib/receiver.js
+//#region ../stts/node_modules/ws/lib/receiver.js
 var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Writable } = __require("stream");
 	const PerMessageDeflate = require_permessage_deflate();
@@ -1944,7 +1946,7 @@ var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = Receiver;
 }));
 //#endregion
-//#region node_modules/ws/lib/sender.js
+//#region ../stts/node_modules/ws/lib/sender.js
 var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Duplex: Duplex$3 } = __require("stream");
 	const { randomFillSync } = __require("crypto");
@@ -2442,7 +2444,7 @@ var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/ws/lib/event-target.js
+//#region ../stts/node_modules/ws/lib/event-target.js
 var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { kForOnEventAttribute, kListener } = require_constants();
 	const kCode = Symbol("kCode");
@@ -2673,7 +2675,7 @@ var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/ws/lib/extension.js
+//#region ../stts/node_modules/ws/lib/extension.js
 var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -2819,7 +2821,7 @@ var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/ws/lib/websocket.js
+//#region ../stts/node_modules/ws/lib/websocket.js
 var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter$2 = __require("events");
 	const https = __require("https");
@@ -3818,7 +3820,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/ws/lib/stream.js
+//#region ../stts/node_modules/ws/lib/stream.js
 var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	require_websocket();
 	const { Duplex: Duplex$1 } = __require("stream");
@@ -3934,7 +3936,7 @@ var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = createWebSocketStream;
 }));
 //#endregion
-//#region node_modules/ws/lib/subprotocol.js
+//#region ../stts/node_modules/ws/lib/subprotocol.js
 var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -3973,7 +3975,7 @@ var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = { parse };
 }));
 //#endregion
-//#region node_modules/ws/lib/websocket-server.js
+//#region ../stts/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const EventEmitter$1 = __require("events");
 	const http = __require("http");
@@ -4368,7 +4370,7 @@ require_subprotocol();
 require_websocket();
 var import_websocket_server = /* @__PURE__ */ __toESM(require_websocket_server(), 1);
 //#endregion
-//#region node_modules/@hono/node-ws/dist/index.js
+//#region ../stts/node_modules/@hono/node-ws/dist/index.js
 /**
 * @link https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 */
@@ -4511,7 +4513,7 @@ Content-Length: 0\r
 	};
 };
 //#endregion
-//#region node_modules/escape-string-regexp/index.js
+//#region ../stts/node_modules/escape-string-regexp/index.js
 var require_escape_string_regexp = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = (string) => {
 		if (typeof string !== "string") throw new TypeError("Expected a string");
@@ -4519,7 +4521,7 @@ var require_escape_string_regexp = /* @__PURE__ */ __commonJSMin(((exports, modu
 	};
 }));
 //#endregion
-//#region node_modules/ms/index.js
+//#region ../stts/node_modules/ms/index.js
 var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Helpers.
@@ -4637,7 +4639,7 @@ var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/debug/src/common.js
+//#region ../stts/node_modules/debug/src/common.js
 var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the common logic for both the Node.js and web browser
@@ -4840,7 +4842,7 @@ var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = setup;
 }));
 //#endregion
-//#region node_modules/debug/src/browser.js
+//#region ../stts/node_modules/debug/src/browser.js
 var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the web browser implementation of `debug()`.
@@ -5036,7 +5038,7 @@ var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/debug/src/node.js
+//#region ../stts/node_modules/debug/src/node.js
 var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Module dependencies.
@@ -5243,7 +5245,7 @@ var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/debug/src/index.js
+//#region ../stts/node_modules/debug/src/index.js
 var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Detect Electron renderer / nwjs process, which is node, but we should
@@ -5253,7 +5255,7 @@ var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	else module.exports = require_node();
 }));
 //#endregion
-//#region node_modules/marky/lib/marky.cjs.js
+//#region ../stts/node_modules/marky/lib/marky.cjs.js
 var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	var perf = typeof performance !== "undefined" && performance;
@@ -5340,7 +5342,7 @@ var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 }));
 //#endregion
-//#region node_modules/lighthouse-logger/index.js
+//#region ../stts/node_modules/lighthouse-logger/index.js
 var import_escape_string_regexp = /* @__PURE__ */ __toESM(require_escape_string_regexp(), 1);
 /**
 * @license
@@ -5575,7 +5577,7 @@ Log.takeTimeEntries = () => {
 */
 Log.getTimeEntries = () => import_marky_cjs.getEntries();
 //#endregion
-//#region node_modules/is-docker/index.js
+//#region ../stts/node_modules/is-docker/index.js
 var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const fs$6 = __require("fs");
 	let isDocker;
@@ -5600,7 +5602,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/chrome-launcher/dist/utils.js
+//#region ../stts/node_modules/chrome-launcher/dist/utils.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5723,7 +5725,7 @@ function makeWin32TmpDir() {
 	return mkdtempSync(join$1(winTmpPath, "lighthouse."));
 }
 //#endregion
-//#region node_modules/chrome-launcher/dist/chrome-finder.js
+//#region ../stts/node_modules/chrome-launcher/dist/chrome-finder.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5927,7 +5929,7 @@ function findChromeExecutables(folder) {
 	return installations;
 }
 //#endregion
-//#region node_modules/chrome-launcher/dist/flags.js
+//#region ../stts/node_modules/chrome-launcher/dist/flags.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5974,7 +5976,7 @@ const DEFAULT_FLAGS = [
 	"--propagate-iph-for-testing"
 ];
 //#endregion
-//#region node_modules/chrome-launcher/dist/chrome-launcher.js
+//#region ../stts/node_modules/chrome-launcher/dist/chrome-launcher.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -6276,7 +6278,7 @@ var Launcher = class Launcher {
 	}
 };
 //#endregion
-//#region node_modules/isexe/windows.js
+//#region ../stts/node_modules/isexe/windows.js
 var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = isexe;
 	isexe.sync = sync;
@@ -6306,7 +6308,7 @@ var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/isexe/mode.js
+//#region ../stts/node_modules/isexe/mode.js
 var require_mode = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = isexe;
 	isexe.sync = sync;
@@ -6336,7 +6338,7 @@ var require_mode = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/isexe/index.js
+//#region ../stts/node_modules/isexe/index.js
 var require_isexe = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	__require("fs");
 	var core;
@@ -6378,7 +6380,7 @@ var require_isexe = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 }));
 //#endregion
-//#region node_modules/which/which.js
+//#region ../stts/node_modules/which/which.js
 var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
 	const path$3 = __require("path");
@@ -6456,7 +6458,7 @@ var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	which.sync = whichSync;
 }));
 //#endregion
-//#region node_modules/path-key/index.js
+//#region ../stts/node_modules/path-key/index.js
 var require_path_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const pathKey = (options = {}) => {
 		const environment = options.env || process.env;
@@ -6467,7 +6469,7 @@ var require_path_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports.default = pathKey;
 }));
 //#endregion
-//#region node_modules/cross-spawn/lib/util/resolveCommand.js
+//#region ../stts/node_modules/cross-spawn/lib/util/resolveCommand.js
 var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const path$2 = __require("path");
 	const which = require_which();
@@ -6498,7 +6500,7 @@ var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) =>
 	module.exports = resolveCommand;
 }));
 //#endregion
-//#region node_modules/cross-spawn/lib/util/escape.js
+//#region ../stts/node_modules/cross-spawn/lib/util/escape.js
 var require_escape = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
 	function escapeCommand(arg) {
@@ -6518,12 +6520,12 @@ var require_escape = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports.argument = escapeArgument;
 }));
 //#endregion
-//#region node_modules/shebang-regex/index.js
+//#region ../stts/node_modules/shebang-regex/index.js
 var require_shebang_regex = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = /^#!(.*)/;
 }));
 //#endregion
-//#region node_modules/shebang-command/index.js
+//#region ../stts/node_modules/shebang-command/index.js
 var require_shebang_command = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const shebangRegex = require_shebang_regex();
 	module.exports = (string = "") => {
@@ -6536,7 +6538,7 @@ var require_shebang_command = /* @__PURE__ */ __commonJSMin(((exports, module) =
 	};
 }));
 //#endregion
-//#region node_modules/cross-spawn/lib/util/readShebang.js
+//#region ../stts/node_modules/cross-spawn/lib/util/readShebang.js
 var require_readShebang = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const fs$1 = __require("fs");
 	const shebangCommand = require_shebang_command();
@@ -6554,7 +6556,7 @@ var require_readShebang = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = readShebang;
 }));
 //#endregion
-//#region node_modules/cross-spawn/lib/parse.js
+//#region ../stts/node_modules/cross-spawn/lib/parse.js
 var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const path$1 = __require("path");
 	const resolveCommand = require_resolveCommand();
@@ -6615,7 +6617,7 @@ var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = parse;
 }));
 //#endregion
-//#region node_modules/cross-spawn/lib/enoent.js
+//#region ../stts/node_modules/cross-spawn/lib/enoent.js
 var require_enoent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const isWin = process.platform === "win32";
 	function notFoundError(original, syscall) {
@@ -6654,7 +6656,7 @@ var require_enoent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 }));
 //#endregion
-//#region node_modules/hono/dist/request/constants.js
+//#region ../stts/node_modules/hono/dist/request/constants.js
 var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const cp = __require("child_process");
 	const parse = require_parse();
@@ -6679,12 +6681,12 @@ var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(
 })))(), 1);
 const GET_MATCH_RESULT = Symbol();
 //#endregion
-//#region node_modules/hono/dist/utils/buffer.js
+//#region ../stts/node_modules/hono/dist/utils/buffer.js
 const bufferToFormData = (arrayBuffer, contentType) => {
 	return new Response(arrayBuffer, { headers: { "Content-Type": contentType.replace(/^[^;]+/, (mediaType) => mediaType.toLowerCase()) } }).formData();
 };
 //#endregion
-//#region node_modules/hono/dist/utils/body.js
+//#region ../stts/node_modules/hono/dist/utils/body.js
 const MAX_NESTED_OBJECTS = 1e4;
 const isRawRequest = (request) => "headers" in request;
 const parseBody = async (request, options = Object.create(null)) => {
@@ -6778,7 +6780,7 @@ const throwNestingLimitExceeded = () => {
 	throw new Error("Nesting limit exceeded");
 };
 //#endregion
-//#region node_modules/hono/dist/utils/url.js
+//#region ../stts/node_modules/hono/dist/utils/url.js
 const splitPath = (path) => {
 	const paths = path.split("/");
 	if (paths[0] === "") paths.shift();
@@ -6968,7 +6970,7 @@ const getQueryParams = (url, key) => {
 };
 const decodeURIComponent_ = decodeURIComponent;
 //#endregion
-//#region node_modules/hono/dist/request.js
+//#region ../stts/node_modules/hono/dist/request.js
 var HonoRequest = class {
 	/**
 	* `.raw` can get the raw Request object.
@@ -7238,7 +7240,7 @@ var HonoRequest = class {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/utils/html.js
+//#region ../stts/node_modules/hono/dist/utils/html.js
 /**
 * @module
 * HTML utility.
@@ -7272,7 +7274,7 @@ const resolveCallback = async (str, phase, preserveCallbacks, context, buffer) =
 	else return resStr;
 };
 //#endregion
-//#region node_modules/hono/dist/context.js
+//#region ../stts/node_modules/hono/dist/context.js
 const TEXT_PLAIN = "text/plain; charset=UTF-8";
 const setDefaultContentType = (contentType, headers) => {
 	return {
@@ -7650,7 +7652,7 @@ var Context = class {
 	};
 };
 //#endregion
-//#region node_modules/hono/dist/compose.js
+//#region ../stts/node_modules/hono/dist/compose.js
 /**
 * Compose middleware functions into a single function based on `koa-compose` package.
 *
@@ -7699,7 +7701,7 @@ const compose = (middleware, onError, onNotFound) => {
 	};
 };
 //#endregion
-//#region node_modules/hono/dist/router.js
+//#region ../stts/node_modules/hono/dist/router.js
 /**
 * Array of supported HTTP methods.
 */
@@ -7721,13 +7723,13 @@ const MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher 
 */
 var UnsupportedPathError = class extends Error {};
 //#endregion
-//#region node_modules/hono/dist/utils/constants.js
+//#region ../stts/node_modules/hono/dist/utils/constants.js
 /**
 * Constant used to mark a composed handler.
 */
 const COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 //#endregion
-//#region node_modules/hono/dist/hono-base.js
+//#region ../stts/node_modules/hono/dist/hono-base.js
 /**
 * @module
 * This module is the base module for the Hono object.
@@ -8071,10 +8073,10 @@ var Hono$1 = class Hono {
 	};
 };
 //#endregion
-//#region node_modules/hono/dist/router/utils.js
+//#region ../stts/node_modules/hono/dist/router/utils.js
 const createNullObject = () => Object.create(null);
 //#endregion
-//#region node_modules/hono/dist/router/reg-exp-router/matcher.js
+//#region ../stts/node_modules/hono/dist/router/reg-exp-router/matcher.js
 const emptyParam = [];
 function match(method, path) {
 	const matchers = this.buildAllMatchers();
@@ -8091,7 +8093,7 @@ function match(method, path) {
 	return match(method, path);
 }
 //#endregion
-//#region node_modules/hono/dist/router/reg-exp-router/node.js
+//#region ../stts/node_modules/hono/dist/router/reg-exp-router/node.js
 const LABEL_REG_EXP_STR = "[^/]+";
 const TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
 const PATH_ERROR = Symbol();
@@ -8179,7 +8181,7 @@ var Node$1 = class Node {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/router/reg-exp-router/trie.js
+//#region ../stts/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
 	#context = { varIndex: 0 };
 	#root = new Node$1();
@@ -8249,7 +8251,7 @@ var Trie = class {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/router/reg-exp-router/router.js
+//#region ../stts/node_modules/hono/dist/router/reg-exp-router/router.js
 let wildcardRegExpCache = createNullObject();
 function buildWildcardRegExp(path) {
 	return wildcardRegExpCache[path] ??= new RegExp(`^${path.replace(/\/:[^/{}]+(?:\{\[\^\/]\+})?(?=[/{]|$)|\/?\*$|([.\\+*[^\]$()?{}|])/g, (match, metaChar) => metaChar ? `\\${metaChar}` : match === "/*" ? TAIL_WILDCARD_REG_EXP_STR : match === "*" ? ".*" : `/:${LABEL_REG_EXP_STR}`)}$`);
@@ -8343,7 +8345,7 @@ var RegExpRouter = class {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/router/smart-router/router.js
+//#region ../stts/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
 	name = "SmartRouter";
 	#routers = [];
@@ -8390,7 +8392,7 @@ var SmartRouter = class {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/router/trie-router/node.js
+//#region ../stts/node_modules/hono/dist/router/trie-router/node.js
 const emptyParams = createNullObject();
 let order = 0;
 var Node = class Node {
@@ -8520,7 +8522,7 @@ var Node = class Node {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/router/trie-router/router.js
+//#region ../stts/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
 	name = "TrieRouter";
 	#node = new Node();
@@ -8532,7 +8534,7 @@ var TrieRouter = class {
 	}
 };
 //#endregion
-//#region node_modules/hono/dist/hono.js
+//#region ../stts/node_modules/hono/dist/hono.js
 /**
 * The Hono class extends the functionality of the HonoBase class.
 * It sets up routing and allows for custom options to be passed.
@@ -8602,7 +8604,7 @@ var index_node_default = (/* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin
 	};
 })))(), 1)).default;
 //#endregion
-//#region node_modules/xstate/dist/xstate-dev.esm.js
+//#region ../stts/node_modules/xstate/dist/xstate-dev.esm.js
 function getGlobal() {
 	if (typeof globalThis !== "undefined") return globalThis;
 	if (typeof self !== "undefined") return self;
@@ -8619,7 +8621,7 @@ const devToolsAdapter = (service) => {
 	if (devTools) devTools.register(service);
 };
 //#endregion
-//#region node_modules/xstate/dist/raise-97446fd4.esm.js
+//#region ../stts/node_modules/xstate/dist/raise-97446fd4.esm.js
 var Mailbox = class {
 	constructor(_process) {
 		this._process = _process;
@@ -10585,7 +10587,7 @@ function raise(eventOrExpr, options) {
 	return raise;
 }
 //#endregion
-//#region node_modules/xstate/dist/assign-b4b1f28f.esm.js
+//#region ../stts/node_modules/xstate/dist/assign-b4b1f28f.esm.js
 function createSpawner(actorScope, { machine, context }, event, spawnedChildren) {
 	const spawn = (src, options) => {
 		if (typeof src === "string") {
@@ -10694,7 +10696,7 @@ function assign(assignment) {
 	return assign;
 }
 //#endregion
-//#region node_modules/xstate/dist/StateMachine-521e1f66.esm.js
+//#region ../stts/node_modules/xstate/dist/StateMachine-521e1f66.esm.js
 const cache = /* @__PURE__ */ new WeakMap();
 function memo$1(object, key, fn) {
 	let memoizedData = cache.get(object);
@@ -11181,7 +11183,7 @@ var StateMachine = class StateMachine {
 	}
 };
 //#endregion
-//#region node_modules/xstate/dist/log-ddf17a4a.esm.js
+//#region ../stts/node_modules/xstate/dist/log-ddf17a4a.esm.js
 function resolveEmit(_, snapshot, args, actionParams, { event: eventOrExpr }) {
 	return [
 		snapshot,
@@ -11481,7 +11483,7 @@ function log(value = ({ context, event }) => ({
 	return log;
 }
 //#endregion
-//#region node_modules/xstate/dist/xstate.esm.js
+//#region ../stts/node_modules/xstate/dist/xstate.esm.js
 /**
 * Creates a state machine (statechart) with the given configuration.
 *
@@ -11568,7 +11570,7 @@ function setup({ schemas, actors, actions, guards, delays }) {
 	};
 }
 //#endregion
-//#region node_modules/zod/v4/core/util.js
+//#region ../stts/node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -12091,7 +12093,7 @@ function constantCatch(value) {
 	return fn;
 }
 //#endregion
-//#region node_modules/zod/v4/core/core.js
+//#region ../stts/node_modules/zod/v4/core/core.js
 var _a$1;
 const _zodDesc = {
 	value: void 0,
@@ -12197,7 +12199,7 @@ function config(newConfig) {
 	return globalConfig;
 }
 //#endregion
-//#region node_modules/zod/v4/core/errors.js
+//#region ../stts/node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -12313,7 +12315,7 @@ function formatError(error, mapper = (issue) => issue.message) {
 	return fieldErrors;
 }
 //#endregion
-//#region node_modules/zod/v4/core/parse.js
+//#region ../stts/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
 	return {
 		callee: params?.callee ?? callee,
@@ -12516,7 +12518,7 @@ const _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
 	return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 //#endregion
-//#region node_modules/zod/v4/core/regexes.js
+//#region ../stts/node_modules/zod/v4/core/regexes.js
 /**
 * @deprecated CUID v1 is deprecated by its authors due to information leakage
 * (timestamps embedded in the id). Use {@link cuid2} instead.
@@ -12588,7 +12590,7 @@ const boolean$1 = /^(?:true|false)$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
 //#endregion
-//#region node_modules/zod/v4/core/checks.js
+//#region ../stts/node_modules/zod/v4/core/checks.js
 const $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -12884,7 +12886,7 @@ const $ZodCheckOverwrite = /*@__PURE__*/ $constructor("$ZodCheckOverwrite", (ins
 	};
 });
 //#endregion
-//#region node_modules/zod/v4/core/doc.js
+//#region ../stts/node_modules/zod/v4/core/doc.js
 var Doc = class {
 	constructor(args = [], closed = {}) {
 		this.content = [];
@@ -12918,14 +12920,14 @@ var Doc = class {
 	}
 };
 //#endregion
-//#region node_modules/zod/v4/core/versions.js
+//#region ../stts/node_modules/zod/v4/core/versions.js
 const version = {
 	major: 4,
 	minor: 6,
 	patch: 5
 };
 //#endregion
-//#region node_modules/zod/v4/core/schemas.js
+//#region ../stts/node_modules/zod/v4/core/schemas.js
 const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -14359,7 +14361,7 @@ function handleRefineResult(result, payload, input, inst) {
 	}
 }
 //#endregion
-//#region node_modules/zod/v4/core/memoizer.js
+//#region ../stts/node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
 	constructor() {
 		super(`Cannot parse a reference cycle that closes through a transform`);
@@ -14612,7 +14614,7 @@ function isBackEdge(ctx, value) {
 	return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
 //#endregion
-//#region node_modules/zod/v4/locales/en.js
+//#region ../stts/node_modules/zod/v4/locales/en.js
 const error = () => {
 	const Sizable = {
 		string: {
@@ -14720,7 +14722,7 @@ function en_default() {
 	return { localeError: error() };
 }
 //#endregion
-//#region node_modules/zod/v4/core/registries.js
+//#region ../stts/node_modules/zod/v4/core/registries.js
 var _a;
 var $ZodRegistry = class {
 	constructor() {
@@ -14767,7 +14769,7 @@ function registry() {
 (_a = globalThis).__zod_globalRegistry ?? (_a.__zod_globalRegistry = registry());
 const globalRegistry = globalThis.__zod_globalRegistry;
 //#endregion
-//#region node_modules/zod/v4/core/api.js
+//#region ../stts/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -15276,7 +15278,7 @@ function _check(fn, params) {
 	return ch;
 }
 //#endregion
-//#region node_modules/zod/v4/core/to-json-schema.js
+//#region ../stts/node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
 	for (const source of sources) for (const key of Reflect.ownKeys(source)) if (Object.prototype.propertyIsEnumerable.call(source, key)) assignProp(target, key, source[key]);
 	return target;
@@ -15720,7 +15722,7 @@ const createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params)
 	return finalize(ctx, schema);
 };
 //#endregion
-//#region node_modules/zod/v4/core/json-schema-processors.js
+//#region ../stts/node_modules/zod/v4/core/json-schema-processors.js
 const narrowMin = (agg, key, value) => {
 	if (agg[key] === void 0 || value > agg[key]) agg[key] = value;
 };
@@ -16168,7 +16170,7 @@ const optionalProcessor = (schema, ctx, _json, params) => {
 	seen.ref = def.innerType;
 };
 //#endregion
-//#region node_modules/zod/v4/classic/errors.js
+//#region ../stts/node_modules/zod/v4/classic/errors.js
 const _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
 	Object.defineProperty(proto, key, {
@@ -16218,13 +16220,13 @@ const initializer = (inst, issues) => {
 };
 const ZodRealError = /*@__PURE__*/ $constructor("ZodError", initializer, void 0, { Parent: Error });
 //#endregion
-//#region node_modules/zod/v4/classic/parse.js
+//#region ../stts/node_modules/zod/v4/classic/parse.js
 const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 const safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
 const encode = /* @__PURE__ */ _encode(ZodRealError);
-const decode = /* @__PURE__ */ _decode(ZodRealError);
+const decode$1 = /* @__PURE__ */ _decode(ZodRealError);
 const encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
 const decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
 const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
@@ -16232,7 +16234,7 @@ const safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 const safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 const safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 //#endregion
-//#region node_modules/zod/v4/classic/schemas.js
+//#region ../stts/node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
 	if (!globalConfig.localeError) config(en_default());
 }
@@ -16378,7 +16380,7 @@ const ZodType = /*@__PURE__*/ $constructor("ZodType", (inst, def) => {
 		return encode(this, data, params, { callee: _encode });
 	},
 	decode: function _decode(data, params) {
-		return decode(this, data, params, { callee: _decode });
+		return decode$1(this, data, params, { callee: _decode });
 	},
 	encodeAsync: async function _encodeAsync(data, params) {
 		return await encodeAsync(this, data, params, { callee: _encodeAsync });
@@ -17118,59 +17120,103 @@ function superRefine(fn, params) {
 const SAMPLE_RATE = 16e3;
 const PRE_ROLL = 4800;
 const KEEP = 352e3;
-const MODEL = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
+const MODEL = "parakeet-tdt-0.6b-v3-int8";
+const ONNX_ASR_NAME = "nemo-parakeet-tdt-0.6b-v3";
 const WINDOW = 512;
 const INTERIM_EVERY = 6400;
 const INTERIM_LEAD = 9600;
-const asrPaths = (dataDir) => ({
+const asrPaths = (dataDir, modelsDir) => ({
 	addon: join(dataDir, "asr", "node_modules", "sherpa-onnx-node"),
-	model: join(dataDir, "models", MODEL),
-	vad: join(dataDir, "models", "silero_vad.onnx")
+	model: join(modelsDir, "parakeet", MODEL),
+	vad: join(dataDir, "models", "silero_vad.onnx"),
+	python: join(process.env["STTS_PIPER_HOME"] ?? join(dataDir, "piper"), "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"),
+	worker: join(dirname(fileURLToPath(import.meta.url)), "asr_worker.py")
 });
 let sherpa = null;
-let recognizer = null;
-/** Loads the addon and the model once per daemon; throws a plain message when they are missing. */
-function load(dataDir) {
-	const p = asrPaths(dataDir);
+let worker = null;
+let downUntil = 0;
+let wlog = () => {};
+const waiting = [];
+/** Loads the addon once per daemon; throws a plain message when a part is missing. */
+function load(p) {
 	for (const f of [
 		p.addon,
-		join(p.model, "encoder.int8.onnx"),
-		p.vad
+		join(p.model, "encoder-model.int8.onnx"),
+		p.vad,
+		p.python
 	]) if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); run mkb-agentops setup-stts.ps1 -Apply`);
 	sherpa ??= createRequire(import.meta.url)(p.addon);
-	recognizer ??= new sherpa.OfflineRecognizer({
-		featConfig: {
-			sampleRate: SAMPLE_RATE,
-			featureDim: 80
-		},
-		modelConfig: {
-			transducer: {
-				encoder: join(p.model, "encoder.int8.onnx"),
-				decoder: join(p.model, "decoder.int8.onnx"),
-				joiner: join(p.model, "joiner.int8.onnx")
-			},
-			tokens: join(p.model, "tokens.txt"),
-			numThreads: 4,
-			provider: "cpu",
-			modelType: "nemo_transducer"
-		}
-	});
 	return sherpa;
 }
-/** Loads the model once at daemon start: loaded on the first connection, it blocked the daemon for
-* 8 to 14 s just as he started speaking. A missing engine is reported per connection instead. */
-function preload(dataDir) {
+function startWorker(p) {
+	const w = spawn$1(p.python, [
+		p.worker,
+		ONNX_ASR_NAME,
+		p.model
+	], {
+		stdio: "pipe",
+		windowsHide: true
+	});
+	wlog(`asr worker START pid ${w.pid} ${MODEL}`);
+	let err = "";
+	w.stderr?.on("data", (d) => {
+		err = (err + String(d)).slice(-2e3);
+	});
+	if (w.stdout) createInterface({ input: w.stdout }).on("line", (line) => {
+		let r;
+		try {
+			r = JSON.parse(line);
+		} catch {
+			return;
+		}
+		if (r.error) wlog(`asr worker FAIL ${r.error}`);
+		waiting.shift()?.((r.text ?? "").trim());
+	});
+	const gone = (why) => {
+		if (worker !== w) return;
+		worker = null;
+		downUntil = Date.now() + 3e4;
+		wlog(`asr worker FAIL ${why} ${err.trim().split("\n").pop() ?? ""}`);
+		for (const f of waiting.splice(0)) f("");
+	};
+	w.on("error", (e) => gone(String(e)));
+	w.on("exit", (code) => gone(`exit ${code}`));
+	w.stdin?.on("error", () => {});
+	return w;
+}
+function decode(p, samples) {
+	if (!worker && Date.now() < downUntil) return Promise.resolve("");
+	worker ??= startWorker(p);
+	const w = worker;
+	return new Promise((res) => {
+		waiting.push(res);
+		const head = Buffer.alloc(4);
+		head.writeUInt32LE(samples.byteLength);
+		w.stdin?.write(head);
+		w.stdin?.write(Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength));
+	});
+}
+function stopAsr() {
+	const w = worker;
+	worker = null;
+	w?.kill();
+}
+/** Starts the worker at daemon start, so the model (about 5 s) is loaded before he speaks. A missing
+* engine is reported per connection instead. */
+function preload(p, log = () => {}) {
+	wlog = log;
 	try {
-		load(dataDir);
+		load(p);
+		worker ??= startWorker(p);
 	} catch {}
 }
-/** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
-function createEngine(dataDir, emit, log = () => {}) {
+/** One page connection: its own VAD, the shared worker. Push 16 kHz mono float samples. */
+function createEngine(p, emit, log = () => {}) {
 	let vad;
 	try {
-		vad = new (load(dataDir)).Vad({
+		vad = new (load(p)).Vad({
 			sileroVad: {
-				model: asrPaths(dataDir).vad,
+				model: p.vad,
 				threshold: .5,
 				minSpeechDuration: .25,
 				minSilenceDuration: .5,
@@ -17204,15 +17250,6 @@ function createEngine(dataDir, emit, log = () => {}) {
 		return out;
 	};
 	const before = (start) => span(Math.max(0, start - PRE_ROLL), start);
-	const decode = async (samples) => {
-		const st = recognizer?.createStream();
-		if (!st || !recognizer) return "";
-		st.acceptWaveform({
-			samples,
-			sampleRate: SAMPLE_RATE
-		});
-		return (await recognizer.decodeAsync(st)).text.trim();
-	};
 	let chain = Promise.resolve();
 	let from = 0;
 	let interimAt = 0;
@@ -17227,7 +17264,7 @@ function createEngine(dataDir, emit, log = () => {}) {
 		const mine = gen;
 		const samples = span(from, fedTotal);
 		chain = chain.then(async () => {
-			const text = mine === gen ? await decode(samples) : "";
+			const text = mine === gen ? await decode(p, samples) : "";
 			interimBusy = false;
 			if (mine !== gen || !text || text === lastInterim) return;
 			lastInterim = text;
@@ -17242,7 +17279,7 @@ function createEngine(dataDir, emit, log = () => {}) {
 			const seg = vad.front();
 			vad.pop();
 			const pre = before(seg.start);
-			const samples = new Float32Array(pre.length + seg.samples.length);
+			const samples = new Float32Array(pre.length + seg.samples.length + .3 * SAMPLE_RATE);
 			samples.set(pre);
 			samples.set(seg.samples, pre.length);
 			gen++;
@@ -17251,7 +17288,7 @@ function createEngine(dataDir, emit, log = () => {}) {
 			from = seg.start + seg.samples.length;
 			chain = chain.then(async () => {
 				const t0 = Date.now();
-				const text = await decode(samples);
+				const text = await decode(p, samples);
 				log(`asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words`);
 				emit(text ? {
 					type: "final",
@@ -17619,6 +17656,8 @@ const VOICES = join(modelsDir, "piper");
 const profileDir = process.env["STTS_PROFILE_DIR"] ?? join(dataDir, port === 15986 ? "profile" : `profile-${port}`);
 const PIPER_PORT = Number(process.env["STTS_PIPER_PORT"] ?? 15987);
 const PIPER_HOME = process.env["STTS_PIPER_HOME"] ?? join(dataDir, "piper");
+const modelsDir = process.env["STTS_MODELS_DIR"] ?? join(dataDir, "models");
+const asr = asrPaths(dataDir, modelsDir);
 const deps = {
 	log(line) {
 		mkdirSync(dataDir, { recursive: true });
@@ -17652,6 +17691,7 @@ const deps = {
 	},
 	exit(code) {
 		piper?.kill();
+		stopAsr();
 		deps.log(`daemon exit pid ${process.pid} code ${code}`);
 		process.exit(code);
 	},
@@ -18444,7 +18484,7 @@ app.get("/asr", upgradeWebSocket(() => {
 	let engine = null;
 	return {
 		onOpen: (_e, ws) => {
-			engine = createEngine(dataDir, (ev) => {
+			engine = createEngine(asr, (ev) => {
 				if (ev.type === "error") deps.log(`asr ${ev.error}`);
 				ws.send(JSON.stringify(ev));
 			}, deps.log);
@@ -18483,7 +18523,7 @@ function start(p = port) {
 		hostname: "127.0.0.1"
 	}, () => {
 		deps.log(`daemon start pid ${process.pid}`);
-		setTimeout(() => preload(dataDir), 0);
+		setTimeout(() => preload(asr, deps.log), 0);
 	});
 	injectWebSocket(server);
 	httpServer = server;

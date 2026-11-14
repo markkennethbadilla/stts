@@ -1,19 +1,22 @@
 // Speech to text in the daemon (spec 014): sherpa-onnx (k2-fsa, Apache-2.0) with Silero VAD and
-// NVIDIA Parakeet TDT 0.6B v2 int8, all on this machine. The page streams echo-cancelled 16 kHz
+// NVIDIA Parakeet TDT 0.6B v3 int8, all on this machine. The page streams echo-cancelled 16 kHz
 // audio over /asr; every VAD segment is decoded, in order, so nothing heard is ever dropped.
 // Replaces Chrome's Web Speech recogniser, which lost words on restarts (Mark 2026-10-07).
-// The addon and models are installed by mkb-agentops scripts/setup-stts.ps1 (like Piper), because
-// the plugin ships without node_modules and a native addon cannot be bundled.
+// sherpa-onnx is the voice detector only; the words come from the one shared model copy under A:\models, read by onnx-asr in asr_worker.py.
+import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 export const SAMPLE_RATE = 16000;
 // 0.3 s of audio before each segment (a segment ends after 0.5 s of silence, so this never reaches
 // the previous one); audio is kept a little longer than the longest segment (20 s).
 const PRE_ROLL = 0.3 * 16000;
 const KEEP = 22 * 16000;
-export const MODEL = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8';
+export const MODEL = 'parakeet-tdt-0.6b-v3-int8';
+const ONNX_ASR_NAME = 'nemo-parakeet-tdt-0.6b-v3';
 const WINDOW = 512; // Silero's window at 16 kHz
 const INTERIM_EVERY = 0.4 * 16000;
 const INTERIM_LEAD = 0.6 * 16000;
@@ -28,12 +31,6 @@ export type AsrEvent =
   | { type: 'flushed' };
 
 type Sherpa = {
-  OfflineRecognizer: new (
-    c: unknown,
-  ) => {
-    createStream(): { acceptWaveform(w: { samples: Float32Array; sampleRate: number }): void };
-    decodeAsync(s: unknown): Promise<{ text: string }>;
-  };
   Vad: new (
     c: unknown,
     sec: number,
@@ -47,61 +44,108 @@ type Sherpa = {
   };
 };
 
-export const asrPaths = (dataDir: string) => ({
+export const asrPaths = (dataDir: string, modelsDir: string) => ({
   addon: join(dataDir, 'asr', 'node_modules', 'sherpa-onnx-node'),
-  model: join(dataDir, 'models', MODEL),
+  model: join(modelsDir, 'parakeet', MODEL),
   vad: join(dataDir, 'models', 'silero_vad.onnx'),
+  python: join(
+    process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper'),
+    'venv',
+    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+  ),
+  worker: join(dirname(fileURLToPath(import.meta.url)), 'asr_worker.py'),
 });
+export type AsrPaths = ReturnType<typeof asrPaths>;
 
 let sherpa: Sherpa | null = null;
-let recognizer: InstanceType<Sherpa['OfflineRecognizer']> | null = null;
+let worker: ChildProcess | null = null;
+let downUntil = 0;
+let wlog: (line: string) => void = () => {};
+const waiting: ((text: string) => void)[] = [];
 
-/** Loads the addon and the model once per daemon; throws a plain message when they are missing. */
-function load(dataDir: string): Sherpa {
-  const p = asrPaths(dataDir);
-  for (const f of [p.addon, join(p.model, 'encoder.int8.onnx'), p.vad])
+/** Loads the addon once per daemon; throws a plain message when a part is missing. */
+function load(p: AsrPaths): Sherpa {
+  for (const f of [p.addon, join(p.model, 'encoder-model.int8.onnx'), p.vad, p.python])
     if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); run mkb-agentops setup-stts.ps1 -Apply`);
   sherpa ??= createRequire(import.meta.url)(p.addon) as Sherpa;
-  recognizer ??= new sherpa.OfflineRecognizer({
-    featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
-    modelConfig: {
-      transducer: {
-        encoder: join(p.model, 'encoder.int8.onnx'),
-        decoder: join(p.model, 'decoder.int8.onnx'),
-        joiner: join(p.model, 'joiner.int8.onnx'),
-      },
-      tokens: join(p.model, 'tokens.txt'),
-      numThreads: 4,
-      provider: 'cpu',
-      modelType: 'nemo_transducer',
-    },
-  });
   return sherpa;
 }
 
-/** Loads the model once at daemon start: loaded on the first connection, it blocked the daemon for
- * 8 to 14 s just as he started speaking. A missing engine is reported per connection instead. */
-export function preload(dataDir: string): void {
+function startWorker(p: AsrPaths): ChildProcess {
+  const w = spawn(p.python, [p.worker, ONNX_ASR_NAME, p.model], { stdio: 'pipe', windowsHide: true });
+  wlog(`asr worker START pid ${w.pid} ${MODEL}`);
+  let err = '';
+  w.stderr?.on('data', (d) => {
+    err = (err + String(d)).slice(-2000);
+  });
+  if (w.stdout)
+    createInterface({ input: w.stdout }).on('line', (line) => {
+      let r: { text?: string; error?: string };
+      try {
+        r = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (r.error) wlog(`asr worker FAIL ${r.error}`);
+      waiting.shift()?.((r.text ?? '').trim());
+    });
+  const gone = (why: string): void => {
+    if (worker !== w) return;
+    worker = null;
+    downUntil = Date.now() + 30_000;
+    wlog(`asr worker FAIL ${why} ${err.trim().split('\n').pop() ?? ''}`);
+    for (const f of waiting.splice(0)) f('');
+  };
+  w.on('error', (e) => gone(String(e)));
+  w.on('exit', (code) => gone(`exit ${code}`));
+  w.stdin?.on('error', () => {});
+  return w;
+}
+
+function decode(p: AsrPaths, samples: Float32Array): Promise<string> {
+  if (!worker && Date.now() < downUntil) return Promise.resolve('');
+  worker ??= startWorker(p);
+  const w = worker;
+  return new Promise((res) => {
+    waiting.push(res);
+    const head = Buffer.alloc(4);
+    head.writeUInt32LE(samples.byteLength);
+    w.stdin?.write(head);
+    w.stdin?.write(Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength));
+  });
+}
+
+export function stopAsr(): void {
+  const w = worker;
+  worker = null;
+  w?.kill();
+}
+
+/** Starts the worker at daemon start, so the model (about 5 s) is loaded before he speaks. A missing
+ * engine is reported per connection instead. */
+export function preload(p: AsrPaths, log: (line: string) => void = () => {}): void {
+  wlog = log;
   try {
-    load(dataDir);
+    load(p);
+    worker ??= startWorker(p);
   } catch {}
 }
 
-/** One page connection: its own VAD, the shared recognizer. Push 16 kHz mono float samples. */
+/** One page connection: its own VAD, the shared worker. Push 16 kHz mono float samples. */
 export function createEngine(
-  dataDir: string,
+  p: AsrPaths,
   emit: (e: AsrEvent) => void,
   log: (line: string) => void = () => {},
 ): { push(s: Float32Array): void; flush(): void } {
   let vad: InstanceType<Sherpa['Vad']>;
   try {
-    const s = load(dataDir);
+    const s = load(p);
     vad = new s.Vad(
       {
         // ponytail: Silero defaults from the upstream example, silence 0.5 s ends a segment; the page's
         // autosend hold still decides when a turn ends, so a short pause only splits segments.
         sileroVad: {
-          model: asrPaths(dataDir).vad,
+          model: p.vad,
           threshold: 0.5,
           minSpeechDuration: 0.25,
           minSilenceDuration: 0.5,
@@ -135,12 +179,6 @@ export function createEngine(
     return out;
   };
   const before = (start: number): Float32Array => span(Math.max(0, start - PRE_ROLL), start);
-  const decode = async (samples: Float32Array): Promise<string> => {
-    const st = recognizer?.createStream();
-    if (!st || !recognizer) return '';
-    st.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
-    return (await recognizer.decodeAsync(st)).text.trim();
-  };
   // Decodes run one after another, so finals arrive in the order he spoke them.
   let chain = Promise.resolve();
   let from = 0;
@@ -156,7 +194,7 @@ export function createEngine(
     const mine = gen;
     const samples = span(from, fedTotal);
     chain = chain.then(async () => {
-      const text = mine === gen ? await decode(samples) : '';
+      const text = mine === gen ? await decode(p, samples) : '';
       interimBusy = false;
       if (mine !== gen || !text || text === lastInterim) return;
       lastInterim = text;
@@ -168,7 +206,8 @@ export function createEngine(
       const seg = vad.front();
       vad.pop();
       const pre = before(seg.start);
-      const samples = new Float32Array(pre.length + seg.samples.length);
+      // 0.3 s of silence after a segment: without it the v3 model added words that were not said or dropped one.
+      const samples = new Float32Array(pre.length + seg.samples.length + 0.3 * SAMPLE_RATE);
       samples.set(pre);
       samples.set(seg.samples, pre.length);
       gen++;
@@ -177,7 +216,7 @@ export function createEngine(
       from = seg.start + seg.samples.length;
       chain = chain.then(async () => {
         const t0 = Date.now();
-        const text = await decode(samples);
+        const text = await decode(p, samples);
         log(
           `asr segment ${(samples.length / SAMPLE_RATE).toFixed(1)}s decoded in ${Date.now() - t0}ms, ${text ? text.split(/\s+/).length : 0} words`,
         );

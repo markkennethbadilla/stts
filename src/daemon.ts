@@ -28,7 +28,7 @@ import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
 import { z } from 'zod';
-import { createEngine, preload } from './asr.js';
+import { asrPaths, createEngine, preload, stopAsr } from './asr.js';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -72,6 +72,8 @@ const profileDir =
   process.env['STTS_PROFILE_DIR'] ?? join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
 const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
 const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
+export const modelsDir = process.env['STTS_MODELS_DIR'] ?? join(dataDir, 'models');
+const asr = asrPaths(dataDir, modelsDir);
 
 // Swappable side effects, so the tests run with no Chrome, no Piper and no exit.
 export const deps = {
@@ -112,6 +114,7 @@ export const deps = {
   },
   exit(code: number): void {
     piper?.kill();
+    stopAsr();
     deps.log(`daemon exit pid ${process.pid} code ${code}`);
     process.exit(code);
   },
@@ -1046,7 +1049,7 @@ app.get(
     return {
       onOpen: (_e, ws) => {
         engine = createEngine(
-          dataDir,
+          asr,
           (ev) => {
             if (ev.type === 'error') deps.log(`asr ${ev.error}`);
             ws.send(JSON.stringify(ev));
@@ -1091,7 +1094,7 @@ export function start(p: number = port): void {
   const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
     deps.log(`daemon start pid ${process.pid}`);
     // The speech engine loads now, before any window or speech (spec 014).
-    setTimeout(() => preload(dataDir), 0);
+    setTimeout(() => preload(asr, deps.log), 0);
   });
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;
