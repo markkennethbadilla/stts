@@ -67,7 +67,10 @@ const waiting: ((text: string) => void)[] = [];
 /** Loads the addon once per daemon; throws a plain message when a part is missing. */
 function load(p: AsrPaths): Sherpa {
   for (const f of [p.addon, join(p.model, 'encoder-model.int8.onnx'), p.vad, p.python])
-    if (!existsSync(f)) throw new Error(`speech engine not installed (${f}); the first start fetches it (see daemon.log), or run node scripts/install.mjs`);
+    if (!existsSync(f))
+      throw new Error(
+        `speech engine not installed (${f}); the first start fetches it (see daemon.log), or run node scripts/install.mjs`,
+      );
   sherpa ??= createRequire(import.meta.url)(p.addon) as Sherpa;
   return sherpa;
 }
@@ -165,7 +168,10 @@ export function createEngine(
     return { push: () => {}, flush: () => emit({ type: 'flushed' }) };
   }
   if (!worker && Date.now() < downUntil)
-    emit({ type: 'error', error: `speech worker failed (${lastFail}); see daemon.log; node scripts/install.mjs --check lists missing parts` });
+    emit({
+      type: 'error',
+      error: `speech worker failed (${lastFail}); see daemon.log; node scripts/install.mjs --check lists missing parts`,
+    });
   let pending = new Float32Array(0);
   let speaking = false;
   // Recent audio by absolute sample index, for the pre-roll: Silero marks a segment's start just

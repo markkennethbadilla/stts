@@ -63,11 +63,11 @@ export const TURN_NOTE =
   'the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said ' +
   'while no listen was open for the next listen, so nothing the user says is lost. ' +
   'The user hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), ' +
-  'a tick when the user\'s turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. ' +
+  "a tick when the user's turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. " +
   'Do not announce "listening" or "got it" yourself.';
 
 export const BARGE_NOTE =
-  ' If the user types or speaks while you are talking, your speech stops at once and the call returns the user\'s message as the next turn, ' +
+  " If the user types or speaks while you are talking, your speech stops at once and the call returns the user's message as the next turn, " +
   'followed by a line saying where it cut you off and, after "unspoken:", the words of yours the user never heard, word for word. ' +
   'Treat that message as an addition or a steer: answer it, then briefly repeat those unspoken words (shortened, in your own ' +
   'words) in the same tts, so the user does not miss them; if the line says your reply was not spoken at all, speak that reply ' +
@@ -203,7 +203,7 @@ export const ttsShape = {
     .max(2)
     .optional()
     .describe(
-      'Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as the user\'s default. Omit unless the user asks for a speed change; omitting keeps the user\'s saved setting.',
+      "Speaking rate for this voice window only, from this call until it closes (1 is normal). Never saved as the user's default. Omit unless the user asks for a speed change; omitting keeps the user's saved setting.",
     ),
   volume: z
     .number()
@@ -211,7 +211,7 @@ export const ttsShape = {
     .max(1)
     .optional()
     .describe(
-      'Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as the user\'s default. Omit unless the user asks for a volume change; omitting keeps the user\'s saved setting.',
+      "Volume 0 to 1 for this voice window only, from this call until it closes. Never saved as the user's default. Omit unless the user asks for a volume change; omitting keeps the user's saved setting.",
     ),
   idleSec,
 };

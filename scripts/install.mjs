@@ -42,7 +42,15 @@ export function missing() {
 }
 
 function findPython() {
-  for (const [cmd, pre] of win ? [['py', ['-3']], ['python', []]] : [['python3', []], ['python', []]]) {
+  for (const [cmd, pre] of win
+    ? [
+        ['py', ['-3']],
+        ['python', []],
+      ]
+    : [
+        ['python3', []],
+        ['python', []],
+      ]) {
     const r = run(cmd, [...pre, '-c', 'import sys; print(sys.version_info >= (3, 10))']);
     if (r.status === 0 && r.stdout.trim() === 'True') return [cmd, pre];
   }
@@ -109,7 +117,15 @@ export async function install() {
     const pj = join(asrDir, 'node_modules', 'sherpa-onnx-node', 'package.json');
     if (existsSync(pj) && JSON.parse(readFileSync(pj, 'utf8')).version === v) return;
     mkdirSync(asrDir, { recursive: true });
-    const r = run('npm', ['install', '--prefix', asrDir, '--save-exact', '--no-audit', '--no-fund', `sherpa-onnx-node@${v}`]);
+    const r = run('npm', [
+      'install',
+      '--prefix',
+      asrDir,
+      '--save-exact',
+      '--no-audit',
+      '--no-fund',
+      `sherpa-onnx-node@${v}`,
+    ]);
     if (r.status !== 0) throw new Error(`npm: ${(r.stderr ?? '').trim().split('\n').pop()}`);
     say('OK', `sherpa-onnx-node ${v}`);
   });
