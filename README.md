@@ -8,7 +8,7 @@ stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt`
 2. `/plugin install stts@stts-marketplace`
 3. Run `/stts` to start a voice conversation.
 
-Needs Node 20+, Chrome and Python 3.10+ on PATH. On the first start the daemon fetches the pinned voice and speech parts (Piper, the `en_GB-jenny_dioco-medium` voice, onnx-asr with NVIDIA Parakeet TDT 0.6B v3, sherpa-onnx's Silero voice detector; about 760 MB, SHA256-checked) into `%LOCALAPPDATA%\stts\` (`~/.local/share/stts/` on Linux) and logs each step to `daemon.log` there. Until it finishes, the window speaks with the browser's voice. To run it yourself: `node scripts/install.mjs` in the plugin folder (`--check` lists what is missing).
+Needs Node 20+, Chrome and Python 3.10+ on PATH. On the first start the daemon fetches the pinned voice and speech parts (Piper, the `en_GB-jenny_dioco-medium` voice, onnx-asr with NVIDIA Parakeet TDT 0.6B v3, sherpa-onnx's Silero voice detector; about 760 MB, SHA256-checked; about 20 minutes on a typical connection, measured at 0.5 MB/s from Hugging Face) into `%LOCALAPPDATA%\stts\` (`~/.local/share/stts/` on Linux) and logs each step to `daemon.log` there. Until it finishes, the window speaks with the browser's voice. To run it yourself: `node scripts/install.mjs` in the plugin folder (`--check` lists what is missing).
 
 Models folder: `STTS_MODELS_DIR`, else `modelsDir` in `<data>/config.json`, else `<data>/models`. Point it at a folder you already keep models in to share one copy.
 
