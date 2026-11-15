@@ -218,8 +218,7 @@ export const isLatest = (): boolean => {
 const safe = (): boolean =>
   !carry &&
   !held &&
-  ((!slot && page === null) ||
-    (!!slot && (slot.body.kind === 'stt' || (isListen(slot.body) && !!slot.listening))));
+  ((!slot && page === null) || (!!slot && (slot.body.kind === 'stt' || (isListen(slot.body) && !!slot.listening))));
 
 let httpServer: { close: () => void } | null = null;
 let closePage: (() => void) | null = null;
