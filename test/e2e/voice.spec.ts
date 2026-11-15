@@ -204,6 +204,33 @@ test('speaking over a file read cuts it off like a text tts', async ({ voice, re
   }
 });
 
+test('a tts rate reaches Piper and holds for the window', async ({ voice, request }) => {
+  const scales: number[] = [];
+  const piper = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => {
+      body += d;
+    });
+    req.on('end', () => {
+      scales.push((JSON.parse(body) as { length_scale: number }).length_scale);
+      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
+    });
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    await expect(voice.getByLabel('agentSpeaking')).toBeHidden();
+    await (await ask(request, { kind: 'tts', text: 'Slow sentence one.', rate: 0.75 })).text();
+    await (await ask(request, { kind: 'tts', text: 'Slow sentence two.' })).text();
+    expect(scales.length).toBeGreaterThanOrEqual(2);
+    for (const s of scales) expect(s).toBeCloseTo(1 / 0.75, 3);
+    await expect.poll(daemonLog).toContain('page rate 0.75 for this window');
+  } finally {
+    piper.closeAllConnections();
+    piper.close();
+  }
+});
+
 test('typing during speech cuts it off and the tts returns the turn with the barge note', async ({
   voice,
   request,

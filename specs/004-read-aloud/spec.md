@@ -30,6 +30,8 @@ flowchart TD
 - `part=N` starts at part N; a part past the end is refused with the part count.
 - No new part starts after half the budget (spec 003). The reply notes keep their exact text: `Read parts A to B of N. To go on, call tts again with the same file and part=B+1.`, `He stopped it during part P of N. To resume there, call tts with the same file and part=P.`, `Read to the end (part N of N).`
 - A newer request supersedes the read between parts.
+- A call's `rate` and `volume` hold for the window until it closes or the slider moves, never saved. The page reads them from each request (the machine's actions read refs, since they are bound at mount), drops clips cached at the old rate, and logs `page rate R for this window`. Before this the page ignored both and always used its slider. Covered by the e2e "a tts rate reaches Piper and holds for the window".
+- Every judgement on his voice over the agent's speech is logged: `page voice over speech, clip N` at his first sound, `page final over speech: barge|short|echo, W words, Tms into the clip` per final, so a barge that did not cut the speech off shows why.
 - Barge-in is the text path's: every part is an ordinary tts in the slot, so his words over a part cut it off at once and the call returns his turn, the `interrupted ... at part P sentence S` line and the unspoken rest of that part (Mark 2026-11-05). Covered by the daemon test "a spoken barge cuts a file read-aloud off" and the e2e "speaking over a file read cuts it off like a text tts".
 
 ## What it reads and writes

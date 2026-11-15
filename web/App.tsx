@@ -261,6 +261,12 @@ export function App() {
   const [browse, setBrowse] = useState<{ side: 'prompts' | 'responses'; i: number } | null>(null);
   const [voice, setVoice] = useSetting('voice', DEFAULT_PIPER);
   const [rate, setRate] = useSetting('rate', '1');
+  // Refs: the machine's actions are bound once at mount, so a state read there is the first render's.
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  const callRate = useRef<number | null>(null);
+  const callVolume = useRef<number | null>(null);
+  const speed = (): number => callRate.current ?? Number(rateRef.current);
   const [autosend, setAutosend] = useSetting('autosend', '1');
   const [hold, setHold] = useSetting('hold_ms', '');
   const [mic, setMic] = useSetting('mic', 'default');
@@ -421,7 +427,8 @@ export function App() {
           const u = new SpeechSynthesisUtterance(clip);
           const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
           if (v) u.voice = v;
-          u.rate = Number(rate);
+          u.rate = speed();
+          u.volume = callVolume.current ?? 1;
           fallbackVoice.current = true;
           audioStarted.current = true;
           // Word boundary events give the word he cut in on (Mark 2026-10-30); Piper clips have none.
@@ -453,7 +460,7 @@ export function App() {
         const r = await fetch('/voice/clip', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: clip, voice: clipVoice, rate: Number(rate) }),
+          body: JSON.stringify({ text: clip, voice: clipVoice, rate: speed() }),
         }).catch(() => null);
         if (!r) return 'clip unreachable';
         return r.ok ? await r.blob() : `clip ${r.status} ${clipVoice}`;
@@ -479,6 +486,7 @@ export function App() {
       return;
     }
     const a = new Audio(URL.createObjectURL(r));
+    a.volume = callVolume.current ?? 1;
     audio.current = a;
     if (ttsAt.current) {
       const at = ttsAt.current;
@@ -615,6 +623,7 @@ export function App() {
       const a = audio.current;
       if (actor.getSnapshot().matches({ speech: 'playing' }) && !fallbackVoice.current) {
         // Paused or between clips too: his words confirm the barge either way (Fable review 2026-10-30).
+        if (!pending.current) log(`voice over speech, clip ${actor.getSnapshot().context.sentence}`);
         pending.current = true;
         clearTimeout(duckTimer.current);
         if (a && !a.paused) {
@@ -692,6 +701,7 @@ export function App() {
         // Confirmed: any final that is not echo is the barge, short or not.
         const v =
           confirmed.current && verdict === 'short' && !isEcho(final, [clip, ...recentSpoken()]) ? 'barge' : verdict;
+        log(`final over speech: ${v}, ${final.split(/\s+/).length} words, ${Date.now() - startedAt}ms into the clip`);
         if (v === 'barge') {
           confirmed.current = false;
           pending.current = false;
@@ -839,6 +849,13 @@ export function App() {
         superseding.current = false;
       }
       listen.current.part = b.part ?? 1;
+      if (b.volume !== undefined) callVolume.current = b.volume;
+      // Clips cached at the old rate would play at the old speed.
+      if (b.rate !== undefined && b.rate !== speed()) {
+        callRate.current = b.rate;
+        clipCache.current.clear();
+        log(`rate ${b.rate} for this window`);
+      }
       if (raise === '1') window.focus();
       if (b.kind === 'stt') {
         actor.send({ type: 'REQUEST', kind: 'listen' });
@@ -1250,7 +1267,11 @@ export function App() {
                   max={2}
                   step={0.1}
                   value={[Number(rate)]}
-                  onValueChange={(v) => setRate(String(first(v)))}
+                  onValueChange={(v) => {
+                    callRate.current = null;
+                    clipCache.current.clear();
+                    setRate(String(first(v)));
+                  }}
                 />
               </Row>
               <Row label="Auto-send">
