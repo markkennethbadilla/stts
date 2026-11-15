@@ -109,23 +109,43 @@ export const BARGE_HOLD_MS = 3000;
 export const BARGE_FINAL_WAIT_MS = 10_000;
 
 /**
- * A final heard while the agent speaks: 'barge' cuts the speech off; 'short' (under 3 words) and
- * 'echo' (isEcho, or under BARGE_MIN_MS into the clip) are discarded.
+ * A final heard while the agent speaks (spec 002): 'barge' cuts the speech off; 'short' (fillers) is
+ * kept for his turn; 'echo' (its own words, or under BARGE_MIN_MS into the clip) is discarded.
  */
 export function bargeVerdict(final: string, spoken: readonly string[], msIntoClip: number): 'barge' | 'short' | 'echo' {
-  if (words(final).length < 3) return 'short';
-  return isEcho(final, spoken) || msIntoClip < BARGE_MIN_MS ? 'echo' : 'barge';
+  if (msIntoClip < BARGE_MIN_MS) return 'echo';
+  if (words(final).length < 3) return shortEcho(final, spoken) ? 'echo' : backchannel(final) ? 'short' : 'barge';
+  return isEcho(final, spoken) ? 'echo' : 'barge';
+}
+
+const FILLERS = new Set(['uh', 'um', 'ah', 'oh', 'hmm', 'mm', 'mhm', 'huh', 'yeah', 'okay', 'ok']);
+const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const spelled = (w: string): string => DIGITS[Number(w)] ?? w;
+const near = (a: string, b: string): boolean =>
+  a === b || (a.length > 3 && b.length > 3 && 1 - distance(a, b) / Math.max(a.length, b.length) >= 0.75);
+
+/** Only fillers or acknowledgements: kept for his turn, never a cut-off. */
+export const backchannel = (heard: string): boolean => words(heard).every((w) => FILLERS.has(w));
+
+/** One or two heard words, every one (nearly) a word the agent just spoke: its echo (isEcho cannot judge so few). */
+export function shortEcho(heard: string, spoken: readonly string[]): boolean {
+  const hw = words(heard).map(spelled);
+  const said = [...new Set(spoken.flatMap((s) => words(s).map(spelled)))];
+  const said1 = (w: string): boolean => said.some((s) => near(w, s));
+  // A short word may be one letter off ("an" heard "and") only beside a long word it just spoke.
+  const anchored = hw.some((w) => w.length > 3 && said1(w));
+  return hw.length > 0 && hw.every((w) => said1(w) || (anchored && said.some((s) => distance(w, s) <= 1)));
 }
 
 /**
  * Do words heard over the agent's speech (interim or final) confirm a barge, so the speech stops for
- * good? Two words at least, BARGE_MIN_MS into the clip, not the agent's echo, and not the opening
- * words of the clip playing (isEcho cannot judge one or two words; Fable review 2026-10-30: a phone
- * speaker's echo of the first words cut the agent off).
+ * good? BARGE_MIN_MS into the clip, not the agent's echo, not the opening words of the clip playing;
+ * one or two words confirm unless they are fillers or shortEcho (spec 002).
  */
 export function confirmsBarge(heard: string, clip: string, spoken: readonly string[], msIntoClip: number): boolean {
   const hw = words(heard);
-  if (hw.length < 2 || msIntoClip < BARGE_MIN_MS) return false;
+  if (hw.length === 0 || msIntoClip < BARGE_MIN_MS) return false;
+  if (hw.length < 3) return !backchannel(heard) && !shortEcho(heard, [clip, ...spoken]);
   const cw = words(clip);
   if (hw.every((w, i) => cw[i] === w)) return false;
   return !isEcho(heard, [clip, ...spoken]);

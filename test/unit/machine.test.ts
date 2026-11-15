@@ -427,7 +427,13 @@ describe('page machine', () => {
 
   it('bargeVerdict: short, echo, barge', () => {
     const said = ['The build is green.'];
-    expect(bargeVerdict('stop it', said, 2000)).toBe('short');
+    expect(bargeVerdict('stop it', said, 2000)).toBe('barge');
+    expect(bargeVerdict('hello hello', said, 2000)).toBe('barge');
+    expect(bargeVerdict('okay', said, 2000)).toBe('short');
+    expect(bargeVerdict('the build', said, 2000)).toBe('echo');
+    // The live failure 2026-11-15 09:02 UTC: two words of the clip's own opening, misheard.
+    expect(bargeVerdict('launch and', ['Launch an RDS instance that runs SQL Server.'], 1542)).toBe('echo');
+    expect(bargeVerdict('option one', ['Option 1. Launch an Amazon Aurora instance.'], 2000)).toBe('echo');
     expect(bargeVerdict('the build is green', said, 2000)).toBe('echo');
     expect(bargeVerdict('wait use the other repo', said, 2000)).toBe('barge');
     // A final under 600 ms into the clip is echo, whatever it says.
@@ -459,7 +465,7 @@ describe('page machine', () => {
     expect(isEcho('for the exitrous color block tiles', ['For the record, the numbers are all in now.'])).toBe(false);
     for (const barge of ['stop talking', 'wait I have a question', 'no not that one']) {
       expect(isEcho(barge, said)).toBe(false);
-      expect(bargeVerdict(barge, said, 2000)).toBe(barge === 'stop talking' ? 'short' : 'barge');
+      expect(bargeVerdict(barge, said, 2000)).toBe('barge');
     }
   });
 
@@ -519,14 +525,18 @@ describe('page machine', () => {
 
 describe('barge confirmation and word estimate (Fable review 2026-10-30)', () => {
   const clip = 'The deploy finished and every check passed on the first try.';
-  it('one word, too early, or the clip opening words never confirm a hard stop', () => {
-    expect(confirmsBarge('wait', clip, [], 2000)).toBe(false);
+  it('fillers, too early, the clip opening or its own words never confirm a hard stop', () => {
+    expect(confirmsBarge('okay', clip, [], 2000)).toBe(false);
+    expect(confirmsBarge('um', clip, [], 2000)).toBe(false);
+    expect(confirmsBarge('every check', clip, [], 2000)).toBe(false);
     expect(confirmsBarge('hold on', clip, [], 300)).toBe(false);
     expect(confirmsBarge('the deploy', clip, [], 2000)).toBe(false);
     expect(confirmsBarge('the deploy finished and every check', clip, [], 2000)).toBe(false);
   });
   it('two of his own words after 600 ms confirm it', () => {
     expect(confirmsBarge('hold on', clip, [], 2000)).toBe(true);
+    expect(confirmsBarge('hello', clip, [], 2000)).toBe(true);
+    expect(confirmsBarge('wait', clip, [], 2000)).toBe(true);
   });
   it('estimates the word from the share of the clip played, 1-based, clamped', () => {
     expect(estimateWord(clip, 0, 4)).toBe(1);

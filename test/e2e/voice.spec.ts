@@ -281,17 +281,39 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     const say = (t: string) =>
       voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
     await say('one sentence here');
-    await say('wait');
+    await say('okay');
     await expect.poll(daemonLog).toContain('page echo discarded');
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
     await say('use the other repo please');
     const text = await (await speech).text();
-    // The short "wait" does not cut the speech off, but it is his and rides with the barge (2026-10-16).
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] wait use the other repo please\n/);
+    // A filler does not cut the speech off, but it is his and rides with the barge (2026-10-16).
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] okay use the other repo please\n/);
     expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
     // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
+    piper.closeAllConnections();
+    piper.close();
+  }
+});
+
+test('one word of his own, "hello", cuts the agent off', async ({ voice, request }) => {
+  const held: (() => void)[] = [];
+  const piper = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
+  });
+  piper.listen(testPort + 1, '127.0.0.1');
+  await once(piper, 'listening');
+  try {
+    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+    await voice.evaluate(() => (globalThis as unknown as { __say: (s: string) => void }).__say('hello'));
+    const text = await (await speech).text();
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] hello\n/);
+  } finally {
+    for (const send of held.splice(0)) send();
     piper.closeAllConnections();
     piper.close();
   }

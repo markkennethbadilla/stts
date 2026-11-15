@@ -581,6 +581,11 @@ export function App() {
       }
       if (s) {
         aec.current = { stream: s, mic: want };
+        const got = s.getAudioTracks()[0];
+        const set = got?.getSettings() ?? {};
+        log(
+          `mic open: ${got?.label ?? '?'}, echoCancellation ${String(set.echoCancellation)}, noiseSuppression ${String(set.noiseSuppression)}`,
+        );
         watchLevel(s);
         // Device names come only after a mic grant: list again now that the mic is open.
         refreshMics();
