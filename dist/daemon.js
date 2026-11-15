@@ -18595,7 +18595,8 @@ const LIVE_UPDATE_MS = Number(process.env["STTS_LIVE_UPDATE_MS"] ?? 1e4);
 function newer(dir) {
 	const at = (d) => {
 		try {
-			return statSync(join(d, "daemon.js")).mtimeMs;
+			const js = statSync(join(d, "daemon.js")).mtimeMs;
+			return Math.max(js, statSync(join(d, "web", "index.html"), { throwIfNoEntry: false })?.mtimeMs ?? 0);
 		} catch {
 			return NaN;
 		}

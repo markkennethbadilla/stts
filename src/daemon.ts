@@ -1156,9 +1156,11 @@ const LIVE_UPDATE_MS = Number(process.env['STTS_LIVE_UPDATE_MS'] ?? 10_000);
 
 /** A daemon built after this one: never hand off or redirect to an older install. */
 export function newer(dir: string): boolean {
+  // The page bundle counts too: a page-only change leaves daemon.js with its old mtime.
   const at = (d: string): number => {
     try {
-      return statSync(join(d, 'daemon.js')).mtimeMs;
+      const js = statSync(join(d, 'daemon.js')).mtimeMs;
+      return Math.max(js, statSync(join(d, 'web', 'index.html'), { throwIfNoEntry: false })?.mtimeMs ?? 0);
     } catch {
       return Number.NaN;
     }
