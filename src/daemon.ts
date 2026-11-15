@@ -214,8 +214,12 @@ export const isLatest = (): boolean => {
  */
 // A tts with listen counts once its speech has played (the page said `listening`): it is then
 // forwarded as a plain listen. Most listens are tts with listen, so stt alone rarely came up.
+// Idle with no window counts too: a closed window held the new build back until the next session's first listen.
 const safe = (): boolean =>
-  !!slot && (slot.body.kind === 'stt' || (isListen(slot.body) && !!slot.listening)) && !carry && !held;
+  !carry &&
+  !held &&
+  ((!slot && page === null) ||
+    (!!slot && (slot.body.kind === 'stt' || (isListen(slot.body) && !!slot.listening))));
 
 let httpServer: { close: () => void } | null = null;
 let closePage: (() => void) | null = null;

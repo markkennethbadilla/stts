@@ -35,10 +35,19 @@ afterEach(() => {
   updates = 0;
 });
 
-it('hands off to a newer install only while a plain listen is open', async () => {
+it('idle with no window, it hands off at once', async () => {
   const root = newInstall();
   installs(root);
+  expect(await liveUpdate()).toBe(true);
+  expect(handoffs).toEqual([join(root, 'dist')]);
+});
+
+it('with the window open, it hands off only while a plain listen is open', async () => {
+  const root = newInstall();
+  installs(root);
+  const page = attachPage(() => {});
   expect(await liveUpdate()).toBe(false);
+  page.detach();
   void listen();
   await new Promise((r) => setTimeout(r, 0));
   expect(await liveUpdate()).toBe(true);

@@ -17806,7 +17806,7 @@ const isLatest = () => {
 * the agent is blocked on it, so it makes no new call while the port changes hands (a new call
 * then made its client start an older daemon), and the listen is forwarded to the new daemon.
 */
-const safe = () => !!slot && (slot.body.kind === "stt" || isListen(slot.body) && !!slot.listening) && !carry && !held;
+const safe = () => !carry && !held && (!slot && page === null || !!slot && (slot.body.kind === "stt" || isListen(slot.body) && !!slot.listening));
 let httpServer = null;
 let closePage = null;
 /**
