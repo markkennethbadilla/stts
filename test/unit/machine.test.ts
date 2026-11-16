@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
 import {
   bargeText,
-  holdMs as holdFor,
-  SHORT_HOLD_MS,
   bargeVerdict,
   confirmsBarge,
   estimateWord,
+  holdMs as holdFor,
   isEcho,
   nextBackoff,
   pageMachine,
+  SHORT_HOLD_MS,
   watchdogVerdict,
 } from '../../web/machine';
 
