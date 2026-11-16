@@ -432,6 +432,7 @@ describe('page machine', () => {
     expect(bargeVerdict('stop it', said, 2000)).toBe('barge');
     expect(bargeVerdict('hello hello', said, 2000)).toBe('barge');
     expect(bargeVerdict('okay', said, 2000)).toBe('short');
+    expect(bargeVerdict('Stop.', ['say stop whenever you like'], 2000)).toBe('barge');
     expect(bargeVerdict('the build', said, 2000)).toBe('echo');
     // The live failure 2026-11-15 09:02 UTC: two words of the clip's own opening, misheard.
     expect(bargeVerdict('launch and', ['Launch an RDS instance that runs SQL Server.'], 1542)).toBe('echo');

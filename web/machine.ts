@@ -118,10 +118,13 @@ export const BARGE_FINAL_WAIT_MS = 10_000;
  */
 export function bargeVerdict(final: string, spoken: readonly string[], msIntoClip: number): 'barge' | 'short' | 'echo' {
   if (msIntoClip < BARGE_MIN_MS) return 'echo';
+  // A stop word always cuts in, even when the agent's own sentence held the same word (2026-11-16).
+  if (words(final).length < 3 && words(final).some((w) => STOP_WORDS.has(w))) return 'barge';
   if (words(final).length < 3) return shortEcho(final, spoken) ? 'echo' : backchannel(final) ? 'short' : 'barge';
   return isEcho(final, spoken) ? 'echo' : 'barge';
 }
 
+const STOP_WORDS = new Set(['stop', 'wait', 'no', 'pause', 'enough']);
 const FILLERS = new Set(['uh', 'um', 'ah', 'oh', 'hmm', 'mm', 'mhm', 'huh', 'yeah', 'okay', 'ok']);
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const spelled = (w: string): string => DIGITS[Number(w)] ?? w;

@@ -48,3 +48,5 @@ Reads environment `STTS_PORT`, `STTS_REQUEST_TIMEOUT_MS`, `STTS_JOIN_SEC`, `STTS
 ## How to run, check and hand over
 
 `node dist/daemon.js` after `npm run build`; normally the client starts it (spec 008). `test/unit/daemon.test.ts` and `integration.test.ts` drive it through hono `app.request()` with no socket: supersede and `released`, budget returns continues, `/notify`, the `/barge` shape, agent close ignored, second instance exits 0, and 1,000 supersedes with no leaked slot.
+
+- **Barge into a gateway voice loop (2026-11-16).** A barge is held for the session only when the open request is a helper's speak with no listen. A listening `tts` or an `stt` from the gateway (`who=agent`: Codex, Grok, or Claude through `stts_tts`) is a voice loop and takes the barge as its turn; before this every spoken interrupt over a gateway loop was logged `page barge held` and his "stop" never cut the voice. Test `a gateway voice loop (who=agent, listen) takes the barge as its turn`.

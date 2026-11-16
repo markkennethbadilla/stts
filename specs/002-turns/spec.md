@@ -41,3 +41,5 @@ Reads `STTS_JOIN_SEC`. Holds turn state in memory only; a daemon restart starts 
 ## How to run, check and hand over
 
 `test/unit/turns.test.ts` covers rising ids, dedupe and stale drops, joins and the 409 with `ack`. Run `npm test`.
+
+- **Stop words always cut in (2026-11-16).** One or two words over the agent's speech that include stop, wait, no, pause or enough are a barge even when the agent's own sentence held the same word: "Stop." over "say stop whenever you like" was discarded as echo. Test in `bargeVerdict`.

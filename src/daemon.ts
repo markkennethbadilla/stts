@@ -615,8 +615,9 @@ export function attachPage(sendToPage: (m: DaemonMessage) => void): {
         // Words held from before it (said while no listen was open) lead it, so the turn is whole
         // (Mark 2026-10-16 08:06: only the barge's last fragment came through).
         // Only a session request takes his barge: a subagent's request that superseded the session's
-        // never gets Mark's turn; the words are held for the session's next listen (Fable review 10).
-        if (slot && m.interrupted && said && slot.body.who !== 'session') {
+        // never gets Mark's turn; the words are held for the session's next listen (Fable review 10). A gateway
+        // caller's listening tts is a voice loop (Codex, or Claude through the gateway), so it takes the barge (2026-11-16).
+        if (slot && m.interrupted && said && slot.body.who !== 'session' && !isListen(slot.body)) {
           held = held ? joinHeld(held, h) : h;
           deps.log('page barge held: the open request is not the session');
           return;

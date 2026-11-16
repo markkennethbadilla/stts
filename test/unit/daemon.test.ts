@@ -301,6 +301,14 @@ describe('daemon', () => {
     expect(await (await post('/request', { kind: 'stt' })).text()).toMatch(/wait, not that$/);
   });
 
+  it('a gateway voice loop (who=agent, listen) takes the barge as its turn', async () => {
+    const t = post('/request', { kind: 'tts', who: 'agent', text: 'a long reply', listen: true });
+    await tick();
+    typed('stop', { interrupted: { part: 1, sentence: 1 } });
+    expect(logs).not.toContain('page barge held: the open request is not the session');
+    expect(await (await t).text()).toMatch(/stop/);
+  });
+
   it('held speech comes back labelled heard, not typed', async () => {
     speak('mm');
     const r = post('/request', { kind: 'stt' });
