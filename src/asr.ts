@@ -11,9 +11,9 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 export const SAMPLE_RATE = 16000;
-// 0.3 s of audio before each segment (a segment ends after 0.5 s of silence, so this never reaches
+// 0.5 s of audio before each segment (a segment ends after 0.8 s of silence, so this never reaches
 // the previous one); audio is kept a little longer than the longest segment (20 s).
-const PRE_ROLL = 0.3 * 16000;
+const PRE_ROLL = 0.5 * 16000;
 const KEEP = 22 * 16000;
 export const MODEL = 'parakeet-tdt-0.6b-v3-int8';
 const ONNX_ASR_NAME = 'nemo-parakeet-tdt-0.6b-v3';
@@ -147,13 +147,13 @@ export function createEngine(
     const s = load(p);
     vad = new s.Vad(
       {
-        // ponytail: Silero defaults from the upstream example, silence 0.5 s ends a segment; the page's
+        // ponytail: silence 0.8 s ends a segment (0.5 s split "option two, network" and decoded each piece without context); the page's
         // autosend hold still decides when a turn ends, so a short pause only splits segments.
         sileroVad: {
           model: p.vad,
           threshold: 0.5,
-          minSpeechDuration: 0.25,
-          minSilenceDuration: 0.5,
+          minSpeechDuration: 0.1,
+          minSilenceDuration: 0.8,
           maxSpeechDuration: 20,
           windowSize: WINDOW,
         },

@@ -17118,7 +17118,7 @@ function superRefine(fn, params) {
 //#endregion
 //#region src/asr.ts
 const SAMPLE_RATE = 16e3;
-const PRE_ROLL = 4800;
+const PRE_ROLL = 8e3;
 const KEEP = 352e3;
 const MODEL = "parakeet-tdt-0.6b-v3-int8";
 const ONNX_ASR_NAME = "nemo-parakeet-tdt-0.6b-v3";
@@ -17220,8 +17220,8 @@ function createEngine(p, emit, log = () => {}) {
 			sileroVad: {
 				model: p.vad,
 				threshold: .5,
-				minSpeechDuration: .25,
-				minSilenceDuration: .5,
+				minSpeechDuration: .1,
+				minSilenceDuration: .8,
 				maxSpeechDuration: 20,
 				windowSize: WINDOW
 			},
