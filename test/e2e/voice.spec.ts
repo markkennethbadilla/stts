@@ -262,7 +262,7 @@ test('typing during speech cuts it off and the tts returns the turn with the bar
   }
 });
 
-test('speaking over the agent cuts it off; its own echo and short words do not', { tag: '@smoke' }, async ({
+test('speaking over the agent cuts it off, a filler included; its own echo does not', { tag: '@smoke' }, async ({
   voice,
   request,
 }) => {
@@ -281,13 +281,12 @@ test('speaking over the agent cuts it off; its own echo and short words do not',
     const say = (t: string) =>
       voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
     await say('one sentence here');
-    await say('okay');
     await expect.poll(daemonLog).toContain('page echo discarded');
     await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await say('use the other repo please');
+    await say('okay');
     const text = await (await speech).text();
-    // A filler does not cut the speech off, but it is his and rides with the barge (2026-10-16).
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] okay use the other repo please\n/);
+    // Anything he says cuts it off, a lone filler included.
+    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] okay\n/);
     expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
   } finally {
     for (const send of held.splice(0)) send();
