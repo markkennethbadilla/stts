@@ -18156,7 +18156,7 @@ function attachPage(sendToPage) {
 					endAt: m.endAt,
 					typed
 				};
-				if (slot && m.interrupted && said && slot.body.who !== "session") {
+				if (slot && m.interrupted && said && slot.body.who !== "session" && !isListen(slot.body)) {
 					held = held ? joinHeld(held, h) : h;
 					deps.log("page barge held: the open request is not the session");
 					return;
