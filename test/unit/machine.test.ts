@@ -198,11 +198,11 @@ describe('page machine', () => {
     expect(sendTurn).not.toHaveBeenCalled();
     actor.send({ type: 'RESULT', text: 'hello there' });
     vi.advanceTimersByTime(400);
-    actor.send({ type: 'RESULT', text: 'hello there friend' });
+    actor.send({ type: 'RESULT', text: 'hello there my friend' });
     vi.advanceTimersByTime(799);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there friend', keep: false });
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there my friend', keep: false });
   });
 
   it('never ends a turn while his voice is on the mic, for up to 6 s; then it sends', () => {
@@ -241,11 +241,11 @@ describe('page machine', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
-    actor.send({ type: 'SPEECH_END', text: 'hello there' });
+    actor.send({ type: 'SPEECH_END', text: 'hello there my friend' });
     vi.advanceTimersByTime(799);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there', keep: false });
+    expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'hello there my friend', keep: false });
 
     const b = start();
     b.actor.send({ type: 'REQUEST', kind: 'listen' });
@@ -260,11 +260,11 @@ describe('page machine', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
-    actor.send({ type: 'RESULT', text: 'hello there' });
+    actor.send({ type: 'RESULT', text: 'hello there my friend' });
     vi.advanceTimersByTime(1000);
     expect(sendTurn).toHaveBeenCalledTimes(1);
     // Chrome's late speechend once the turn is out (log 2026-10-06: two "turn sent" 700 ms apart).
-    actor.send({ type: 'SPEECH_END', text: 'hello there' });
+    actor.send({ type: 'SPEECH_END', text: 'hello there my friend' });
     vi.advanceTimersByTime(5000);
     expect(sendTurn).toHaveBeenCalledTimes(1);
     expect(actor.getSnapshot().matches({ turn: 'heard' })).toBe(true);
@@ -303,7 +303,7 @@ describe('page machine', () => {
     b.actor.send({ type: 'SET_HOLD', ms: 2000 });
     b.actor.send({ type: 'SET_HOLD', ms: null });
     b.actor.send({ type: 'REQUEST', kind: 'listen' });
-    b.actor.send({ type: 'SPEECH_END', text: 'done' });
+    b.actor.send({ type: 'SPEECH_END', text: 'all done for now' });
     vi.advanceTimersByTime(1000);
     expect(b.sendTurn).toHaveBeenCalledTimes(1);
   });
