@@ -41,11 +41,15 @@ export function nextBackoff(prev: number | null): number {
   return Math.min(MAX_BACKOFF_MS, Math.max(250, prev * 2));
 }
 
+export const SHORT_HOLD_MS = 1500;
+
 /** Silence before autosend: the set hold, else 1 s when the transcript reads unfinished, 700 ms otherwise. */
 export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   // 1 s, 2 s when the words read unfinished (Mark 2026-10-06 10:35: 0.7 and 1 s cut the end of
   // his sentences off, ending on "like" or "if").
-  return c.holdMs ?? (readsUnfinished(c.transcript) ? 1200 : 800);
+  const base = c.holdMs ?? (readsUnfinished(c.transcript) ? 1200 : 800);
+  // 1 to 3 words wait at least 1.5 s: "option two" went alone and "network" was lost (2026-11-16).
+  return words(c.transcript).length <= 3 ? Math.max(base, SHORT_HOLD_MS) : base;
 }
 
 const words = (t: string): string[] =>

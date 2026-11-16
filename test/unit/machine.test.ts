@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
 import {
   bargeText,
+  holdMs as holdFor,
+  SHORT_HOLD_MS,
   bargeVerdict,
   confirmsBarge,
   estimateWord,
@@ -543,5 +545,13 @@ describe('barge confirmation and word estimate (Fable review 2026-10-30)', () =>
     expect(estimateWord(clip, 2, 4)).toBe(6);
     expect(estimateWord(clip, 4, 4)).toBe(11);
     expect(estimateWord(clip, 1, Number.NaN)).toBe(0);
+  });
+});
+
+describe('short answers hold longer', () => {
+  it('1 to 3 words wait SHORT_HOLD_MS, longer turns keep the set hold', () => {
+    expect(holdFor({ holdMs: 1000, transcript: 'option two' })).toBe(SHORT_HOLD_MS);
+    expect(holdFor({ holdMs: null, transcript: 'no' })).toBe(SHORT_HOLD_MS);
+    expect(holdFor({ holdMs: 1000, transcript: 'option two is the network one' })).toBe(1000);
   });
 });
