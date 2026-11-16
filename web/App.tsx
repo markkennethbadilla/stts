@@ -702,10 +702,7 @@ export function App() {
           );
         }
         if (!final) return;
-        const verdict = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
-        // Confirmed: any final that is not echo is the barge, short or not.
-        const v =
-          confirmed.current && verdict === 'short' && !isEcho(final, [clip, ...recentSpoken()]) ? 'barge' : verdict;
+        const v = bargeVerdict(final, [clip, ...recentSpoken()], Date.now() - startedAt);
         log(`final over speech: ${v}, ${final.split(/\s+/).length} words, ${Date.now() - startedAt}ms into the clip`);
         if (v === 'barge') {
           confirmed.current = false;
@@ -716,11 +713,6 @@ export function App() {
           // short finals said over it (Mark 2026-10-16 08:06: only the last fragment came through).
           send({ type: 'BARGE', text: bargeText(heard.current.final, final), part: listen.current.part });
           return;
-        }
-        // A short final that is not the agent's echo is his: kept for the barge or the next turn.
-        if (v === 'short' && !isEcho(final, [clip, ...recentSpoken()])) {
-          heard.current.startAt ||= Date.now();
-          heard.current.final = bargeText(heard.current.final, final);
         }
         // Confirmed by his words: the speech stays stopped until the barge goes.
         if (!confirmed.current) unduck();

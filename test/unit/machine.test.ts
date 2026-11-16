@@ -427,11 +427,12 @@ describe('page machine', () => {
     expect(startMic).not.toHaveBeenCalled();
   });
 
-  it('bargeVerdict: short, echo, barge', () => {
+  it('bargeVerdict: echo or barge, fillers barge', () => {
     const said = ['The build is green.'];
     expect(bargeVerdict('stop it', said, 2000)).toBe('barge');
     expect(bargeVerdict('hello hello', said, 2000)).toBe('barge');
-    expect(bargeVerdict('okay', said, 2000)).toBe('short');
+    expect(bargeVerdict('okay', said, 2000)).toBe('barge');
+    expect(bargeVerdict('um', said, 2000)).toBe('barge');
     expect(bargeVerdict('Stop.', ['say stop whenever you like'], 2000)).toBe('barge');
     expect(bargeVerdict('the build', said, 2000)).toBe('echo');
     // The live failure 2026-11-15 09:02 UTC: two words of the clip's own opening, misheard.
@@ -528,9 +529,7 @@ describe('page machine', () => {
 
 describe('barge confirmation and word estimate (Fable review 2026-10-30)', () => {
   const clip = 'The deploy finished and every check passed on the first try.';
-  it('fillers, too early, the clip opening or its own words never confirm a hard stop', () => {
-    expect(confirmsBarge('okay', clip, [], 2000)).toBe(false);
-    expect(confirmsBarge('um', clip, [], 2000)).toBe(false);
+  it('too early, the clip opening or its own words never confirm a hard stop', () => {
     expect(confirmsBarge('every check', clip, [], 2000)).toBe(false);
     expect(confirmsBarge('hold on', clip, [], 300)).toBe(false);
     expect(confirmsBarge('the deploy', clip, [], 2000)).toBe(false);
@@ -539,6 +538,8 @@ describe('barge confirmation and word estimate (Fable review 2026-10-30)', () =>
   it('two of his own words after 600 ms confirm it', () => {
     expect(confirmsBarge('hold on', clip, [], 2000)).toBe(true);
     expect(confirmsBarge('hello', clip, [], 2000)).toBe(true);
+    expect(confirmsBarge('okay', clip, [], 2000)).toBe(true);
+    expect(confirmsBarge('um', clip, [], 2000)).toBe(true);
     expect(confirmsBarge('wait', clip, [], 2000)).toBe(true);
   });
   it('estimates the word from the share of the clip played, 1-based, clamped', () => {
