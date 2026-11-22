@@ -1,33 +1,32 @@
 import { createRequire } from "node:module";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
+import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { constants, homedir, setPriority } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as setTimeout$1 } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { createServer } from "http";
-import { Http2ServerRequest, constants as constants$1 } from "http2";
-import { Readable } from "stream";
-import crypto from "crypto";
-import * as fs$4 from "fs";
-import fs, { createReadStream, existsSync as existsSync$1, mkdtempSync, statSync as statSync$1 } from "fs";
-import path, { join as join$1 } from "path";
-import process$1, { versions } from "process";
+import { STATUS_CODES, ServerResponse, createServer } from "node:http";
+import { Http2ServerRequest, constants as constants$1 } from "node:http2";
+import { Readable } from "node:stream";
+import { versions } from "node:process";
 import { EventEmitter } from "events";
 import * as net from "net";
-import { STATUS_CODES } from "node:http";
+import * as fs$1 from "fs";
+import fs, { mkdtempSync } from "fs";
+import path, { join as join$1 } from "path";
 import { homedir as homedir$1 } from "os";
 import childProcess, { execFileSync, execSync, spawn, spawnSync } from "child_process";
+import process$1 from "process";
 import { spawn as spawn$1 } from "node:child_process";
 import { createInterface } from "node:readline";
-//#region \0rolldown/runtime.js
+// \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
+var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod, mod.exports), cb = null), mod.exports);
 var __exportAll = (all, no_symbols) => {
 	let target = {};
 	for (var name in all) __defProp(target, name, {
@@ -52,37 +51,281 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	enumerable: true
 }) : target, mod));
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
-//#endregion
-//#region ../stts/node_modules/@hono/node-server/dist/index.mjs
+// node_modules/hono/dist/helper/websocket/index.js
+/**
+* Create a WebSocket adapter/helper
+*/
+const defineWebSocketHelper = (handler) => {
+	return ((...args) => {
+		if (typeof args[0] === "function") {
+			const [createEvents, options] = args;
+			return async function upgradeWebSocket(c, next) {
+				const result = await handler(c, await createEvents(c), options);
+				if (result) return result;
+				await next();
+			};
+		} else {
+			const [c, events, options] = args;
+			return (async () => {
+				const upgraded = await handler(c, events, options);
+				if (!upgraded) throw new Error("Failed to upgrade WebSocket");
+				return upgraded;
+			})();
+		}
+	});
+};
+// node_modules/@hono/node-server/dist/index.mjs
 var RequestError = class extends Error {
 	constructor(message, options) {
 		super(message, options);
 		this.name = "RequestError";
 	}
 };
-var toRequestError = (e) => {
+const nonJoinedHeaders = /* @__PURE__ */ new Set([
+	"age",
+	"authorization",
+	"content-length",
+	"content-type",
+	"etag",
+	"expires",
+	"from",
+	"host",
+	"if-modified-since",
+	"if-unmodified-since",
+	"last-modified",
+	"location",
+	"max-forwards",
+	"proxy-authorization",
+	"referer",
+	"retry-after",
+	"server",
+	"user-agent"
+]);
+const validHeaderName = /^[!#$%&'*+\-.^_`|~\dA-Za-z]+$/;
+const isHttpWhitespace = (code) => code === 9 || code === 10 || code === 13 || code === 32;
+const normalizeHeaderValue = (value) => {
+	if (!isHttpWhitespace(value.charCodeAt(0)) && !isHttpWhitespace(value.charCodeAt(value.length - 1))) return value;
+	let start = 0;
+	let end = value.length;
+	while (start < end && isHttpWhitespace(value.charCodeAt(start))) start++;
+	while (end > start && isHttpWhitespace(value.charCodeAt(end - 1))) end--;
+	return value.slice(start, end);
+};
+const forbiddenHeaderValue = /[\0\r\n]/;
+const GlobalHeaders = globalThis.Headers;
+const materializeHeaders = (rawHeaders, HeadersCtor = GlobalHeaders) => {
+	const headers = new HeadersCtor();
+	for (let i = 0; i < rawHeaders.length; i += 2) {
+		const name = rawHeaders[i];
+		if (!name.startsWith(":")) headers.append(name, rawHeaders[i + 1]);
+	}
+	return headers;
+};
+var RequestHeaders = class {
+	#incoming;
+	#rawHeaders;
+	#headers;
+	#invalidValue;
+	constructor(incoming) {
+		this.#incoming = incoming;
+		if (incoming instanceof Http2ServerRequest) this.#rawHeaders = incoming.rawHeaders.slice();
+	}
+	get #lazyRawHeaders() {
+		return this.#rawHeaders ??= this.#incoming.rawHeaders.slice();
+	}
+	get #native() {
+		if (!this.#headers) {
+			this.#headers = materializeHeaders(this.#lazyRawHeaders);
+			this.#rawHeaders = void 0;
+		}
+		return this.#headers;
+	}
+	#normalizedName(name) {
+		if (typeof name !== "string") return;
+		if (!validHeaderName.test(name)) throw new TypeError(`Invalid header name: ${name}`);
+		return name.toLowerCase();
+	}
+	#lookupHttp1(lowerName) {
+		const headers = this.#incoming instanceof Http2ServerRequest ? void 0 : this.#incoming.headers;
+		if (!headers || nonJoinedHeaders.has(lowerName) || lowerName === "set-cookie" || lowerName === "__proto__") return;
+		if (!Object.hasOwn(headers, lowerName)) return null;
+		const rawValue = headers[lowerName];
+		if (typeof rawValue === "string") {
+			const value = normalizeHeaderValue(rawValue);
+			return forbiddenHeaderValue.test(value) ? void 0 : value;
+		}
+	}
+	#lookup(rawHeaders, lowerName) {
+		const separator = lowerName === "cookie" ? "; " : ", ";
+		let value = null;
+		for (let i = 0; i < rawHeaders.length; i += 2) {
+			const rawName = rawHeaders[i];
+			if (rawName.length === lowerName.length && rawName.toLowerCase() === lowerName) {
+				const rawValue = normalizeHeaderValue(rawHeaders[i + 1]);
+				if (forbiddenHeaderValue.test(rawValue)) {
+					this.#invalidValue = true;
+					return;
+				}
+				value = value === null ? rawValue : value + separator + rawValue;
+			}
+		}
+		return value;
+	}
+	append(name, value) {
+		this.#native.append(name, value);
+	}
+	delete(name) {
+		this.#native.delete(name);
+	}
+	get(name) {
+		const lowerName = this.#normalizedName(name);
+		if (lowerName && !this.#headers && !this.#invalidValue) {
+			const http1Value = this.#lookupHttp1(lowerName);
+			if (http1Value !== void 0) return http1Value;
+			const value = this.#lookup(this.#lazyRawHeaders, lowerName);
+			if (value !== void 0) return value;
+		}
+		return this.#native.get(name);
+	}
+	has(name) {
+		const lowerName = this.#normalizedName(name);
+		if (lowerName && !this.#headers && !this.#invalidValue) {
+			const http1Value = this.#lookupHttp1(lowerName);
+			if (http1Value !== void 0) return http1Value !== null;
+			const value = this.#lookup(this.#lazyRawHeaders, lowerName);
+			if (value !== void 0) return value !== null;
+		}
+		return this.#native.has(name);
+	}
+	set(name, value) {
+		this.#native.set(name, value);
+	}
+	getSetCookie() {
+		return this.#native.getSetCookie();
+	}
+	keys() {
+		return this.#native.keys();
+	}
+	values() {
+		return this.#native.values();
+	}
+	entries() {
+		return this.#native.entries();
+	}
+	forEach(callback, thisArg) {
+		this.#native.forEach((value, key) => {
+			callback.call(thisArg, value, key, this);
+		});
+	}
+	[Symbol.iterator]() {
+		return this.entries();
+	}
+};
+Object.defineProperty(RequestHeaders.prototype, Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
+	return `Headers (lightweight) ${inspectFn(Object.fromEntries(this), {
+		...options,
+		depth: depth == null ? null : depth - 1
+	})}`;
+} });
+Object.setPrototypeOf(RequestHeaders.prototype, GlobalHeaders.prototype);
+const newHeadersFromIncoming = (incoming) => globalThis.Headers === GlobalHeaders ? new RequestHeaders(incoming) : materializeHeaders(incoming.rawHeaders, globalThis.Headers);
+const reValidRequestUrl = /^\/[!#$&-;=?-\[\]_a-z~]*$/;
+const reDotSegment = /\/\.\.?(?:[/?#]|$)/;
+const reValidHost = /^[a-z0-9._-]+(?::(?:[1-5]\d{3,4}|[6-9]\d{3}))?$/;
+const validateRequestTarget$1 = (target) => {
+	const backslash = target.indexOf("\\");
+	if (backslash !== -1) {
+		const query = target.indexOf("?");
+		if (query === -1 || backslash < query) throw new RequestError("Backslash in request path");
+	}
+};
+const buildUrl = (scheme, host, incomingUrl) => {
+	const url = `${scheme}://${host}${incomingUrl}`;
+	if (!reValidHost.test(host)) {
+		validateRequestTarget$1(incomingUrl);
+		const urlObj = new URL(url);
+		if (urlObj.hostname.length !== host.length && urlObj.hostname !== (host.includes(":") ? host.replace(/:\d+$/, "") : host).toLowerCase()) throw new RequestError("Invalid host header");
+		return urlObj.href;
+	} else if (incomingUrl.length === 0) return url + "/";
+	else {
+		if (incomingUrl.charCodeAt(0) !== 47) throw new RequestError("Invalid URL");
+		if (!reValidRequestUrl.test(incomingUrl) || reDotSegment.test(incomingUrl)) {
+			validateRequestTarget$1(incomingUrl);
+			return new URL(url).href;
+		}
+		return url;
+	}
+};
+const toRequestError = (e) => {
 	if (e instanceof RequestError) return e;
 	return new RequestError(e.message, { cause: e });
 };
-var GlobalRequest = global.Request;
-var Request$1 = class extends GlobalRequest {
+const GlobalRequest = global.Request;
+var Request$1 = class Request$1 extends GlobalRequest {
+	static [Symbol.hasInstance](instance) {
+		if (this === Request$1) return instance instanceof GlobalRequest || Function.prototype[Symbol.hasInstance].call(this, instance);
+		return Function.prototype[Symbol.hasInstance].call(this, instance);
+	}
 	constructor(input, options) {
-		if (typeof input === "object" && getRequestCache in input) input = input[getRequestCache]();
-		if (typeof options?.body?.getReader !== "undefined") options.duplex ??= "half";
+		if (typeof input === "object" && getRequestCache in input) {
+			const hasReplacementBody = options !== void 0 && "body" in options && options.body != null;
+			if (input[bodyConsumedDirectlyKey] && !hasReplacementBody) throw new TypeError("Cannot construct a Request with a Request object that has already been used.");
+			input = input[getRequestCache]();
+		}
+		if (typeof (options?.body)?.getReader !== "undefined") options.duplex ??= "half";
 		super(input, options);
 	}
 };
-var newHeadersFromIncoming = (incoming) => {
-	const headerRecord = [];
-	const rawHeaders = incoming.rawHeaders;
-	for (let i = 0; i < rawHeaders.length; i += 2) {
-		const { [i]: key, [i + 1]: value } = rawHeaders;
-		if (key.charCodeAt(0) !== 58) headerRecord.push([key, value]);
-	}
-	return new Headers(headerRecord);
+const wrapBodyStream = Symbol("wrapBodyStream");
+const byteExactEncodings = /* @__PURE__ */ new Set([
+	"latin1",
+	"binary",
+	"hex",
+	"base64",
+	"base64url"
+]);
+const isByteExactEncoding = (encoding) => encoding === null || byteExactEncodings.has(encoding);
+const bodyBufferedBeforeDisconnectKey = Symbol("bodyBufferedBeforeDisconnect");
+const bodyBufferedLengthBeforeDisconnectKey = Symbol("bodyBufferedLengthBeforeDisconnect");
+const toBufferChunk = (chunk, encoding) => Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding ?? "utf8");
+const isRecoverableDisconnectedIncoming = (incoming) => !(incoming instanceof Http2ServerRequest) && !!incoming.complete && !!incoming.readableAborted && typeof incoming.read === "function" && isByteExactEncoding(incoming.readableEncoding);
+const recordBodyBufferedBeforeDisconnect = (incoming) => {
+	if (incoming.readableDidRead || !isRecoverableDisconnectedIncoming(incoming)) return;
+	const incomingWithRecovery = incoming;
+	incomingWithRecovery[bodyBufferedLengthBeforeDisconnectKey] ??= incoming.readableLength;
 };
-var wrapBodyStream = Symbol("wrapBodyStream");
-var newRequestFromIncoming = (method, url, headers, incoming, abortController) => {
+const readBodyBufferedBeforeDisconnect = (incoming, chunks) => {
+	if (incoming.readableDidRead && !chunks || !isRecoverableDisconnectedIncoming(incoming)) return;
+	const incomingWithRecovery = incoming;
+	if (incomingWithRecovery[bodyBufferedBeforeDisconnectKey] !== void 0) return incomingWithRecovery[bodyBufferedBeforeDisconnectKey];
+	let result;
+	const errored = incoming.errored;
+	if (errored && errored.code !== "ECONNRESET") result = errored;
+	else if (incomingWithRecovery[bodyBufferedLengthBeforeDisconnectKey] !== void 0 && incoming.readableLength !== incomingWithRecovery[bodyBufferedLengthBeforeDisconnectKey]) result = newBodyUnusableError();
+	else {
+		const bodyChunks = chunks ?? [];
+		let chunk;
+		while ((chunk = incoming.read()) !== null) bodyChunks.push(toBufferChunk(chunk, incoming.readableEncoding));
+		const buffer = bodyChunks.length === 1 ? bodyChunks[0] : Buffer.concat(bodyChunks);
+		result = buffer;
+		const contentLength = incoming.headers["content-length"];
+		if (typeof contentLength === "string" && /^\d+$/.test(contentLength)) {
+			const expectedLength = Number(contentLength);
+			if (Number.isSafeInteger(expectedLength) && buffer.length !== expectedLength) result = newBodyUnusableError();
+		}
+	}
+	incomingWithRecovery[bodyBufferedBeforeDisconnectKey] = result;
+	return result;
+};
+const enqueueBufferedBody = (controller, buffered) => {
+	if (buffered instanceof Error) {
+		controller.error(buffered);
+		return;
+	}
+	if (buffered.length > 0) controller.enqueue(buffered);
+	controller.close();
+};
+const newRequestFromIncoming = (method, url, headers, incoming, abortController) => {
 	const init = {
 		method,
 		headers,
@@ -96,36 +339,215 @@ var newRequestFromIncoming = (method, url, headers, incoming, abortController) =
 		} });
 		return req;
 	}
-	if (!(method === "GET" || method === "HEAD")) {
-		if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) init.body = new ReadableStream({ start(controller) {
-			controller.enqueue(incoming.rawBody);
-			controller.close();
-		} });
-		else if (incoming[wrapBodyStream]) {
-			let reader;
-			init.body = new ReadableStream({ async pull(controller) {
-				try {
-					reader ||= Readable.toWeb(incoming).getReader();
-					const { done, value } = await reader.read();
-					if (done) controller.close();
-					else controller.enqueue(value);
-				} catch (error) {
-					controller.error(error);
+	if (!(method === "GET" || method === "HEAD")) if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) init.body = new ReadableStream({ start(controller) {
+		controller.enqueue(incoming.rawBody);
+		controller.close();
+	} });
+	else if (incoming[wrapBodyStream]) {
+		let reader;
+		init.body = new ReadableStream({ async pull(controller) {
+			try {
+				if (!reader) {
+					const buffered = readBodyBufferedBeforeDisconnect(incoming);
+					if (buffered !== void 0) {
+						enqueueBufferedBody(controller, buffered);
+						return;
+					}
 				}
-			} });
-		} else init.body = Readable.toWeb(incoming);
+				reader ||= Readable.toWeb(incoming).getReader();
+				const { done, value } = await reader.read();
+				if (done) controller.close();
+				else controller.enqueue(value);
+			} catch (error) {
+				controller.error(error);
+			}
+		} });
+	} else {
+		const buffered = readBodyBufferedBeforeDisconnect(incoming);
+		if (buffered !== void 0) init.body = new ReadableStream({ start(controller) {
+			enqueueBufferedBody(controller, buffered);
+		} });
+		else init.body = Readable.toWeb(incoming);
 	}
 	return new Request$1(url, init);
 };
-var getRequestCache = Symbol("getRequestCache");
-var requestCache = Symbol("requestCache");
-var incomingKey = Symbol("incomingKey");
-var urlKey = Symbol("urlKey");
-var headersKey = Symbol("headersKey");
-var abortControllerKey = Symbol("abortControllerKey");
-var requestPrototype = {
+const getRequestCache = Symbol("getRequestCache");
+const requestCache = Symbol("requestCache");
+const incomingKey = Symbol("incomingKey");
+const urlKey = Symbol("urlKey");
+const methodKey = Symbol("methodKey");
+const headersKey = Symbol("headersKey");
+const abortControllerKey = Symbol("abortControllerKey");
+const getAbortController = Symbol("getAbortController");
+const abortRequest = Symbol("abortRequest");
+const bodyBufferKey = Symbol("bodyBuffer");
+const bodyReadPromiseKey = Symbol("bodyReadPromise");
+const bodyConsumedDirectlyKey = Symbol("bodyConsumedDirectly");
+const bodyLockReaderKey = Symbol("bodyLockReader");
+const abortReasonKey = Symbol("abortReason");
+const newBodyUnusableError = () => {
+	return /* @__PURE__ */ new TypeError("Body is unusable");
+};
+const rejectBodyUnusable = () => {
+	return Promise.reject(newBodyUnusableError());
+};
+const textDecoder = new TextDecoder();
+const consumeBodyDirectOnce = (request) => {
+	if (request[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+	request[bodyConsumedDirectlyKey] = true;
+};
+const toArrayBuffer = (buf) => {
+	return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+};
+const contentType = (request) => {
+	return (request[headersKey] ||= newHeadersFromIncoming(request[incomingKey])).get("content-type") || "";
+};
+const methodTokenRegExp = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const normalizeIncomingMethod = (method) => {
+	if (typeof method !== "string" || method.length === 0) return "GET";
+	switch (method) {
+		case "DELETE":
+		case "GET":
+		case "HEAD":
+		case "OPTIONS":
+		case "PATCH":
+		case "POST":
+		case "PUT":
+		case "QUERY": return method;
+	}
+	const upper = method.toUpperCase();
+	switch (upper) {
+		case "DELETE":
+		case "GET":
+		case "HEAD":
+		case "OPTIONS":
+		case "POST":
+		case "PUT": return upper;
+		default: return method;
+	}
+};
+const validateDirectReadMethod = (method) => {
+	if (!methodTokenRegExp.test(method)) return /* @__PURE__ */ new TypeError(`'${method}' is not a valid HTTP method.`);
+	const normalized = method.toUpperCase();
+	if (normalized === "CONNECT" || normalized === "TRACK" || normalized === "TRACE" && method !== "TRACE") return /* @__PURE__ */ new TypeError(`'${method}' HTTP method is unsupported.`);
+};
+const readBodyWithFastPath = (request, method, fromBuffer) => {
+	if (request[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+	const methodName = request.method;
+	if (methodName === "GET" || methodName === "HEAD") return request[getRequestCache]()[method]();
+	const methodValidationError = validateDirectReadMethod(methodName);
+	if (methodValidationError) return Promise.reject(methodValidationError);
+	if (request[requestCache]) {
+		if (methodName !== "TRACE") return request[requestCache][method]();
+	}
+	const alreadyUsedError = consumeBodyDirectOnce(request);
+	if (alreadyUsedError) return alreadyUsedError;
+	const raw = readRawBodyIfAvailable(request);
+	if (raw) {
+		const result = Promise.resolve(fromBuffer(raw, request));
+		request[bodyBufferKey] = void 0;
+		return result;
+	}
+	return readBodyDirect(request).then((buf) => {
+		const result = fromBuffer(buf, request);
+		request[bodyBufferKey] = void 0;
+		return result;
+	});
+};
+const readRawBodyIfAvailable = (request) => {
+	const incoming = request[incomingKey];
+	if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) return incoming.rawBody;
+};
+const normalizeAbortError = (request, incoming) => {
+	if (incoming.errored) return incoming.errored;
+	const reason = request[abortReasonKey];
+	if (reason !== void 0) return reason instanceof Error ? reason : new Error(String(reason));
+	return /* @__PURE__ */ new Error("Client connection prematurely closed.");
+};
+const readBodyDirect = (request) => {
+	if (request[bodyBufferKey]) return Promise.resolve(request[bodyBufferKey]);
+	if (request[bodyReadPromiseKey]) return request[bodyReadPromiseKey];
+	const incoming = request[incomingKey];
+	if (incoming.readableDidRead) return rejectBodyUnusable();
+	const buffered = readBodyBufferedBeforeDisconnect(incoming);
+	if (buffered !== void 0) {
+		if (buffered instanceof Error) return Promise.reject(buffered);
+		request[bodyBufferKey] = buffered;
+		return Promise.resolve(buffered);
+	}
+	const promise = new Promise((resolve, reject) => {
+		const chunks = [];
+		let settled = false;
+		const finish = (callback) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			callback();
+		};
+		const recoverCompleteBodyAfterDisconnect = (error) => {
+			const streamError = incoming.errored ?? error;
+			if (!isRecoverableDisconnectedIncoming(incoming) || streamError && streamError.code !== "ECONNRESET") return false;
+			finish(() => {
+				const recovered = readBodyBufferedBeforeDisconnect(incoming, chunks);
+				if (recovered instanceof Error) reject(recovered);
+				else if (recovered === void 0) reject(error ?? normalizeAbortError(request, incoming));
+				else {
+					request[bodyBufferKey] = recovered;
+					resolve(recovered);
+				}
+			});
+			return true;
+		};
+		const onData = (chunk) => {
+			chunks.push(toBufferChunk(chunk, incoming.readableEncoding));
+		};
+		const onEnd = () => {
+			finish(() => {
+				const buffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+				request[bodyBufferKey] = buffer;
+				resolve(buffer);
+			});
+		};
+		const onError = (error) => {
+			if (recoverCompleteBodyAfterDisconnect(error)) return;
+			finish(() => {
+				reject(error);
+			});
+		};
+		const onClose = () => {
+			if (incoming.readableEnded) {
+				onEnd();
+				return;
+			}
+			if (recoverCompleteBodyAfterDisconnect()) return;
+			finish(() => {
+				reject(normalizeAbortError(request, incoming));
+			});
+		};
+		const cleanup = () => {
+			incoming.off("data", onData);
+			incoming.off("end", onEnd);
+			incoming.off("error", onError);
+			incoming.off("close", onClose);
+			request[bodyReadPromiseKey] = void 0;
+		};
+		incoming.on("data", onData);
+		incoming.on("end", onEnd);
+		incoming.on("error", onError);
+		incoming.on("close", onClose);
+		queueMicrotask(() => {
+			if (settled) return;
+			if (incoming.readableEnded) onEnd();
+			else if (incoming.errored) onError(incoming.errored);
+			else if (incoming.destroyed) onClose();
+		});
+	});
+	request[bodyReadPromiseKey] = promise;
+	return promise;
+};
+const requestPrototype = {
 	get method() {
-		return this[incomingKey].method || "GET";
+		return this[methodKey];
 	},
 	get url() {
 		return this[urlKey];
@@ -133,45 +555,100 @@ var requestPrototype = {
 	get headers() {
 		return this[headersKey] ||= newHeadersFromIncoming(this[incomingKey]);
 	},
-	[Symbol("getAbortController")]() {
-		this[getRequestCache]();
+	[abortRequest](reason) {
+		if (this[abortReasonKey] === void 0) this[abortReasonKey] = reason;
+		const abortController = this[abortControllerKey];
+		if (abortController && !abortController.signal.aborted) abortController.abort(reason);
+	},
+	[getAbortController]() {
+		this[abortControllerKey] ||= new AbortController();
+		if (this[abortReasonKey] !== void 0 && !this[abortControllerKey].signal.aborted) this[abortControllerKey].abort(this[abortReasonKey]);
 		return this[abortControllerKey];
 	},
 	[getRequestCache]() {
-		this[abortControllerKey] ||= new AbortController();
-		return this[requestCache] ||= newRequestFromIncoming(this.method, this[urlKey], this.headers, this[incomingKey], this[abortControllerKey]);
+		const abortController = this[getAbortController]();
+		if (this[requestCache]) return this[requestCache];
+		const method = this.method;
+		if (this[bodyConsumedDirectlyKey] && !(method === "GET" || method === "HEAD")) {
+			this[bodyBufferKey] = void 0;
+			const init = {
+				method: method === "TRACE" ? "GET" : method,
+				headers: this.headers,
+				signal: abortController.signal
+			};
+			if (method !== "TRACE") {
+				init.body = new ReadableStream({ start(c) {
+					c.close();
+				} });
+				init.duplex = "half";
+			}
+			const req = new Request$1(this[urlKey], init);
+			if (method === "TRACE") Object.defineProperty(req, "method", { get() {
+				return "TRACE";
+			} });
+			return this[requestCache] = req;
+		}
+		return this[requestCache] = newRequestFromIncoming(this.method, this[urlKey], this.headers, this[incomingKey], abortController);
+	},
+	get body() {
+		if (!this[bodyConsumedDirectlyKey]) return this[getRequestCache]().body;
+		const request = this[getRequestCache]();
+		if (!this[bodyLockReaderKey] && request.body) this[bodyLockReaderKey] = request.body.getReader();
+		return request.body;
+	},
+	get bodyUsed() {
+		if (this[bodyConsumedDirectlyKey]) return true;
+		if (this[requestCache]) return this[requestCache].bodyUsed;
+		return false;
 	}
 };
+Object.defineProperty(requestPrototype, "signal", { get() {
+	return this[getAbortController]().signal;
+} });
 [
-	"body",
-	"bodyUsed",
 	"cache",
 	"credentials",
 	"destination",
+	"duplex",
 	"integrity",
 	"mode",
 	"redirect",
 	"referrer",
 	"referrerPolicy",
-	"signal",
 	"keepalive"
 ].forEach((k) => {
 	Object.defineProperty(requestPrototype, k, { get() {
 		return this[getRequestCache]()[k];
 	} });
 });
-[
-	"arrayBuffer",
-	"blob",
-	"clone",
-	"formData",
-	"json",
-	"text"
-].forEach((k) => {
+["clone", "formData"].forEach((k) => {
 	Object.defineProperty(requestPrototype, k, { value: function() {
+		if (this[bodyConsumedDirectlyKey]) {
+			if (k === "clone") throw newBodyUnusableError();
+			return rejectBodyUnusable();
+		}
 		return this[getRequestCache]()[k]();
 	} });
 });
+Object.defineProperty(requestPrototype, "text", { value: function() {
+	return readBodyWithFastPath(this, "text", (buf) => textDecoder.decode(buf));
+} });
+Object.defineProperty(requestPrototype, "arrayBuffer", { value: function() {
+	return readBodyWithFastPath(this, "arrayBuffer", (buf) => toArrayBuffer(buf));
+} });
+Object.defineProperty(requestPrototype, "blob", { value: function() {
+	return readBodyWithFastPath(this, "blob", (buf, request) => {
+		const type = contentType(request);
+		return new Response(buf, type ? { headers: { "content-type": type } } : void 0).blob();
+	});
+} });
+Object.defineProperty(requestPrototype, "bytes", { value: function() {
+	return this.arrayBuffer().then((buf) => new Uint8Array(buf));
+} });
+Object.defineProperty(requestPrototype, "json", { value: function() {
+	if (this[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+	return this.text().then(JSON.parse);
+} });
 Object.defineProperty(requestPrototype, Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
 	return `Request (lightweight) ${inspectFn({
 		method: this.method,
@@ -184,13 +661,15 @@ Object.defineProperty(requestPrototype, Symbol.for("nodejs.util.inspect.custom")
 	})}`;
 } });
 Object.setPrototypeOf(requestPrototype, Request$1.prototype);
-var newRequest = (incoming, defaultHostname) => {
+const newRequest = (incoming, defaultHostname) => {
 	const req = Object.create(requestPrototype);
 	req[incomingKey] = incoming;
+	req[methodKey] = normalizeIncomingMethod(incoming.method);
 	const incomingUrl = incoming.url || "";
 	if (incomingUrl[0] !== "/" && (incomingUrl.startsWith("http://") || incomingUrl.startsWith("https://"))) {
 		if (incoming instanceof Http2ServerRequest) throw new RequestError("Absolute URL for :path is not allowed in HTTP/2");
 		try {
+			validateRequestTarget$1(incomingUrl);
 			req[urlKey] = new URL(incomingUrl).href;
 		} catch (e) {
 			throw new RequestError("Invalid absolute URL", { cause: e });
@@ -204,46 +683,59 @@ var newRequest = (incoming, defaultHostname) => {
 		scheme = incoming.scheme;
 		if (!(scheme === "http" || scheme === "https")) throw new RequestError("Unsupported scheme");
 	} else scheme = incoming.socket && incoming.socket.encrypted ? "https" : "http";
-	const url = new URL(`${scheme}://${host}${incomingUrl}`);
-	if (url.hostname.length !== host.length && url.hostname !== host.replace(/:\d+$/, "")) throw new RequestError("Invalid host header");
-	req[urlKey] = url.href;
+	try {
+		req[urlKey] = buildUrl(scheme, host, incomingUrl);
+	} catch (e) {
+		if (e instanceof RequestError) throw e;
+		else throw new RequestError("Invalid URL", { cause: e });
+	}
 	return req;
 };
-var responseCache = Symbol("responseCache");
-var getResponseCache = Symbol("getResponseCache");
-var cacheKey = Symbol("cache");
-var GlobalResponse = global.Response;
-var Response2 = class _Response {
+const defaultContentType = "text/plain; charset=UTF-8";
+const responseCache = Symbol("responseCache");
+const getResponseCache = Symbol("getResponseCache");
+const cacheKey = Symbol("cache");
+const GlobalResponse = global.Response;
+var Response$1 = class Response$1 {
 	#body;
 	#init;
+	static [Symbol.hasInstance](instance) {
+		if (this === Response$1) return instance instanceof GlobalResponse || Function.prototype[Symbol.hasInstance].call(this, instance);
+		return Function.prototype[Symbol.hasInstance].call(this, instance);
+	}
 	[getResponseCache]() {
+		const cache = this[cacheKey];
+		const liveHeaders = cache && cache[2] instanceof Headers ? cache[2] : void 0;
 		delete this[cacheKey];
-		return this[responseCache] ||= new GlobalResponse(this.#body, this.#init);
+		return this[responseCache] ||= new GlobalResponse(this.#body, liveHeaders ? {
+			status: this.#init?.status,
+			statusText: this.#init?.statusText,
+			headers: liveHeaders
+		} : this.#init);
 	}
 	constructor(body, init) {
 		let headers;
 		this.#body = body;
-		if (init instanceof _Response) {
+		if (init instanceof GlobalResponse) {
 			const cachedGlobalResponse = init[responseCache];
 			if (cachedGlobalResponse) {
 				this.#init = cachedGlobalResponse;
 				this[getResponseCache]();
 				return;
-			} else {
-				this.#init = init.#init;
-				headers = new Headers(init.#init.headers);
 			}
+			this.#init = #init in init ? init.#init : init;
+			headers = new Headers(init.headers);
 		} else this.#init = init;
-		if (typeof body === "string" || typeof body?.getReader !== "undefined" || body instanceof Blob || body instanceof Uint8Array) this[cacheKey] = [
+		if (body == null || typeof body === "string" || typeof body?.getReader !== "undefined" || body instanceof Blob || body instanceof Uint8Array) this[cacheKey] = [
 			init?.status || 200,
-			body,
+			body ?? null,
 			headers || init?.headers
 		];
 	}
 	get headers() {
 		const cache = this[cacheKey];
 		if (cache) {
-			if (!(cache[2] instanceof Headers)) cache[2] = new Headers(cache[2] || { "content-type": "text/plain; charset=UTF-8" });
+			if (!(cache[2] instanceof Headers)) cache[2] = new Headers(cache[2] || (cache[1] === null ? void 0 : { "content-type": defaultContentType }));
 			return cache[2];
 		}
 		return this[getResponseCache]().headers;
@@ -265,23 +757,24 @@ var Response2 = class _Response {
 	"type",
 	"url"
 ].forEach((k) => {
-	Object.defineProperty(Response2.prototype, k, { get() {
+	Object.defineProperty(Response$1.prototype, k, { get() {
 		return this[getResponseCache]()[k];
 	} });
 });
 [
 	"arrayBuffer",
 	"blob",
+	"bytes",
 	"clone",
 	"formData",
 	"json",
 	"text"
 ].forEach((k) => {
-	Object.defineProperty(Response2.prototype, k, { value: function() {
+	Object.defineProperty(Response$1.prototype, k, { value: function() {
 		return this[getResponseCache]()[k]();
 	} });
 });
-Object.defineProperty(Response2.prototype, Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
+Object.defineProperty(Response$1.prototype, Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
 	return `Response (lightweight) ${inspectFn({
 		status: this.status,
 		headers: this.headers,
@@ -292,8 +785,51 @@ Object.defineProperty(Response2.prototype, Symbol.for("nodejs.util.inspect.custo
 		depth: depth == null ? null : depth - 1
 	})}`;
 } });
-Object.setPrototypeOf(Response2, GlobalResponse);
-Object.setPrototypeOf(Response2.prototype, GlobalResponse.prototype);
+Object.setPrototypeOf(Response$1, GlobalResponse);
+Object.setPrototypeOf(Response$1.prototype, GlobalResponse.prototype);
+const validRedirectUrl = /^https?:\/\/[!#-;=?-[\]_a-z~A-Z]+$/;
+const parseRedirectUrl = (url) => {
+	if (url instanceof URL) return url.href;
+	if (validRedirectUrl.test(url)) return url;
+	return new URL(url).href;
+};
+const validRedirectStatuses = /* @__PURE__ */ new Set([
+	301,
+	302,
+	303,
+	307,
+	308
+]);
+Object.defineProperty(Response$1, "redirect", {
+	value: function redirect(url, status = 302) {
+		if (!validRedirectStatuses.has(status)) throw new RangeError("Invalid status code");
+		return new Response$1(null, {
+			status,
+			headers: { location: parseRedirectUrl(url) }
+		});
+	},
+	writable: true,
+	configurable: true
+});
+Object.defineProperty(Response$1, "json", {
+	value: function json(data, init) {
+		const body = JSON.stringify(data);
+		if (body === void 0) throw new TypeError("The data is not JSON serializable");
+		const initHeaders = init?.headers;
+		let headers;
+		if (initHeaders) {
+			headers = new Headers(initHeaders);
+			if (!headers.has("content-type")) headers.set("content-type", "application/json");
+		} else headers = { "content-type": "application/json" };
+		return new Response$1(body, {
+			status: init?.status ?? 200,
+			statusText: init?.statusText,
+			headers
+		});
+	},
+	writable: true,
+	configurable: true
+});
 async function readWithoutBlocking(readPromise) {
 	return Promise.race([readPromise, Promise.resolve().then(() => Promise.resolve(void 0))]);
 }
@@ -301,6 +837,11 @@ function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromi
 	const cancel = (error) => {
 		reader.cancel(error).catch(() => {});
 	};
+	const stream = writable.stream;
+	if (writable.destroyed || stream?.closed || stream?.destroyed) {
+		cancel();
+		return reader.closed;
+	}
 	writable.on("close", cancel);
 	writable.on("error", cancel);
 	(currentReadPromise ?? reader.read()).then(flow, handleStreamError);
@@ -318,7 +859,7 @@ function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromi
 		try {
 			if (done) writable.end();
 			else if (!writable.write(value)) writable.once("drain", onDrain);
-			else return reader.read().then(flow, handleStreamError);
+			else reader.read().then(flow, handleStreamError);
 		} catch (e) {
 			handleStreamError(e);
 		}
@@ -326,26 +867,29 @@ function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromi
 }
 function writeFromReadableStream(stream, writable) {
 	if (stream.locked) throw new TypeError("ReadableStream is locked.");
-	else if (writable.destroyed) return;
+	else if (writable.destroyed) {
+		stream.cancel().catch(() => {});
+		return;
+	}
 	return writeFromReadableStreamDefaultReader(stream.getReader(), writable);
 }
-var buildOutgoingHttpHeaders = (headers) => {
+const buildOutgoingHttpHeaders = (headers, defaultContentType) => {
 	const res = {};
 	if (!(headers instanceof Headers)) headers = new Headers(headers ?? void 0);
-	const cookies = [];
-	for (const [k, v] of headers) if (k === "set-cookie") cookies.push(v);
-	else res[k] = v;
-	if (cookies.length > 0) res["set-cookie"] = cookies;
-	res["content-type"] ??= "text/plain; charset=UTF-8";
+	if (headers.has("set-cookie")) {
+		const cookies = [];
+		for (const [k, v] of headers) if (k === "set-cookie") cookies.push(v);
+		else res[k] = v;
+		if (cookies.length > 0) res["set-cookie"] = cookies;
+	} else for (const [k, v] of headers) res[k] = v;
+	if (defaultContentType) res["content-type"] ??= defaultContentType;
 	return res;
 };
-var X_ALREADY_SENT = "x-hono-already-sent";
-if (typeof global.crypto === "undefined") global.crypto = crypto;
-var outgoingEnded = Symbol("outgoingEnded");
-var incomingDraining = Symbol("incomingDraining");
-var DRAIN_TIMEOUT_MS = 500;
-var MAX_DRAIN_BYTES = 67108864;
-var drainIncoming = (incoming) => {
+const outgoingEnded = Symbol("outgoingEnded");
+const incomingDraining = Symbol("incomingDraining");
+const DRAIN_TIMEOUT_MS = 500;
+const MAX_DRAIN_BYTES = 67108864;
+const drainIncoming = (incoming) => {
 	const incomingWithDrainState = incoming;
 	if (incoming.destroyed || incomingWithDrainState[incomingDraining]) return;
 	incomingWithDrainState[incomingDraining] = true;
@@ -365,7 +909,10 @@ var drainIncoming = (incoming) => {
 	const forceClose = () => {
 		cleanup();
 		const socket = incoming.socket;
-		if (socket && !socket.destroyed) socket.destroySoon();
+		if (socket && !socket.destroyed) {
+			if (typeof socket.destroySoon === "function") socket.destroySoon();
+			else if (typeof socket.destroy === "function") socket.destroy();
+		}
 	};
 	const timer = setTimeout(forceClose, DRAIN_TIMEOUT_MS);
 	timer.unref?.();
@@ -378,43 +925,114 @@ var drainIncoming = (incoming) => {
 	incoming.on("error", cleanup);
 	incoming.resume();
 };
-var handleRequestError = () => new Response(null, { status: 400 });
-var handleFetchError = (e) => new Response(null, { status: e instanceof Error && (e.name === "TimeoutError" || e.constructor.name === "TimeoutError") ? 504 : 500 });
-var handleResponseError = (e, outgoing) => {
+const makeCloseHandler = (req, incoming, outgoing, needsBodyCleanup) => () => {
+	if (incoming.errored) {
+		recordBodyBufferedBeforeDisconnect(incoming);
+		req[abortRequest](incoming.errored.toString());
+	} else if (!outgoing.writableFinished || incoming instanceof Http2ServerRequest && incoming.aborted) {
+		recordBodyBufferedBeforeDisconnect(incoming);
+		req[abortRequest]("Client connection prematurely closed.");
+	}
+	if (needsBodyCleanup && !incoming.readableEnded) setTimeout(() => {
+		if (!incoming.readableEnded) setTimeout(() => {
+			drainIncoming(incoming);
+		});
+	});
+};
+const isImmediateCacheableResponse = (res) => {
+	if (!(cacheKey in res)) return false;
+	const body = res[cacheKey][1];
+	return body === null || typeof body === "string" || body instanceof Uint8Array;
+};
+const handleRequestError = () => new Response(null, { status: 400 });
+const handleFetchError = (e) => new Response(null, { status: e instanceof Error && (e.name === "TimeoutError" || e.constructor.name === "TimeoutError") ? 504 : 500 });
+const handleResponseError = (e, outgoing) => {
 	const err = e instanceof Error ? e : new Error("unknown error", { cause: e });
 	if (err.code === "ERR_STREAM_PREMATURE_CLOSE") console.info("The user aborted a request.");
 	else {
 		console.error(e);
-		if (!outgoing.headersSent) outgoing.writeHead(500, { "Content-Type": "text/plain" });
+		if (!outgoing.headersSent) {
+			if (outgoing instanceof ServerResponse) outgoing._contentLength = null;
+			outgoing.writeHead(500, { "Content-Type": "text/plain" });
+		}
 		outgoing.end(`Error: ${err.message}`);
 		outgoing.destroy(err);
 	}
 };
-var flushHeaders = (outgoing) => {
+const flushHeaders = (outgoing) => {
 	if ("flushHeaders" in outgoing && outgoing.writable) outgoing.flushHeaders();
 };
-var responseViaCache = async (res, outgoing) => {
+const trySetContentLength = (outgoing, status, length) => {
+	const http1 = outgoing;
+	if (http1._contentLength === null && http1._hasBody && http1.useChunkedEncodingByDefault && !http1._removedContLen && status >= 200 && status !== 204 && status !== 304 && !outgoing.hasHeader("content-length") && !outgoing.hasHeader("transfer-encoding") && !outgoing.hasHeader("trailer")) {
+		http1._contentLength = length;
+		return true;
+	}
+	return false;
+};
+const writeDefaultHeaders = (outgoing, status, length) => {
+	if (trySetContentLength(outgoing, status, length)) outgoing.writeHead(status, { "Content-Type": defaultContentType });
+	else outgoing.writeHead(status, {
+		"Content-Type": defaultContentType,
+		"Content-Length": length
+	});
+};
+const responseViaCache = async (res, outgoing) => {
 	let [status, body, header] = res[cacheKey];
+	if (!header) {
+		if (body === null) {
+			outgoing.writeHead(status);
+			outgoing.end();
+		} else if (typeof body === "string") {
+			writeDefaultHeaders(outgoing, status, Buffer.byteLength(body));
+			outgoing.end(body);
+		} else if (body instanceof Uint8Array) {
+			writeDefaultHeaders(outgoing, status, body.byteLength);
+			outgoing.end(body);
+		} else if (body instanceof Blob) {
+			writeDefaultHeaders(outgoing, status, body.size);
+			outgoing.end(new Uint8Array(await body.arrayBuffer()));
+		} else {
+			outgoing.writeHead(status, { "Content-Type": defaultContentType });
+			flushHeaders(outgoing);
+			await writeFromReadableStream(body, outgoing)?.catch((e) => handleResponseError(e, outgoing));
+		}
+		outgoing[outgoingEnded]?.();
+		return;
+	}
 	let hasContentLength = false;
-	if (!header) header = { "content-type": "text/plain; charset=UTF-8" };
-	else if (header instanceof Headers) {
+	let plainHeaders = false;
+	let canAutoLength = true;
+	if (header instanceof Headers) {
 		hasContentLength = header.has("content-length");
-		header = buildOutgoingHttpHeaders(header);
+		header = buildOutgoingHttpHeaders(header, body === null ? void 0 : defaultContentType);
 	} else if (Array.isArray(header)) {
 		const headerObj = new Headers(header);
 		hasContentLength = headerObj.has("content-length");
-		header = buildOutgoingHttpHeaders(headerObj);
-	} else for (const key in header) if (key.length === 14 && key.toLowerCase() === "content-length") {
-		hasContentLength = true;
-		break;
+		header = buildOutgoingHttpHeaders(headerObj, body === null ? void 0 : defaultContentType);
+	} else {
+		plainHeaders = true;
+		for (const key in header) {
+			if (key.length === 14 && key.toLowerCase() === "content-length") {
+				hasContentLength = true;
+				break;
+			}
+			if (key.length === 17 && key.toLowerCase() === "transfer-encoding" || key.length === 7 && key.toLowerCase() === "trailer") canAutoLength = false;
+		}
 	}
 	if (!hasContentLength) {
-		if (typeof body === "string") header["Content-Length"] = Buffer.byteLength(body);
-		else if (body instanceof Uint8Array) header["Content-Length"] = body.byteLength;
-		else if (body instanceof Blob) header["Content-Length"] = body.size;
+		let length;
+		if (typeof body === "string") length = Buffer.byteLength(body);
+		else if (body instanceof Uint8Array) length = body.byteLength;
+		else if (body instanceof Blob) length = body.size;
+		if (length !== void 0 && (!plainHeaders || !canAutoLength || !trySetContentLength(outgoing, status, length))) {
+			if (plainHeaders) header = { ...header };
+			header["Content-Length"] = length;
+		}
 	}
 	outgoing.writeHead(status, header);
-	if (typeof body === "string" || body instanceof Uint8Array) outgoing.end(body);
+	if (body == null) outgoing.end();
+	else if (typeof body === "string" || body instanceof Uint8Array) outgoing.end(body);
 	else if (body instanceof Blob) outgoing.end(new Uint8Array(await body.arrayBuffer()));
 	else {
 		flushHeaders(outgoing);
@@ -422,20 +1040,18 @@ var responseViaCache = async (res, outgoing) => {
 	}
 	outgoing[outgoingEnded]?.();
 };
-var isPromise = (res) => typeof res.then === "function";
-var responseViaResponseObject = async (res, outgoing, options = {}) => {
-	if (isPromise(res)) {
-		if (options.errorHandler) try {
-			res = await res;
-		} catch (err) {
-			const errRes = await options.errorHandler(err);
-			if (!errRes) return;
-			res = errRes;
-		}
-		else res = await res.catch(handleFetchError);
+const isPromise = (res) => typeof res.then === "function";
+const responseViaResponseObject = async (res, outgoing, options = {}) => {
+	if (isPromise(res)) if (options.errorHandler) try {
+		res = await res;
+	} catch (err) {
+		const errRes = await options.errorHandler(err);
+		if (!errRes) return;
+		res = errRes;
 	}
+	else res = await res.catch(handleFetchError);
 	if (cacheKey in res) return responseViaCache(res, outgoing);
-	const resHeaderRecord = buildOutgoingHttpHeaders(res.headers);
+	const resHeaderRecord = buildOutgoingHttpHeaders(res.headers, res.body === null ? void 0 : defaultContentType);
 	if (res.body) {
 		const reader = res.body.getReader();
 		const values = [];
@@ -445,10 +1061,7 @@ var responseViaResponseObject = async (res, outgoing, options = {}) => {
 			let maxReadCount = 2;
 			for (let i = 0; i < maxReadCount; i++) {
 				currentReadPromise ||= reader.read();
-				const chunk = await readWithoutBlocking(currentReadPromise).catch((e) => {
-					console.error(e);
-					done = true;
-				});
+				const chunk = await readWithoutBlocking(currentReadPromise);
 				if (!chunk) {
 					if (i === 1) {
 						await new Promise((resolve) => setTimeout(resolve));
@@ -475,63 +1088,60 @@ var responseViaResponseObject = async (res, outgoing, options = {}) => {
 			if (values.length === 0) flushHeaders(outgoing);
 			await writeFromReadableStreamDefaultReader(reader, outgoing, currentReadPromise);
 		}
-	} else if (resHeaderRecord[X_ALREADY_SENT]) {} else {
+	} else if (resHeaderRecord["x-hono-already-sent"]) {} else {
 		outgoing.writeHead(res.status, resHeaderRecord);
 		outgoing.end();
 	}
 	outgoing[outgoingEnded]?.();
 };
-var getRequestListener = (fetchCallback, options = {}) => {
+const getRequestListener = (fetchCallback, options = {}) => {
 	const autoCleanupIncoming = options.autoCleanupIncoming ?? true;
 	if (options.overrideGlobalObjects !== false && global.Request !== Request$1) {
 		Object.defineProperty(global, "Request", { value: Request$1 });
-		Object.defineProperty(global, "Response", { value: Response2 });
+		Object.defineProperty(global, "Response", { value: Response$1 });
 	}
 	return async (incoming, outgoing) => {
 		let res, req;
+		let needsBodyCleanup = false;
+		let closeHandlerAttached = false;
+		const ensureCloseHandler = () => {
+			if (!req || closeHandlerAttached) return;
+			closeHandlerAttached = true;
+			outgoing.on("close", makeCloseHandler(req, incoming, outgoing, needsBodyCleanup));
+		};
 		try {
 			req = newRequest(incoming, options.hostname);
-			let incomingEnded = !autoCleanupIncoming || incoming.method === "GET" || incoming.method === "HEAD";
-			if (!incomingEnded) {
+			needsBodyCleanup = autoCleanupIncoming && !(incoming.method === "GET" || incoming.method === "HEAD");
+			if (needsBodyCleanup) {
 				incoming[wrapBodyStream] = true;
-				incoming.on("end", () => {
-					incomingEnded = true;
-				});
 				if (incoming instanceof Http2ServerRequest) outgoing[outgoingEnded] = () => {
-					if (!incomingEnded) setTimeout(() => {
-						if (!incomingEnded) setTimeout(() => {
-							drainIncoming(incoming);
+					if (!incoming.readableEnded) setTimeout(() => {
+						if (!incoming.readableEnded) setTimeout(() => {
+							incoming.destroy();
+							outgoing.destroy();
 						});
 					});
 				};
-				outgoing.on("finish", () => {
-					if (!incomingEnded) drainIncoming(incoming);
-				});
 			}
-			outgoing.on("close", () => {
-				if (req[abortControllerKey]) {
-					if (incoming.errored) req[abortControllerKey].abort(incoming.errored.toString());
-					else if (!outgoing.writableFinished) req[abortControllerKey].abort("Client connection prematurely closed.");
-				}
-				if (!incomingEnded) setTimeout(() => {
-					if (!incomingEnded) setTimeout(() => {
-						drainIncoming(incoming);
-					});
-				});
-			});
 			res = fetchCallback(req, {
 				incoming,
 				outgoing
 			});
-			if (cacheKey in res) return responseViaCache(res, outgoing);
+			if (!isPromise(res) && isImmediateCacheableResponse(res)) {
+				if (needsBodyCleanup && !incoming.readableEnded) outgoing.once("finish", () => {
+					if (!incoming.readableEnded) drainIncoming(incoming);
+				});
+				return responseViaCache(res, outgoing);
+			}
+			ensureCloseHandler();
 		} catch (e) {
-			if (!res) {
-				if (options.errorHandler) {
-					res = await options.errorHandler(req ? e : toRequestError(e));
-					if (!res) return;
-				} else if (!req) res = handleRequestError();
-				else res = handleFetchError(e);
-			} else return handleResponseError(e, outgoing);
+			if (!res) if (options.errorHandler) {
+				ensureCloseHandler();
+				res = await options.errorHandler(req ? e : toRequestError(e));
+				if (!res) return;
+			} else if (!req) res = handleRequestError();
+			else res = handleFetchError(e);
+			else return handleResponseError(e, outgoing);
 		}
 		try {
 			return await responseViaResponseObject(res, outgoing, options);
@@ -540,16 +1150,154 @@ var getRequestListener = (fetchCallback, options = {}) => {
 		}
 	};
 };
-var createAdaptorServer = (options) => {
+globalThis.CloseEvent;
+globalThis.ErrorEvent;
+const CONNECTION_SYMBOL_KEY$1 = Symbol("CONNECTION_SYMBOL_KEY");
+const WAIT_FOR_WEBSOCKET_SYMBOL = Symbol("WAIT_FOR_WEBSOCKET_SYMBOL");
+const responseHeadersToSkip = /* @__PURE__ */ new Set([
+	"connection",
+	"content-length",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"te",
+	"trailer",
+	"transfer-encoding",
+	"upgrade",
+	"sec-websocket-accept",
+	"sec-websocket-extensions",
+	"sec-websocket-protocol"
+]);
+const appendResponseHeaders = (headers, responseHeaders) => {
+	if (!responseHeaders) return;
+	responseHeaders.forEach((value, key) => {
+		if (responseHeadersToSkip.has(key.toLowerCase())) return;
+		headers.push(`${key}: ${value}`);
+	});
+};
+const rejectUpgradeRequest$1 = (socket, status, responseHeaders) => {
+	if (socket.destroyed) return;
+	const responseLines = ["Connection: close", "Content-Length: 0"];
+	appendResponseHeaders(responseLines, responseHeaders);
+	socket.end(`HTTP/1.1 ${status.toString()} ${STATUS_CODES[status] ?? ""}\r\n${responseLines.join("\r\n")}\r\n\r
+`);
+};
+const createUpgradeRequest = (request) => {
+	const protocol = request.socket.encrypted ? "https" : "http";
+	const incomingUrl = request.url ?? "/";
+	let url;
+	if (incomingUrl[0] !== "/" && (incomingUrl.startsWith("http://") || incomingUrl.startsWith("https://"))) {
+		validateRequestTarget$1(incomingUrl);
+		url = new URL(incomingUrl).href;
+	} else url = buildUrl(protocol, request.headers.host ?? "localhost", incomingUrl);
+	const headers = new Headers();
+	for (const key in request.headers) {
+		const value = request.headers[key];
+		if (!value) continue;
+		headers.append(key, Array.isArray(value) ? value[0] : value);
+	}
+	return new Request(url, { headers });
+};
+const setupWebSocket = (options) => {
+	const { server, fetchCallback, wss } = options;
+	const waiterMap = /* @__PURE__ */ new Map();
+	wss.on("connection", (ws, request) => {
+		const waiter = waiterMap.get(request);
+		if (waiter) {
+			waiter.resolve(ws);
+			waiterMap.delete(request);
+		}
+	});
+	const rejectWaiter = (request) => {
+		const waiter = waiterMap.get(request);
+		if (waiter) {
+			waiterMap.delete(request);
+			waiter.reject(/* @__PURE__ */ new Error("WebSocket handshake aborted"));
+		}
+	};
+	const waitForWebSocket = (request, connectionSymbol) => {
+		return new Promise((resolve, reject) => {
+			waiterMap.set(request, {
+				resolve,
+				reject,
+				connectionSymbol
+			});
+		});
+	};
+	server.on("upgrade", async (request, socket, head) => {
+		const ignoreSocketError = () => {};
+		socket.on("error", ignoreSocketError);
+		if (request.headers.upgrade?.toLowerCase() !== "websocket") {
+			if (server.listenerCount("upgrade") === 1) rejectUpgradeRequest$1(socket, 400);
+			return;
+		}
+		const reclaimWaiterOnClose = () => rejectWaiter(request);
+		socket.once("close", reclaimWaiterOnClose);
+		const env = {
+			incoming: request,
+			outgoing: void 0,
+			wss,
+			[WAIT_FOR_WEBSOCKET_SYMBOL]: waitForWebSocket
+		};
+		let status = 400;
+		let responseHeaders;
+		try {
+			const response = await fetchCallback(createUpgradeRequest(request), env);
+			if (response instanceof Response) {
+				status = response.status;
+				responseHeaders = response.headers;
+			}
+		} catch (error) {
+			if (server.listenerCount("upgrade") === 1) rejectUpgradeRequest$1(socket, error instanceof RequestError ? 400 : 500);
+			return;
+		}
+		if (socket.destroyed) {
+			rejectWaiter(request);
+			return;
+		}
+		const waiter = waiterMap.get(request);
+		if (!waiter || waiter.connectionSymbol !== env[CONNECTION_SYMBOL_KEY$1]) {
+			rejectWaiter(request);
+			if (server.listenerCount("upgrade") === 1) rejectUpgradeRequest$1(socket, status, responseHeaders);
+			return;
+		}
+		const addResponseHeaders = (headers) => {
+			appendResponseHeaders(headers, responseHeaders);
+		};
+		wss.on("headers", addResponseHeaders);
+		try {
+			wss.handleUpgrade(request, socket, head, (ws) => {
+				socket.off("close", reclaimWaiterOnClose);
+				socket.off("error", ignoreSocketError);
+				wss.emit("connection", ws, request);
+			});
+		} finally {
+			wss.off("headers", addResponseHeaders);
+		}
+	});
+	server.on("close", () => {
+		wss.close();
+	});
+};
+const createAdaptorServer = (options) => {
 	const fetchCallback = options.fetch;
 	const requestListener = getRequestListener(fetchCallback, {
 		hostname: options.hostname,
 		overrideGlobalObjects: options.overrideGlobalObjects,
 		autoCleanupIncoming: options.autoCleanupIncoming
 	});
-	return (options.createServer || createServer)(options.serverOptions || {}, requestListener);
+	const server = (options.createServer || createServer)(options.serverOptions || {}, requestListener);
+	if (options.websocket && options.websocket.server) {
+		if (options.websocket.server.options.noServer !== true) throw new Error("WebSocket server must be created with { noServer: true } option");
+		setupWebSocket({
+			server,
+			fetchCallback,
+			wss: options.websocket.server
+		});
+	}
+	return server;
 };
-var serve = (options, listeningListener) => {
+const serve = (options, listeningListener) => {
 	const server = createAdaptorServer(options);
 	server.listen(options?.port ?? 3e3, options.hostname, () => {
 		const serverInfo = server.address();
@@ -557,8 +1305,65 @@ var serve = (options, listeningListener) => {
 	});
 	return server;
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/mime.js
+// node_modules/@hono/node-server/dist/utils/stream.mjs
+const pr54206Applied = () => {
+	const [major, minor] = versions.node.split(".").map((component) => parseInt(component));
+	return major >= 23 || major === 22 && minor >= 7 || major === 20 && minor >= 18;
+};
+const useReadableToWeb = pr54206Applied();
+const createStreamBody = (stream, useNativeReadableToWeb = useReadableToWeb) => {
+	if (useNativeReadableToWeb) return Readable.toWeb(stream);
+	let controller;
+	let settled = false;
+	const cleanup = () => {
+		stream.off("data", onData);
+		stream.off("error", onError);
+		stream.off("end", onTerminate);
+		stream.off("close", onTerminate);
+	};
+	const settle = (callback) => {
+		if (settled) return;
+		settled = true;
+		cleanup();
+		callback?.();
+	};
+	const onData = (chunk) => {
+		if (settled || !controller) return;
+		controller.enqueue(chunk);
+		if ((controller.desiredSize ?? 0) <= 0) stream.pause();
+	};
+	const onError = (error) => {
+		settle(() => {
+			controller?.error(error);
+		});
+	};
+	const onTerminate = () => {
+		settle(() => {
+			controller?.close();
+		});
+	};
+	return new ReadableStream({
+		start(streamController) {
+			controller = streamController;
+			stream.on("data", onData);
+			stream.on("error", onError);
+			stream.on("end", onTerminate);
+			stream.on("close", onTerminate);
+			stream.pause();
+		},
+		pull() {
+			if (!settled) stream.resume();
+		},
+		cancel() {
+			settle();
+			const ignoreError = () => {};
+			stream.on("error", ignoreError);
+			stream.once("close", () => stream.off("error", ignoreError));
+			stream.destroy();
+		}
+	});
+};
+// node_modules/hono/dist/utils/mime.js
 /**
 * @module
 * MIME utility.
@@ -626,47 +1431,57 @@ const baseMimes = {
 	gltf: "model/gltf+json",
 	glb: "model/gltf-binary"
 };
-//#endregion
-//#region ../stts/node_modules/@hono/node-server/dist/serve-static.mjs
-var COMPRESSIBLE_CONTENT_TYPE_REGEX = /^\s*(?:text\/[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
-var ENCODINGS = {
+// node_modules/@hono/node-server/dist/serve-static.mjs
+const COMPRESSIBLE_CONTENT_TYPE_REGEX = /^\s*(?:text\/[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
+const ENCODINGS = {
 	br: ".br",
 	zstd: ".zst",
 	gzip: ".gz"
 };
-var ENCODINGS_ORDERED_KEYS = Object.keys(ENCODINGS);
-var pr54206Applied = () => {
-	const [major, minor] = versions.node.split(".").map((component) => parseInt(component));
-	return major >= 23 || major === 22 && minor >= 7 || major === 20 && minor >= 18;
-};
-var useReadableToWeb = pr54206Applied();
-var createStreamBody = (stream) => {
-	if (useReadableToWeb) return Readable.toWeb(stream);
-	return new ReadableStream({
-		start(controller) {
-			stream.on("data", (chunk) => {
-				controller.enqueue(chunk);
-			});
-			stream.on("error", (err) => {
-				controller.error(err);
-			});
-			stream.on("end", () => {
-				controller.close();
-			});
-		},
-		cancel() {
-			stream.destroy();
-		}
-	});
-};
-var getStats = (path) => {
+const ENCODINGS_ORDERED_KEYS = Object.keys(ENCODINGS);
+const getStats = (path) => {
 	let stats;
 	try {
-		stats = statSync$1(path);
+		stats = statSync(path);
 	} catch {}
 	return stats;
 };
-var tryDecode$1 = (str, decoder) => {
+const BYTE_RANGE_PATTERN = /^(?:bytes=)?(?!-$)(\d*)-(\d*)$/;
+const parseByteRange = (range) => {
+	const match = range.match(BYTE_RANGE_PATTERN);
+	if (!match) return;
+	const [, start, end] = match;
+	if (start === "") return {
+		type: "suffix",
+		length: Number(end)
+	};
+	if (end === "") return {
+		type: "open-ended",
+		start: Number(start)
+	};
+	return {
+		type: "bounded",
+		start: Number(start),
+		end: Number(end)
+	};
+};
+const resolveByteRange = (spec, size) => {
+	if (size === 0) return;
+	if (spec.type === "suffix") {
+		if (spec.length === 0) return;
+		return {
+			start: Math.max(size - spec.length, 0),
+			end: size - 1
+		};
+	}
+	const end = spec.type === "bounded" ? Math.min(spec.end, size - 1) : size - 1;
+	if (spec.start >= size || spec.start > end) return;
+	return {
+		start: spec.start,
+		end
+	};
+};
+const tryDecode$1 = (str, decoder) => {
 	try {
 		return decoder(str);
 	} catch {
@@ -679,27 +1494,29 @@ var tryDecode$1 = (str, decoder) => {
 		});
 	}
 };
-var tryDecodeURI$1 = (str) => tryDecode$1(str, decodeURI);
-var serveStatic = (options = { root: "" }) => {
+const tryDecodeURI = (str) => tryDecode$1(str, decodeURI);
+const serveStatic = (options = { root: "" }) => {
 	const root = options.root || "";
 	const optionPath = options.path;
-	if (root !== "" && !existsSync$1(root)) console.error(`serveStatic: root path '${root}' is not found, are you sure it's correct?`);
+	if (root !== "" && !existsSync(root)) console.error(`serveStatic: root path '${root}' is not found, are you sure it's correct?`);
 	return async (c, next) => {
 		if (c.finalized) return next();
+		if (c.req.method !== "GET" && c.req.method !== "HEAD") return next();
 		let filename;
 		if (optionPath) filename = optionPath;
 		else try {
-			filename = tryDecodeURI$1(c.req.path);
+			filename = tryDecodeURI(c.req.path);
+			if (c.req.path.includes("%") && (!options.allowPercentInPath || filename !== c.req.path.replace(/%25/g, "%"))) throw new Error();
 			if (/(?:^|[\/\\])\.{1,2}(?:$|[\/\\])|[\/\\]{2,}|\\/.test(filename)) throw new Error();
 		} catch {
 			await options.onNotFound?.(c.req.path, c);
 			return next();
 		}
-		let path = join$1(root, !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename, c) : filename);
+		let path = join(root, !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename, c) : filename);
 		let stats = getStats(path);
 		if (stats && stats.isDirectory()) {
 			const indexFile = options.index ?? "index.html";
-			path = join$1(path, indexFile);
+			path = join(path, indexFile);
 			stats = getStats(path);
 		}
 		if (!stats) {
@@ -708,7 +1525,7 @@ var serveStatic = (options = { root: "" }) => {
 		}
 		const mimeType = getMimeType(path);
 		c.header("Content-Type", mimeType || "application/octet-stream");
-		if (options.precompressed && (!mimeType || COMPRESSIBLE_CONTENT_TYPE_REGEX.test(mimeType))) {
+		if (options.precompressed && (!mimeType || mimeType === "application/octet-stream" || COMPRESSIBLE_CONTENT_TYPE_REGEX.test(mimeType))) {
 			const acceptEncodingSet = new Set(c.req.header("Accept-Encoding")?.split(",").map((encoding) => encoding.trim()));
 			for (const encoding of ENCODINGS_ORDERED_KEYS) {
 				if (!acceptEncodingSet.has(encoding)) continue;
@@ -725,7 +1542,8 @@ var serveStatic = (options = { root: "" }) => {
 		let result;
 		const size = stats.size;
 		const range = c.req.header("range") || "";
-		if (c.req.method == "HEAD" || c.req.method == "OPTIONS") {
+		c.header("Last-Modified", stats.mtime.toUTCString());
+		if (c.req.method === "HEAD") {
 			c.header("Content-Length", size.toString());
 			c.status(200);
 			result = c.body(null);
@@ -734,50 +1552,30 @@ var serveStatic = (options = { root: "" }) => {
 			result = c.body(createStreamBody(createReadStream(path)), 200);
 		} else {
 			c.header("Accept-Ranges", "bytes");
-			c.header("Date", stats.birthtime.toUTCString());
-			const parts = range.replace(/bytes=/, "").split("-", 2);
-			const start = parseInt(parts[0], 10) || 0;
-			let end = parseInt(parts[1], 10) || size - 1;
-			if (size < end - start + 1) end = size - 1;
-			const chunksize = end - start + 1;
-			const stream = createReadStream(path, {
-				start,
-				end
-			});
-			c.header("Content-Length", chunksize.toString());
-			c.header("Content-Range", `bytes ${start}-${end}/${stats.size}`);
-			result = c.body(createStreamBody(stream), 206);
+			const resolvedRange = resolveByteRange(parseByteRange(range) ?? {
+				type: "open-ended",
+				start: 0
+			}, size);
+			if (!resolvedRange) {
+				c.header("Content-Range", `bytes */${size}`);
+				result = c.body(null, 416);
+			} else {
+				const { start, end } = resolvedRange;
+				const chunkSize = end - start + 1;
+				const stream = createReadStream(path, {
+					start,
+					end
+				});
+				c.header("Content-Length", chunkSize.toString());
+				c.header("Content-Range", `bytes ${start}-${end}/${size}`);
+				result = c.body(createStreamBody(stream), 206);
+			}
 		}
 		await options.onFound?.(path, c);
 		return result;
 	};
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/helper/websocket/index.js
-/**
-* Create a WebSocket adapter/helper
-*/
-const defineWebSocketHelper = (handler) => {
-	return ((...args) => {
-		if (typeof args[0] === "function") {
-			const [createEvents, options] = args;
-			return async function upgradeWebSocket(c, next) {
-				const result = await handler(c, await createEvents(c), options);
-				if (result) return result;
-				await next();
-			};
-		} else {
-			const [c, events, options] = args;
-			return (async () => {
-				const upgraded = await handler(c, events, options);
-				if (!upgraded) throw new Error("Failed to upgrade WebSocket");
-				return upgraded;
-			})();
-		}
-	});
-};
-//#endregion
-//#region ../stts/node_modules/ws/lib/constants.js
+// node_modules/ws/lib/constants.js
 var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const BINARY_TYPES = [
 		"nodebuffer",
@@ -799,8 +1597,7 @@ var require_constants = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		NOOP: () => {}
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/buffer-util.js
+// node_modules/ws/lib/buffer-util.js
 var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { EMPTY_BUFFER } = require_constants();
 	const FastBuffer = Buffer[Symbol.species];
@@ -899,8 +1696,7 @@ var require_buffer_util = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		};
 	} catch (e) {}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/limiter.js
+// node_modules/ws/lib/limiter.js
 var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const kDone = Symbol("kDone");
 	const kRun = Symbol("kRun");
@@ -950,8 +1746,7 @@ var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 	module.exports = Limiter;
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/permessage-deflate.js
+// node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const zlib = __require("zlib");
 	const bufferUtil = require_buffer_util();
@@ -1286,8 +2081,7 @@ var require_permessage_deflate = /* @__PURE__ */ __commonJSMin(((exports, module
 		this[kCallback](err);
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/validation.js
+// node_modules/ws/lib/validation.js
 var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { isUtf8 } = __require("buffer");
 	const { hasBlob } = require_constants();
@@ -1482,8 +2276,7 @@ var require_validation = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		};
 	} catch (e) {}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/receiver.js
+// node_modules/ws/lib/receiver.js
 var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { Writable } = __require("stream");
 	const PerMessageDeflate = require_permessage_deflate();
@@ -1945,10 +2738,9 @@ var require_receiver = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	};
 	module.exports = Receiver;
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/sender.js
+// node_modules/ws/lib/sender.js
 var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const { Duplex: Duplex$3 } = __require("stream");
+	const { Duplex } = __require("stream");
 	const { randomFillSync } = __require("crypto");
 	const { types: { isUint8Array } } = __require("util");
 	const PerMessageDeflate = require_permessage_deflate();
@@ -2443,8 +3235,7 @@ var require_sender = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		sender.onerror(err);
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/event-target.js
+// node_modules/ws/lib/event-target.js
 var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { kForOnEventAttribute, kListener } = require_constants();
 	const kCode = Symbol("kCode");
@@ -2674,8 +3465,7 @@ var require_event_target = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		else listener.call(thisArg, event);
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/extension.js
+// node_modules/ws/lib/extension.js
 var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -2820,17 +3610,16 @@ var require_extension = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		parse
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/websocket.js
+// node_modules/ws/lib/websocket.js
 var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const EventEmitter$2 = __require("events");
+	const EventEmitter = __require("events");
 	const https = __require("https");
-	const http$1 = __require("http");
-	const net$1 = __require("net");
+	const http = __require("http");
+	const net = __require("net");
 	const tls = __require("tls");
-	const { randomBytes, createHash: createHash$1 } = __require("crypto");
-	const { Duplex: Duplex$2, Readable: Readable$1 } = __require("stream");
-	const { URL: URL$1 } = __require("url");
+	const { randomBytes, createHash } = __require("crypto");
+	const { Duplex, Readable } = __require("stream");
+	const { URL } = __require("url");
 	const PerMessageDeflate = require_permessage_deflate();
 	const Receiver = require_receiver();
 	const Sender = require_sender();
@@ -2853,7 +3642,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*
 	* @extends EventEmitter
 	*/
-	var WebSocket = class WebSocket extends EventEmitter$2 {
+	var WebSocket = class WebSocket extends EventEmitter {
 		/**
 		* Create a new `WebSocket`.
 		*
@@ -3379,9 +4168,9 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		websocket._closeTimeout = opts.closeTimeout;
 		if (!protocolVersions.includes(opts.protocolVersion)) throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`);
 		let parsedUrl;
-		if (address instanceof URL$1) parsedUrl = address;
+		if (address instanceof URL) parsedUrl = address;
 		else try {
-			parsedUrl = new URL$1(address);
+			parsedUrl = new URL(address);
 		} catch {
 			throw new SyntaxError(`Invalid URL: ${address}`);
 		}
@@ -3404,7 +4193,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 		const defaultPort = isSecure ? 443 : 80;
 		const key = randomBytes(16).toString("base64");
-		const request = isSecure ? https.request : http$1.request;
+		const request = isSecure ? https.request : http.request;
 		const protocolSet = /* @__PURE__ */ new Set();
 		let perMessageDeflate;
 		opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
@@ -3489,7 +4278,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				req.abort();
 				let addr;
 				try {
-					addr = new URL$1(location, address);
+					addr = new URL(location, address);
 				} catch (e) {
 					emitErrorAndClose(websocket, /* @__PURE__ */ new SyntaxError(`Invalid URL: ${location}`));
 					return;
@@ -3506,7 +4295,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				abortHandshake(websocket, socket, "Invalid Upgrade header");
 				return;
 			}
-			const digest = createHash$1("sha1").update(key + GUID).digest("base64");
+			const digest = createHash("sha1").update(key + GUID).digest("base64");
 			if (res.headers["sec-websocket-accept"] !== digest) {
 				abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
 				return;
@@ -3582,7 +4371,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*/
 	function netConnect(options) {
 		options.path = options.socketPath;
-		return net$1.connect(options);
+		return net.connect(options);
 	}
 	/**
 	* Create a `tls.TLSSocket` and initiate a connection.
@@ -3593,7 +4382,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*/
 	function tlsConnect(options) {
 		options.path = void 0;
-		if (!options.servername && options.servername !== "") options.servername = net$1.isIP(options.host) ? "" : options.host;
+		if (!options.servername && options.servername !== "") options.servername = net.isIP(options.host) ? "" : options.host;
 		return tls.connect(options);
 	}
 	/**
@@ -3819,11 +4608,10 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/stream.js
+// node_modules/ws/lib/stream.js
 var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	require_websocket();
-	const { Duplex: Duplex$1 } = __require("stream");
+	const { Duplex } = __require("stream");
 	/**
 	* Emits the `'close'` event on a stream.
 	*
@@ -3862,7 +4650,7 @@ var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	*/
 	function createWebSocketStream(ws, options) {
 		let terminateOnDestroy = true;
-		const duplex = new Duplex$1({
+		const duplex = new Duplex({
 			...options,
 			autoDestroy: false,
 			emitClose: false,
@@ -3935,8 +4723,7 @@ var require_stream = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = createWebSocketStream;
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/subprotocol.js
+// node_modules/ws/lib/subprotocol.js
 var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { tokenChars } = require_validation();
 	/**
@@ -3974,10 +4761,9 @@ var require_subprotocol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = { parse };
 }));
-//#endregion
-//#region ../stts/node_modules/ws/lib/websocket-server.js
+// node_modules/ws/lib/websocket-server.js
 var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const EventEmitter$1 = __require("events");
+	const EventEmitter = __require("events");
 	const http = __require("http");
 	const { Duplex } = __require("stream");
 	const { createHash } = __require("crypto");
@@ -3995,7 +4781,7 @@ var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) 
 	*
 	* @extends EventEmitter
 	*/
-	var WebSocketServer = class extends EventEmitter$1 {
+	var WebSocketServer = class extends EventEmitter {
 		/**
 		* Create a `WebSocketServer` instance.
 		*
@@ -4369,8 +5155,7 @@ require_sender();
 require_subprotocol();
 require_websocket();
 var import_websocket_server = /* @__PURE__ */ __toESM(require_websocket_server(), 1);
-//#endregion
-//#region ../stts/node_modules/@hono/node-ws/dist/index.js
+// node_modules/@hono/node-ws/dist/index.mjs
 /**
 * @link https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 */
@@ -4393,6 +5178,31 @@ const CloseEvent = globalThis.CloseEvent ?? class extends Event {
 const generateConnectionSymbol = () => Symbol("connection");
 /** @example `c.env[CONNECTION_SYMBOL_KEY]` */
 const CONNECTION_SYMBOL_KEY = Symbol("CONNECTION_SYMBOL_KEY");
+const rejectUpgradeRequest = (socket, status) => {
+	if (socket.destroyed) return;
+	socket.end(`HTTP/1.1 ${status.toString()} ${STATUS_CODES[status] ?? ""}\r\nConnection: close\r
+Content-Length: 0\r
+\r
+`);
+};
+const validateRequestTarget = (target) => {
+	const backslash = target.indexOf("\\");
+	if (backslash !== -1) {
+		const query = target.indexOf("?");
+		if (query === -1 || backslash < query) throw new Error("Backslash in request path");
+	}
+};
+const createUpgradeUrl = (request, baseUrl) => {
+	const target = request.url ?? "/";
+	validateRequestTarget(target);
+	if (target.startsWith("http://") || target.startsWith("https://")) return new URL(target);
+	if (target[0] !== "/") throw new Error("Invalid request target");
+	if (baseUrl) return new URL(new URL(baseUrl).origin + target);
+	const protocol = request.socket.encrypted ? "https" : "http";
+	const base = new URL(`${protocol}://${request.headers.host ?? "localhost"}`);
+	if (base.username || base.password || base.pathname !== "/" || base.search || base.hash) throw new Error("Invalid host header");
+	return new URL(base.origin + target);
+};
 /**
 * Create WebSockets for Node.js
 * @param init Options
@@ -4408,10 +5218,18 @@ const createNodeWebSocket = (init) => {
 			waiterMap.delete(request);
 		}
 	});
+	const rejectWaiter = (request) => {
+		const waiter = waiterMap.get(request);
+		if (waiter) {
+			waiterMap.delete(request);
+			waiter.reject(/* @__PURE__ */ new Error("WebSocket handshake aborted"));
+		}
+	};
 	const nodeUpgradeWebSocket = (request, connectionSymbol) => {
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
 			waiterMap.set(request, {
 				resolve,
+				reject,
 				connectionSymbol
 			});
 		});
@@ -4420,7 +5238,21 @@ const createNodeWebSocket = (init) => {
 		wss,
 		injectWebSocket(server) {
 			server.on("upgrade", async (request, socket, head) => {
-				const url = new URL(request.url ?? "/", init.baseUrl ?? "http://localhost");
+				if (request.headers.upgrade?.toLowerCase() !== "websocket") {
+					if (server.listenerCount("upgrade") === 1) rejectUpgradeRequest(socket, 400);
+					return;
+				}
+				const ignoreSocketError = () => {};
+				const reclaimWaiterOnClose = () => rejectWaiter(request);
+				socket.on("error", ignoreSocketError);
+				socket.once("close", reclaimWaiterOnClose);
+				let url;
+				try {
+					url = createUpgradeUrl(request, init.baseUrl);
+				} catch {
+					rejectUpgradeRequest(socket, 400);
+					return;
+				}
 				const headers = new Headers();
 				for (const key in request.headers) {
 					const value = request.headers[key];
@@ -4431,17 +5263,27 @@ const createNodeWebSocket = (init) => {
 					incoming: request,
 					outgoing: void 0
 				};
-				const response = await init.app.request(url, { headers }, env);
+				let response;
+				try {
+					response = await init.app.request(url, { headers }, env);
+				} catch {
+					rejectWaiter(request);
+					rejectUpgradeRequest(socket, 500);
+					return;
+				}
+				if (socket.destroyed) {
+					rejectWaiter(request);
+					return;
+				}
 				const waiter = waiterMap.get(request);
 				if (!waiter || waiter.connectionSymbol !== env[CONNECTION_SYMBOL_KEY]) {
-					socket.end(`HTTP/1.1 ${response.status.toString()} ${STATUS_CODES[response.status] ?? ""}\r\nConnection: close\r
-Content-Length: 0\r
-\r
-`);
-					waiterMap.delete(request);
+					rejectWaiter(request);
+					rejectUpgradeRequest(socket, response.status);
 					return;
 				}
 				wss.handleUpgrade(request, socket, head, (ws) => {
+					socket.off("close", reclaimWaiterOnClose);
+					socket.off("error", ignoreSocketError);
 					wss.emit("connection", ws, request);
 				});
 			});
@@ -4451,7 +5293,12 @@ Content-Length: 0\r
 			const connectionSymbol = generateConnectionSymbol();
 			c.env[CONNECTION_SYMBOL_KEY] = connectionSymbol;
 			(async () => {
-				const ws = await nodeUpgradeWebSocket(c.env.incoming, connectionSymbol);
+				let ws;
+				try {
+					ws = await nodeUpgradeWebSocket(c.env.incoming, connectionSymbol);
+				} catch {
+					return;
+				}
 				const messagesReceivedInStarting = [];
 				const bufferMessage = (data, isBinary) => {
 					messagesReceivedInStarting.push([data, isBinary]);
@@ -4479,8 +5326,8 @@ Content-Length: 0\r
 				}
 				const handleMessage = (data, isBinary) => {
 					const datas = Array.isArray(data) ? data : [data];
-					for (const data$1 of datas) try {
-						events?.onMessage?.(new MessageEvent("message", { data: isBinary ? data$1 instanceof ArrayBuffer ? data$1 : data$1.buffer.slice(data$1.byteOffset, data$1.byteOffset + data$1.byteLength) : data$1.toString("utf-8") }), ctx);
+					for (const data of datas) try {
+						events?.onMessage?.(new MessageEvent("message", { data: isBinary ? data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) : data.toString("utf-8") }), ctx);
 					} catch (e) {
 						(options?.onError ?? console.error)(e);
 					}
@@ -4512,16 +5359,14 @@ Content-Length: 0\r
 		})
 	};
 };
-//#endregion
-//#region ../stts/node_modules/escape-string-regexp/index.js
+// node_modules/escape-string-regexp/index.js
 var require_escape_string_regexp = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = (string) => {
 		if (typeof string !== "string") throw new TypeError("Expected a string");
 		return string.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&").replace(/-/g, "\\x2d");
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/ms/index.js
+// node_modules/ms/index.js
 var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Helpers.
@@ -4638,8 +5483,7 @@ var require_ms = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		return Math.round(ms / n) + " " + name + (isPlural ? "s" : "");
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/debug/src/common.js
+// node_modules/debug/src/common.js
 var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the common logic for both the Node.js and web browser
@@ -4841,8 +5685,7 @@ var require_common = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = setup;
 }));
-//#endregion
-//#region ../stts/node_modules/debug/src/browser.js
+// node_modules/debug/src/browser.js
 var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* This is the web browser implementation of `debug()`.
@@ -5037,8 +5880,7 @@ var require_browser = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/debug/src/node.js
+// node_modules/debug/src/node.js
 var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Module dependencies.
@@ -5244,8 +6086,7 @@ var require_node = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		return util.inspect(v, this.inspectOpts);
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/debug/src/index.js
+// node_modules/debug/src/index.js
 var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/**
 	* Detect Electron renderer / nwjs process, which is node, but we should
@@ -5254,8 +6095,7 @@ var require_src = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) module.exports = require_browser();
 	else module.exports = require_node();
 }));
-//#endregion
-//#region ../stts/node_modules/marky/lib/marky.cjs.js
+// node_modules/marky/lib/marky.cjs.js
 var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	var perf = typeof performance !== "undefined" && performance;
@@ -5341,8 +6181,7 @@ var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 		};
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/lighthouse-logger/index.js
+// node_modules/lighthouse-logger/index.js
 var import_escape_string_regexp = /* @__PURE__ */ __toESM(require_escape_string_regexp(), 1);
 /**
 * @license
@@ -5576,14 +6415,13 @@ Log.takeTimeEntries = () => {
 * @return {PerformanceEntry[]}
 */
 Log.getTimeEntries = () => import_marky_cjs.getEntries();
-//#endregion
-//#region ../stts/node_modules/is-docker/index.js
+// node_modules/is-docker/index.js
 var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const fs$6 = __require("fs");
+	const fs = __require("fs");
 	let isDocker;
 	function hasDockerEnv() {
 		try {
-			fs$6.statSync("/.dockerenv");
+			fs.statSync("/.dockerenv");
 			return true;
 		} catch (_) {
 			return false;
@@ -5591,7 +6429,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	function hasDockerCGroup() {
 		try {
-			return fs$6.readFileSync("/proc/self/cgroup", "utf8").includes("docker");
+			return fs.readFileSync("/proc/self/cgroup", "utf8").includes("docker");
 		} catch (_) {
 			return false;
 		}
@@ -5601,8 +6439,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		return isDocker;
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/utils.js
+// node_modules/chrome-launcher/dist/utils.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5610,7 +6447,7 @@ var require_is_docker = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 */
 var import_is_wsl = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const os = __require("os");
-	const fs$5 = __require("fs");
+	const fs = __require("fs");
 	const isDocker = require_is_docker();
 	const isWsl = () => {
 		if (process.platform !== "linux") return false;
@@ -5619,7 +6456,7 @@ var import_is_wsl = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exp
 			return true;
 		}
 		try {
-			return fs$5.readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft") ? !isDocker() : false;
+			return fs.readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft") ? !isDocker() : false;
 		} catch (_) {
 			return false;
 		}
@@ -5724,8 +6561,7 @@ function makeWin32TmpDir() {
 	const winTmpPath = process.env.TEMP || process.env.TMP || (process.env.SystemRoot || process.env.windir) + "\\temp";
 	return mkdtempSync(join$1(winTmpPath, "lighthouse."));
 }
-//#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/chrome-finder.js
+// node_modules/chrome-launcher/dist/chrome-finder.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5928,8 +6764,7 @@ function findChromeExecutables(folder) {
 	}
 	return installations;
 }
-//#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/flags.js
+// node_modules/chrome-launcher/dist/flags.js
 /**
 * @license Copyright 2017 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -5975,8 +6810,7 @@ const DEFAULT_FLAGS = [
 	"--disable-domain-reliability",
 	"--propagate-iph-for-testing"
 ];
-//#endregion
-//#region ../stts/node_modules/chrome-launcher/dist/chrome-launcher.js
+// node_modules/chrome-launcher/dist/chrome-launcher.js
 /**
 * @license Copyright 2016 Google Inc. All Rights Reserved.
 * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
@@ -6031,7 +6865,7 @@ var Launcher = class Launcher {
 		this.tmpDirandPidFileReady = false;
 		this.remoteDebuggingPipes = null;
 		this.opts = opts;
-		this.fs = moduleOverrides.fs || fs$4;
+		this.fs = moduleOverrides.fs || fs$1;
 		this.spawn = moduleOverrides.spawn || spawn;
 		Log.setLevel(defaults(this.opts.logLevel, "silent"));
 		this.startingUrl = defaults(this.opts.startingUrl, "about:blank");
@@ -6085,8 +6919,8 @@ var Launcher = class Launcher {
 		if (!_SUPPORTED_PLATFORMS.has(platform)) throw new UnsupportedPlatformError();
 		this.userDataDir = this.userDataDir || this.makeTmpDir();
 		try {
-			this.outFile = fs$4.openSync(`${this.userDataDir}/chrome-out.log`, "a");
-			this.errFile = fs$4.openSync(`${this.userDataDir}/chrome-err.log`, "a");
+			this.outFile = fs$1.openSync(`${this.userDataDir}/chrome-out.log`, "a");
+			this.errFile = fs$1.openSync(`${this.userDataDir}/chrome-err.log`, "a");
 		} catch (_) {}
 		this.setBrowserPrefs();
 		this.pidFile = `${this.userDataDir}/chrome.pid`;
@@ -6199,7 +7033,7 @@ var Launcher = class Launcher {
 				Log.log("ChromeLauncher", waitStatus);
 				const checkReady = () => {
 					if (launcher.port === 0) try {
-						const match = fs$4.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
+						const match = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
 						if (match) {
 							launcher.port = parseInt(match[1], 10);
 							Log.verbose("ChromeLauncher", `Discovered Chrome listening on port ${launcher.port}.`);
@@ -6216,7 +7050,7 @@ var Launcher = class Launcher {
 						Log.error("ChromeLauncher", err.message);
 						let stderr = "";
 						try {
-							stderr = fs$4.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
+							stderr = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
 						} catch (readErr) {
 							stderr = `Failed to read log: ${readErr.message}`;
 						}
@@ -6254,13 +7088,13 @@ var Launcher = class Launcher {
 	destroyTmp() {
 		if (this.outFile) {
 			try {
-				fs$4.closeSync(this.outFile);
+				fs$1.closeSync(this.outFile);
 			} catch (_) {}
 			delete this.outFile;
 		}
 		if (this.errFile) {
 			try {
-				fs$4.closeSync(this.errFile);
+				fs$1.closeSync(this.errFile);
 			} catch (_) {}
 			delete this.errFile;
 		}
@@ -6277,12 +7111,11 @@ var Launcher = class Launcher {
 		}
 	}
 };
-//#endregion
-//#region ../stts/node_modules/isexe/windows.js
+// node_modules/isexe/windows.js
 var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = isexe;
 	isexe.sync = sync;
-	var fs$3 = __require("fs");
+	var fs = __require("fs");
 	function checkPathExt(path, options) {
 		var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
 		if (!pathext) return true;
@@ -6299,27 +7132,26 @@ var require_windows = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		return checkPathExt(path, options);
 	}
 	function isexe(path, options, cb) {
-		fs$3.stat(path, function(er, stat) {
+		fs.stat(path, function(er, stat) {
 			cb(er, er ? false : checkStat(stat, path, options));
 		});
 	}
 	function sync(path, options) {
-		return checkStat(fs$3.statSync(path), path, options);
+		return checkStat(fs.statSync(path), path, options);
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/isexe/mode.js
+// node_modules/isexe/mode.js
 var require_mode = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = isexe;
 	isexe.sync = sync;
-	var fs$2 = __require("fs");
+	var fs = __require("fs");
 	function isexe(path, options, cb) {
-		fs$2.stat(path, function(er, stat) {
+		fs.stat(path, function(er, stat) {
 			cb(er, er ? false : checkStat(stat, options));
 		});
 	}
 	function sync(path, options) {
-		return checkStat(fs$2.statSync(path), options);
+		return checkStat(fs.statSync(path), options);
 	}
 	function checkStat(stat, options) {
 		return stat.isFile() && checkMode(stat, options);
@@ -6337,8 +7169,7 @@ var require_mode = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		return mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/isexe/index.js
+// node_modules/isexe/index.js
 var require_isexe = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	__require("fs");
 	var core;
@@ -6379,11 +7210,10 @@ var require_isexe = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 	}
 }));
-//#endregion
-//#region ../stts/node_modules/which/which.js
+// node_modules/which/which.js
 var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-	const path$3 = __require("path");
+	const path = __require("path");
 	const COLON = isWindows ? ";" : ":";
 	const isexe = require_isexe();
 	const getNotFoundError = (cmd) => Object.assign(/* @__PURE__ */ new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -6414,7 +7244,7 @@ var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			if (i === pathEnv.length) return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
 			const ppRaw = pathEnv[i];
 			const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-			const pCmd = path$3.join(pathPart, cmd);
+			const pCmd = path.join(pathPart, cmd);
 			const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
 			resolve(subStep(p, i, 0));
 		});
@@ -6438,7 +7268,7 @@ var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		for (let i = 0; i < pathEnv.length; i++) {
 			const ppRaw = pathEnv[i];
 			const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-			const pCmd = path$3.join(pathPart, cmd);
+			const pCmd = path.join(pathPart, cmd);
 			const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
 			for (let j = 0; j < pathExt.length; j++) {
 				const cur = p + pathExt[j];
@@ -6457,8 +7287,7 @@ var require_which = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = which;
 	which.sync = whichSync;
 }));
-//#endregion
-//#region ../stts/node_modules/path-key/index.js
+// node_modules/path-key/index.js
 var require_path_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const pathKey = (options = {}) => {
 		const environment = options.env || process.env;
@@ -6468,10 +7297,9 @@ var require_path_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = pathKey;
 	module.exports.default = pathKey;
 }));
-//#endregion
-//#region ../stts/node_modules/cross-spawn/lib/util/resolveCommand.js
+// node_modules/cross-spawn/lib/util/resolveCommand.js
 var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const path$2 = __require("path");
+	const path = __require("path");
 	const which = require_which();
 	const getPathKey = require_path_key();
 	function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -6486,12 +7314,12 @@ var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) =>
 		try {
 			resolved = which.sync(parsed.command, {
 				path: env[getPathKey({ env })],
-				pathExt: withoutPathExt ? path$2.delimiter : void 0
+				pathExt: withoutPathExt ? path.delimiter : void 0
 			});
 		} catch (e) {} finally {
 			if (shouldSwitchCwd) process.chdir(cwd);
 		}
-		if (resolved) resolved = path$2.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+		if (resolved) resolved = path.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
 		return resolved;
 	}
 	function resolveCommand(parsed) {
@@ -6499,8 +7327,7 @@ var require_resolveCommand = /* @__PURE__ */ __commonJSMin(((exports, module) =>
 	}
 	module.exports = resolveCommand;
 }));
-//#endregion
-//#region ../stts/node_modules/cross-spawn/lib/util/escape.js
+// node_modules/cross-spawn/lib/util/escape.js
 var require_escape = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
 	function escapeCommand(arg) {
@@ -6519,13 +7346,11 @@ var require_escape = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports.command = escapeCommand;
 	module.exports.argument = escapeArgument;
 }));
-//#endregion
-//#region ../stts/node_modules/shebang-regex/index.js
+// node_modules/shebang-regex/index.js
 var require_shebang_regex = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = /^#!(.*)/;
 }));
-//#endregion
-//#region ../stts/node_modules/shebang-command/index.js
+// node_modules/shebang-command/index.js
 var require_shebang_command = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const shebangRegex = require_shebang_regex();
 	module.exports = (string = "") => {
@@ -6537,28 +7362,26 @@ var require_shebang_command = /* @__PURE__ */ __commonJSMin(((exports, module) =
 		return argument ? `${binary} ${argument}` : binary;
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/cross-spawn/lib/util/readShebang.js
+// node_modules/cross-spawn/lib/util/readShebang.js
 var require_readShebang = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const fs$1 = __require("fs");
+	const fs = __require("fs");
 	const shebangCommand = require_shebang_command();
 	function readShebang(command) {
 		const size = 150;
 		const buffer = Buffer.alloc(size);
 		let fd;
 		try {
-			fd = fs$1.openSync(command, "r");
-			fs$1.readSync(fd, buffer, 0, size, 0);
-			fs$1.closeSync(fd);
+			fd = fs.openSync(command, "r");
+			fs.readSync(fd, buffer, 0, size, 0);
+			fs.closeSync(fd);
 		} catch (e) {}
 		return shebangCommand(buffer.toString());
 	}
 	module.exports = readShebang;
 }));
-//#endregion
-//#region ../stts/node_modules/cross-spawn/lib/parse.js
+// node_modules/cross-spawn/lib/parse.js
 var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
-	const path$1 = __require("path");
+	const path = __require("path");
 	const resolveCommand = require_resolveCommand();
 	const escape = require_escape();
 	const readShebang = require_readShebang();
@@ -6581,7 +7404,7 @@ var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		const needsShell = !isExecutableRegExp.test(commandFile);
 		if (parsed.options.forceShell || needsShell) {
 			const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-			parsed.command = path$1.normalize(parsed.command);
+			parsed.command = path.normalize(parsed.command);
 			parsed.command = escape.command(parsed.command);
 			parsed.args = parsed.args.map((arg) => escape.argument(arg, needsDoubleEscapeMetaChars));
 			parsed.args = [
@@ -6616,8 +7439,7 @@ var require_parse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	}
 	module.exports = parse;
 }));
-//#endregion
-//#region ../stts/node_modules/cross-spawn/lib/enoent.js
+// node_modules/cross-spawn/lib/enoent.js
 var require_enoent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const isWin = process.platform === "win32";
 	function notFoundError(original, syscall) {
@@ -6655,8 +7477,7 @@ var require_enoent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		notFoundError
 	};
 }));
-//#endregion
-//#region ../stts/node_modules/hono/dist/request/constants.js
+// node_modules/hono/dist/http-exception.js
 var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const cp = __require("child_process");
 	const parse = require_parse();
@@ -6679,14 +7500,65 @@ var import_cross_spawn = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(
 	module.exports._parse = parse;
 	module.exports._enoent = enoent;
 })))(), 1);
+/**
+* `HTTPException` must be used when a fatal error such as authentication failure occurs.
+*
+* @see {@link https://hono.dev/docs/api/exception}
+*
+* @param {StatusCode} status - status code of HTTPException
+* @param {HTTPExceptionOptions} options - options of HTTPException
+* @param {HTTPExceptionOptions["res"]} options.res - response of options of HTTPException
+* @param {HTTPExceptionOptions["message"]} options.message - message of options of HTTPException
+* @param {HTTPExceptionOptions["cause"]} options.cause - cause of options of HTTPException
+*
+* @example
+* ```ts
+* import { HTTPException } from 'hono/http-exception'
+*
+* // ...
+*
+* app.post('/auth', async (c, next) => {
+*   // authentication
+*   if (authorized === false) {
+*     throw new HTTPException(401, { message: 'Custom error message' })
+*   }
+*   await next()
+* })
+* ```
+*/
+var HTTPException = class extends Error {
+	res;
+	status;
+	/**
+	* Creates an instance of `HTTPException`.
+	* @param status - HTTP status code for the exception. Defaults to 500.
+	* @param options - Additional options for the exception.
+	*/
+	constructor(status = 500, options) {
+		super(options?.message, { cause: options?.cause });
+		this.res = options?.res;
+		this.status = status;
+	}
+	/**
+	* Returns the response object associated with the exception.
+	* If a response object is not provided, a new response is created with the error message and status code.
+	* @returns The response object.
+	*/
+	getResponse() {
+		if (this.res) return new Response(this.res.body, {
+			status: this.status,
+			headers: this.res.headers
+		});
+		return new Response(this.message, { status: this.status });
+	}
+};
+// node_modules/hono/dist/request/constants.js
 const GET_MATCH_RESULT = Symbol();
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/buffer.js
+// node_modules/hono/dist/utils/buffer.js
 const bufferToFormData = (arrayBuffer, contentType) => {
 	return new Response(arrayBuffer, { headers: { "Content-Type": contentType.replace(/^[^;]+/, (mediaType) => mediaType.toLowerCase()) } }).formData();
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/body.js
+// node_modules/hono/dist/utils/body.js
 const MAX_NESTED_OBJECTS = 1e4;
 const isRawRequest = (request) => "headers" in request;
 const parseBody = async (request, options = Object.create(null)) => {
@@ -6759,6 +7631,7 @@ const handleParsingAllValues = (form, key, value) => {
 * @param {BodyData} form - The form data object.
 * @param {string} key - The dot notation key.
 * @param {BodyDataValue} value - The value to assign.
+* @param {{ count: number }} state - The state object tracking nesting depth.
 */
 const handleParsingNestedValues = (form, key, value, state) => {
 	if (/(?:^|\.)__proto__\./.test(key)) return;
@@ -6779,8 +7652,7 @@ const handleParsingNestedValues = (form, key, value, state) => {
 const throwNestingLimitExceeded = () => {
 	throw new Error("Nesting limit exceeded");
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/url.js
+// node_modules/hono/dist/utils/url.js
 const splitPath = (path) => {
 	const paths = path.split("/");
 	if (paths[0] === "") paths.shift();
@@ -6852,16 +7724,7 @@ const tryDecode = (str, decoder) => {
 		});
 	}
 };
-/**
-* Try to apply decodeURI() to given string.
-* If it fails, skip invalid percent encoding or invalid UTF-8 sequences, and apply decodeURI() to the rest as much as possible.
-* @param str The string to decode.
-* @returns The decoded string that sometimes contains undecodable percent encoding.
-* @example
-* tryDecodeURI('Hello%20World') // 'Hello World'
-* tryDecodeURI('Hello%20World/%A4%A2') // 'Hello World/%A4%A2'
-*/
-const tryDecodeURI = (str) => tryDecode(str, decodeURI);
+const decodeURIWithPreservedPercent = (value) => decodeURI(value.includes("%25") ? value.replace(/%25/g, "%2525") : value);
 const getPath = (request) => {
 	const url = request.url;
 	const start = url.indexOf("/", url.indexOf(":") + 4);
@@ -6873,7 +7736,13 @@ const getPath = (request) => {
 			const hashIndex = url.indexOf("#", i);
 			const end = queryIndex === -1 ? hashIndex === -1 ? void 0 : hashIndex : hashIndex === -1 ? queryIndex : Math.min(queryIndex, hashIndex);
 			const path = url.slice(start, end);
-			return tryDecodeURI(path.includes("%25") ? path.replace(/%25/g, "%2525") : path);
+			const decoded = tryDecode(path, decodeURIWithPreservedPercent);
+			if (/%(?![0-9A-Fa-f]{2})/.test(path)) {
+				const rewritten = new URL("http://localhost");
+				rewritten.pathname = decoded.replace(/[\\\t\n\r]/g, encodeURIComponent);
+				if (tryDecode(rewritten.pathname, decodeURIWithPreservedPercent) !== decoded) return tryDecode(path.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"), decodeURIWithPreservedPercent);
+			}
+			return decoded;
 		} else if (charCode === 63 || charCode === 35) break;
 	}
 	return url.slice(start, i);
@@ -6924,17 +7793,22 @@ const _getQueryParam = (url, key, multiple) => {
 	const hashIndex = url.indexOf("#", 8);
 	if (hashIndex !== -1) url = url.slice(0, hashIndex);
 	let encoded;
-	if (!multiple && key && key.indexOf("%") === -1 && key.indexOf("+") === -1) {
-		let keyIndex = url.indexOf("?", 8);
+	if (!multiple && key && !/[%+&=]/.test(key)) {
+		const queryIndex = url.indexOf("?", 8);
+		let keyIndex = queryIndex;
 		if (keyIndex === -1) return;
 		if (!url.startsWith(key, keyIndex + 1)) keyIndex = url.indexOf(`&${key}`, keyIndex + 1);
 		while (keyIndex !== -1) {
 			const trailingKeyCode = url.charCodeAt(keyIndex + key.length + 1);
-			if (trailingKeyCode === 61) {
-				const valueIndex = keyIndex + key.length + 2;
-				const endIndex = url.indexOf("&", valueIndex);
-				return _decodeURI(url.slice(valueIndex, endIndex === -1 ? void 0 : endIndex));
-			} else if (trailingKeyCode == 38 || isNaN(trailingKeyCode)) return "";
+			if (trailingKeyCode === 61 || trailingKeyCode === 38 || isNaN(trailingKeyCode)) {
+				if (keyIndex > queryIndex && /(?:^|&)[^=&]*[%+]/.test(url.slice(queryIndex + 1, keyIndex))) break;
+				if (trailingKeyCode === 61) {
+					const valueIndex = keyIndex + key.length + 2;
+					const endIndex = url.indexOf("&", valueIndex);
+					return _decodeURI(url.slice(valueIndex, endIndex === -1 ? void 0 : endIndex));
+				}
+				return "";
+			}
 			keyIndex = url.indexOf(`&${key}`, keyIndex + 1);
 		}
 		encoded = /[%+]/.test(url);
@@ -6969,8 +7843,7 @@ const getQueryParams = (url, key) => {
 	return _getQueryParam(url, key, true);
 };
 const decodeURIComponent_ = decodeURIComponent;
-//#endregion
-//#region ../stts/node_modules/hono/dist/request.js
+// node_modules/hono/dist/request.js
 var HonoRequest = class {
 	/**
 	* `.raw` can get the raw Request object.
@@ -7239,8 +8112,7 @@ var HonoRequest = class {
 		return this.#matchResult[0].map(([[, route]]) => route)[this.routeIndex].path;
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/html.js
+// node_modules/hono/dist/utils/html.js
 /**
 * @module
 * HTML utility.
@@ -7273,8 +8145,7 @@ const resolveCallback = async (str, phase, preserveCallbacks, context, buffer) =
 	if (preserveCallbacks) return raw(await resStr, callbacks);
 	else return resStr;
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/context.js
+// node_modules/hono/dist/context.js
 const TEXT_PLAIN = "text/plain; charset=UTF-8";
 const setDefaultContentType = (contentType, headers) => {
 	return {
@@ -7471,7 +8342,7 @@ var Context = class {
 	* ```
 	*/
 	header = (name, value, options) => {
-		if (this.finalized) this.#res = createResponseInstance(this.#res.body, this.#res);
+		if (this.finalized && !this.#res.bodyUsed) this.#res = createResponseInstance(this.#res.body, this.#res);
 		const headers = this.#res ? this.#res.headers : this.#preparedHeaders ??= new Headers();
 		if (value === void 0) headers.delete(name);
 		else if (options?.append) headers.append(name, value);
@@ -7651,8 +8522,7 @@ var Context = class {
 		return this.#notFoundHandler(this);
 	};
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/compose.js
+// node_modules/hono/dist/compose.js
 /**
 * Compose middleware functions into a single function based on `koa-compose` package.
 *
@@ -7700,8 +8570,58 @@ const compose = (middleware, onError, onNotFound) => {
 		}
 	};
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router.js
+// node_modules/hono/dist/helper/route/index.js
+/**
+* Get matched routes in the handler
+*
+* @param {Context} c - The context object
+* @returns An array of matched routes
+*
+* @example
+* ```ts
+* import { matchedRoutes } from 'hono/route'
+*
+* app.use('*', async function logger(c, next) {
+*   await next()
+*   matchedRoutes(c).forEach(({ handler, method, path }, i) => {
+*     const name = handler.name || (handler.length < 2 ? '[handler]' : '[middleware]')
+*     console.log(
+*       method,
+*       ' ',
+*       path,
+*       ' '.repeat(Math.max(10 - path.length, 0)),
+*       name,
+*       i === c.req.routeIndex ? '<- respond from here' : ''
+*     )
+*   })
+* })
+* ```
+*/
+const matchedRoutes = (c) => c.req[GET_MATCH_RESULT][0].map(([[, route]]) => route);
+/**
+* Get the route path registered within the handler
+*
+* @param {Context} c - The context object
+* @param {number} index - The index of the route from which to retrieve the path, similar to Array.prototype.at(), where a negative number is the index counted from the end of the matching route. Defaults to the current route index.
+* @returns The route path registered within the handler
+*
+* @example
+* ```ts
+* import { routePath } from 'hono/route'
+*
+* app.use('*', (c, next) => {
+*   console.log(routePath(c)) // '*'
+*   console.log(routePath(c, -1)) // '/posts/:id'
+*   return next()
+* })
+*
+* app.get('/posts/:id', (c) => {
+*   return c.text(routePath(c)) // '/posts/:id'
+* })
+* ```
+*/
+const routePath = (c, index) => matchedRoutes(c).at(index ?? c.req.routeIndex)?.path ?? "";
+// node_modules/hono/dist/router.js
 /**
 * Array of supported HTTP methods.
 */
@@ -7722,14 +8642,57 @@ const MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher 
 * Error class representing an unsupported path error.
 */
 var UnsupportedPathError = class extends Error {};
-//#endregion
-//#region ../stts/node_modules/hono/dist/utils/constants.js
+// node_modules/hono/dist/utils/constants.js
 /**
 * Constant used to mark a composed handler.
 */
 const COMPOSED_HANDLER = "__COMPOSED_HANDLER";
-//#endregion
-//#region ../stts/node_modules/hono/dist/hono-base.js
+// node_modules/hono/dist/utils/mount.js
+const countTrailingSlashes = (path) => {
+	let index = path.length;
+	while (index > 0 && path.charCodeAt(index - 1) === 47) index--;
+	return path.length - index;
+};
+const getPathPrefixLength = (c, pathPrefix, routePath) => {
+	if (!/[:*]/.test(pathPrefix)) return pathPrefix.length;
+	const path = c.req.path;
+	const matchResult = c.req[GET_MATCH_RESULT];
+	const paramNames = /* @__PURE__ */ new Set();
+	let length = 0;
+	for (const part of splitRoutingPath(pathPrefix)) {
+		if (part[0] === ":" && part.endsWith("}?")) throw new Error(`mount(): Optional regular expression parameters are not supported in "${routePath}".`);
+		const pattern = getPattern(part);
+		if (pattern && pattern !== "*") {
+			const name = pattern[1];
+			if (paramNames.has(name)) throw new Error(`mount(): Duplicate path parameter "${name}" in "${routePath}".`);
+			paramNames.add(name);
+		}
+		if (pattern && pattern !== "*" && pattern[2] !== true) {
+			const value = matchResult.length === 2 ? matchResult[1][matchResult[0][c.req.routeIndex][1][pattern[1]]] : matchResult[0][c.req.routeIndex][1][pattern[1]];
+			length += value.length + 1;
+		} else if (pattern || part.endsWith("*")) {
+			const end = path.indexOf("/", length + 1);
+			length = end === -1 ? path.length : end;
+		} else length += part.length + 1;
+	}
+	return length;
+};
+const createMountedRequest = (c, pathPrefix, routePath) => {
+	if (/[^/]\*$/.test(routePath)) throw new Error(`mount(): Wildcard must follow "/" in "${routePath}".`);
+	const prefixLength = getPathPrefixLength(c, pathPrefix, routePath);
+	const path = c.req.path.slice(prefixLength) || "/";
+	if (prefixLength > c.req.path.length || path[0] !== "/" || /\/(?:\.|%2e){1,2}(?:\/|$)/i.test(path)) throw new HTTPException(400, { message: "Invalid mounted path" });
+	const rawUrl = c.req.raw.url;
+	if (/^[^/?#]*\/\/[^/?#\\]*[?#\\]/.test(rawUrl)) throw new HTTPException(400, { message: "Invalid mounted path" });
+	const rawPathEnd = rawUrl.search(/[?#]/);
+	const rawTrailingSlashes = countTrailingSlashes(rawPathEnd === -1 ? rawUrl : rawUrl.slice(0, rawPathEnd));
+	if (rawTrailingSlashes > 1 && countTrailingSlashes(c.req.path) === rawTrailingSlashes - 1) throw new HTTPException(400, { message: "Invalid mounted path" });
+	const url = new URL(rawUrl);
+	url.pathname = path.replace(/[\\\t\n\r]/g, encodeURIComponent);
+	if (path.includes("%")) {}
+	return new Request(url, c.req.raw);
+};
+// node_modules/hono/dist/hono-base.js
 /**
 * @module
 * This module is the base module for the Hono object.
@@ -7909,6 +8872,8 @@ var Hono$1 = class Hono {
 	* @param {Function} applicationHandler - other Request Handler
 	* @param {MountOptions} [options] - options of `.mount()`
 	* @returns {Hono} mounted Hono instance
+	* @throws {Error} If automatic request rewriting encounters duplicate path parameter names or an optional regular expression parameter.
+	* @throws {HTTPException} With status 400 if automatic request rewriting cannot safely preserve the routed path.
 	*
 	* @example
 	* ```ts
@@ -7953,17 +8918,12 @@ var Hono$1 = class Hono {
 			} catch {}
 			return [c.env, executionContext];
 		};
-		replaceRequest ||= (() => {
-			const mergedPath = mergePath(this._basePath, path);
-			const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
-			return (request) => {
-				const url = new URL(request.url);
-				url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
-				return new Request(url, request);
-			};
-		})();
+		const defaultReplaceRequest = (c) => {
+			const mountedRoutePath = routePath(c);
+			return createMountedRequest(c, mountedRoutePath.replace(/\/?\*$/, ""), mountedRoutePath);
+		};
 		const handler = async (c, next) => {
-			const res = await applicationHandler(replaceRequest(c.req.raw), ...getOptions(c));
+			const res = await applicationHandler(replaceRequest ? replaceRequest(c.req.raw) : defaultReplaceRequest(c), ...getOptions(c));
 			if (res) return res;
 			await next();
 		};
@@ -8072,11 +9032,9 @@ var Hono$1 = class Hono {
 		});
 	};
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/utils.js
+// node_modules/hono/dist/router/utils.js
 const createNullObject = () => Object.create(null);
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// node_modules/hono/dist/router/reg-exp-router/matcher.js
 const emptyParam = [];
 function match(method, path) {
 	const matchers = this.buildAllMatchers();
@@ -8092,10 +9050,10 @@ function match(method, path) {
 	this.match = match;
 	return match(method, path);
 }
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/node.js
+// node_modules/hono/dist/router/reg-exp-router/node.js
 const LABEL_REG_EXP_STR = "[^/]+";
-const TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
+const ONLY_WILDCARD_REG_EXP_STR = "[^]*";
+const TAIL_WILDCARD_REG_EXP_STR = "(?:|/[^]*)";
 const PATH_ERROR = Symbol();
 const regExpMetaChars = /* @__PURE__ */ new Set(".\\+*[^]$()");
 /**
@@ -8108,8 +9066,8 @@ const regExpMetaChars = /* @__PURE__ */ new Set(".\\+*[^]$()");
 function compareKey(a, b) {
 	if (a.length === 1) return b.length === 1 ? a < b ? -1 : 1 : -1;
 	if (b.length === 1) return 1;
-	if (a === ".*" || a === "(?:|/.*)") return b === "(?:|/.*)" ? -1 : 1;
-	else if (b === ".*" || b === "(?:|/.*)") return -1;
+	if (a === "[^]*" || a === "(?:|/[^]*)") return b === "[^]*" ? -1 : 1;
+	else if (b === "[^]*" || b === "(?:|/[^]*)") return -1;
 	if (a === "[^/]+") return 1;
 	else if (b === "[^/]+") return -1;
 	return a.length === b.length ? a < b ? -1 : 1 : b.length - a.length;
@@ -8118,14 +9076,14 @@ var Node$1 = class Node {
 	#index;
 	#varIndex;
 	#children = createNullObject();
-	insert(tokens, index, paramMap, context, isStatic) {
+	insert(tokens, index, paramMap, context, keys) {
 		let node = this;
 		for (let i = 0, len = tokens.length; i < len; i++) {
 			const token = tokens[i];
 			const pattern = token.length === 1 ? token === "*" ? i === len - 1 ? [
 				"",
 				"",
-				".*"
+				ONLY_WILDCARD_REG_EXP_STR
 			] : [
 				"",
 				"",
@@ -8140,15 +9098,16 @@ var Node$1 = class Node {
 				const name = pattern[1];
 				let regexpStr = pattern[2] || "[^/]+";
 				if (name && pattern[2]) {
-					if (regexpStr === ".*") throw PATH_ERROR;
+					if (new RegExp(regexpStr).test("")) throw PATH_ERROR;
 					regexpStr = regexpStr.replace(/^\((?!\?:)(?=[^)]+\)$)/, "(?:");
 					if (/\((?!\?:)/.test(regexpStr)) throw PATH_ERROR;
 					if (regexpStr.length === 1 && regExpMetaChars.has(regexpStr)) throw PATH_ERROR;
 				}
+				keys.push(regexpStr);
 				nextNode = node.#children[regexpStr];
 				if (!nextNode) {
-					if (regexpStr !== ".*" && regexpStr !== "(?:|/.*)") {
-						for (const k in node.#children) if ((regexpStr.length > 1 || k.length > 1) && k !== ".*" && k !== "(?:|/.*)") throw PATH_ERROR;
+					if (regexpStr !== "[^]*" && regexpStr !== "(?:|/[^]*)") {
+						for (const k in node.#children) if ((regexpStr.length > 1 || k.length > 1) && k !== "[^]*" && k !== "(?:|/[^]*)") throw PATH_ERROR;
 					}
 					nextNode = node.#children[regexpStr] = new Node();
 				}
@@ -8157,16 +9116,17 @@ var Node$1 = class Node {
 					paramMap.push([name, nextNode.#varIndex]);
 				}
 			} else {
+				keys.push(token);
 				nextNode = node.#children[token];
 				if (!nextNode) {
-					for (const k in node.#children) if (k.length > 1 && k !== ".*" && k !== "(?:|/.*)") throw PATH_ERROR;
+					for (const k in node.#children) if (k.length > 1 && k !== "[^]*" && k !== "(?:|/[^]*)") throw PATH_ERROR;
 					nextNode = node.#children[token] = new Node();
 				}
 			}
 			node = nextNode;
 		}
 		if (node.#index !== void 0) throw PATH_ERROR;
-		node.#index = isStatic ? -1 : index;
+		node.#index = index;
 	}
 	buildRegExpStr() {
 		const strList = Object.keys(this.#children).sort(compareKey).map((k) => {
@@ -8180,16 +9140,21 @@ var Node$1 = class Node {
 		return "(?:" + strList.join("|") + ")";
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/trie.js
+// node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
 	#context = { varIndex: 0 };
 	#root = new Node$1();
 	#index = 0;
 	paths = createNullObject();
 	insert(path, isStatic) {
+		const keys = [];
 		if (isStatic) {
-			this.#root.insert(path.split(""), 0, [], this.#context, true);
+			this.#root.insert(path.split(""), -1, [], this.#context, keys);
+			this.paths[path] = [
+				-1,
+				[],
+				keys
+			];
 			return;
 		}
 		const paramAssoc = [];
@@ -8197,7 +9162,7 @@ var Trie = class {
 		let markedPath = path;
 		for (let i = 0;;) {
 			let replaced = false;
-			markedPath = markedPath.replace(/\{[^}]+\}/g, (m) => {
+			markedPath = markedPath.replace(/\{(?:\{[\d,]+\}|[^}])+\}/g, (m) => {
 				const mark = `@\\${i}`;
 				groups[i] = [mark, m];
 				i++;
@@ -8211,7 +9176,7 @@ var Trie = class {
 		*  - /* wildcard
 		*  - character
 		*/
-		const tokens = markedPath.match(/(?::[^\/]+)|(?:\/\*$)|./g) || [];
+		const tokens = markedPath.match(/(?::[^\/]+)|(?:\/\*$)|./gs) || [];
 		for (let i = groups.length - 1; i >= 0; i--) {
 			const [mark] = groups[i];
 			for (let j = tokens.length - 1; j >= 0; j--) if (tokens[j].indexOf(mark) !== -1) {
@@ -8219,8 +9184,12 @@ var Trie = class {
 				break;
 			}
 		}
-		this.#root.insert(tokens, this.#index, paramAssoc, this.#context, false);
-		this.paths[path] = [this.#index++, paramAssoc];
+		this.#root.insert(tokens, this.#index, paramAssoc, this.#context, keys);
+		this.paths[path] = [
+			this.#index++,
+			paramAssoc,
+			keys
+		];
 	}
 	buildRegExp() {
 		let regexp = this.#root.buildRegExpStr();
@@ -8250,23 +9219,22 @@ var Trie = class {
 		];
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/reg-exp-router/router.js
-let wildcardRegExpCache = createNullObject();
-function buildWildcardRegExp(path) {
-	return wildcardRegExpCache[path] ??= new RegExp(`^${path.replace(/\/:[^/{}]+(?:\{\[\^\/]\+})?(?=[/{]|$)|\/?\*$|([.\\+*[^\]$()?{}|])/g, (match, metaChar) => metaChar ? `\\${metaChar}` : match === "/*" ? TAIL_WILDCARD_REG_EXP_STR : match === "*" ? ".*" : `/:${LABEL_REG_EXP_STR}`)}$`);
+// node_modules/hono/dist/router/reg-exp-router/router.js
+function endsWithWildcard(keys) {
+	const tail = keys[keys.length - 1];
+	return tail === "[^]*" || tail === "(?:|/[^]*)";
 }
-function findMiddleware(middleware, path) {
-	for (const k of Object.keys(middleware).sort((a, b) => b.length - a.length)) if (buildWildcardRegExp(k).test(path)) return [...middleware[k]];
+function covers(wildcard, target) {
+	const last = wildcard.length - 1;
+	for (let i = 0; i < last; i++) if (wildcard[i] !== target[i]) return false;
+	return wildcard[last] === "[^]*" || target.length === last || target[last] === "/";
 }
 var RegExpRouter = class {
 	name = "RegExpRouter";
-	#middleware;
-	#routes;
+	#handlers;
 	#tries;
 	constructor() {
-		this.#middleware = { ["ALL"]: createNullObject() };
-		this.#routes = { ["ALL"]: createNullObject() };
+		this.#handlers = { ["ALL"]: [] };
 		this.#tries = { ["ALL"]: new Trie() };
 	}
 	#insertPath(method, path) {
@@ -8277,65 +9245,53 @@ var RegExpRouter = class {
 		}
 	}
 	add(method, path, handler) {
-		const middleware = this.#middleware;
-		const routes = this.#routes;
-		if (!middleware) throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
-		if (!middleware[method]) {
-			this.#tries[method] = new Trie();
-			for (const handlerMap of [middleware, routes]) {
-				handlerMap[method] = createNullObject();
-				for (const p in handlerMap["ALL"]) {
-					handlerMap[method][p] = [...handlerMap["ALL"][p]];
-					this.#insertPath(method, p);
-				}
-			}
+		const handlers = this.#handlers;
+		if (!handlers) throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
+		const tries = this.#tries;
+		if (!handlers[method]) {
+			tries[method] = new Trie();
+			handlers[method] = [...handlers["ALL"]];
+			for (const p in tries["ALL"].paths) this.#insertPath(method, p);
 		}
 		if (path === "/*") path = "*";
-		const methods = method === "ALL" ? Object.keys(middleware) : [method];
-		if (/\*$/.test(path)) {
-			const re = buildWildcardRegExp(path);
-			for (const m of methods) if (!middleware[m][path]) {
-				this.#insertPath(m, path);
-				middleware[m][path] = findMiddleware(middleware[m], path) || findMiddleware(middleware["ALL"], path) || [];
-			}
-			for (const handlerMap of [middleware, routes]) for (const m of methods) for (const p in handlerMap[m]) re.test(p) && handlerMap[m][p].push([handler, path]);
-			return;
-		}
+		const methods = method === "ALL" ? Object.keys(handlers) : [method];
 		const paths = checkOptionalParameter(path) || [path];
 		for (const path of paths) for (const m of methods) {
-			if (!routes[m][path]) {
-				this.#insertPath(m, path);
-				routes[m][path] = findMiddleware(middleware[m], path) || findMiddleware(middleware["ALL"], path) || [];
-			}
-			routes[m][path].push([handler, path]);
+			if (!tries[m].paths[path]) this.#insertPath(m, path);
+			handlers[m].push([handler, path]);
 		}
 	}
 	match = match;
 	buildAllMatchers() {
 		const matchers = createNullObject();
-		for (const method of Object.keys(this.#routes)) matchers[method] = this.#buildMatcher(method);
-		this.#middleware = this.#routes = this.#tries = void 0;
-		wildcardRegExpCache = createNullObject();
+		for (const method of Object.keys(this.#handlers)) matchers[method] = this.#buildMatcher(method);
+		this.#handlers = this.#tries = void 0;
 		return matchers;
 	}
 	#buildMatcher(method) {
-		const middleware = this.#middleware[method];
-		const routes = this.#routes[method];
+		const handlers = this.#handlers[method];
 		const trie = this.#tries[method];
 		const staticMap = createNullObject();
 		const handlerData = [];
 		const [regexp, indexReplacementMap, paramReplacementMap] = trie.buildRegExp();
-		for (const r of [middleware, routes]) for (const path in r) {
-			const handlers = r[path];
-			const pathData = trie.paths[path];
-			if (!pathData) {
-				staticMap[path] = [handlers.map(([h]) => [h, createNullObject()]), emptyParam];
-				continue;
-			}
-			handlerData[pathData[0]] = handlers.map(([h, handlerPath]) => [h, trie.paths[handlerPath][1].reduceRight((map, [key], i) => {
-				map[key] = paramReplacementMap[pathData[1][i][1]];
+		const own = createNullObject();
+		const entries = handlers.map(([h, p], i) => {
+			(own[p] ??= []).push(i);
+			return [h, trie.paths[p][1].reduceRight((map, [key, varIndex]) => {
+				map[key] = paramReplacementMap[varIndex];
 				return map;
-			}, createNullObject())]);
+			}, createNullObject())];
+		});
+		const wildcards = Object.keys(own).filter((p) => endsWithWildcard(trie.paths[p][2]));
+		for (const path in trie.paths) {
+			const [index, , keys] = trie.paths[path];
+			const indexes = [...own[path]];
+			for (const p of wildcards) if (p !== path && covers(trie.paths[p][2], keys)) indexes.push(...own[p]);
+			const data = indexes.sort((a, b) => a - b).map((i) => entries[i]);
+			if (index === -1) {
+				const last = Math.max(-1, ...data.flatMap(([, map]) => Object.values(map)));
+				staticMap[path] = [data, last === -1 ? emptyParam : path.match(regexp).slice(0, last + 1)];
+			} else handlerData[index] = data;
 		}
 		return [
 			regexp,
@@ -8344,8 +9300,7 @@ var RegExpRouter = class {
 		];
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/smart-router/router.js
+// node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
 	name = "SmartRouter";
 	#routers = [];
@@ -8391,8 +9346,7 @@ var SmartRouter = class {
 		return this.#routers[0];
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/trie-router/node.js
+// node_modules/hono/dist/router/trie-router/node.js
 const emptyParams = createNullObject();
 let order = 0;
 var Node = class Node {
@@ -8488,7 +9442,7 @@ var Node = class Node {
 						const restPathString = path.slice(partOffsets[i]);
 						const m = matcher.exec(restPathString);
 						if (m) {
-							params[name] = m[0];
+							if (!Object.hasOwn(params, name)) params[name] = m[0];
 							this.#pushHandlerSets(handlerSets, child, method, node.#params, params);
 							if (m[0].length === restPathString.length && child.#children["*"]) this.#pushHandlerSets(handlerSets, child.#children["*"], method, node.#params, params);
 							for (const _ in child.#children) {
@@ -8501,7 +9455,7 @@ var Node = class Node {
 						}
 					}
 					if (matcher === true || matcher.test(part)) {
-						params[name] = part;
+						if (!Object.hasOwn(params, name)) params[name] = part;
 						if (isLast) {
 							this.#pushHandlerSets(handlerSets, child, method, params, node.#params);
 							if (child.#children["*"]) this.#pushHandlerSets(handlerSets, child.#children["*"], method, params, node.#params);
@@ -8521,8 +9475,7 @@ var Node = class Node {
 		return [handlerSets.map(({ handler, params }) => [handler, params])];
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/router/trie-router/router.js
+// node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
 	name = "TrieRouter";
 	#node = new Node();
@@ -8533,8 +9486,7 @@ var TrieRouter = class {
 		return this.#node.search(method, path);
 	}
 };
-//#endregion
-//#region ../stts/node_modules/hono/dist/hono.js
+// node_modules/hono/dist/hono.js
 /**
 * The Hono class extends the functionality of the HonoBase class.
 * It sets up routing and allows for custom options to be passed.
@@ -8603,8 +9555,7 @@ var index_node_default = (/* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin
 		return output;
 	};
 })))(), 1)).default;
-//#endregion
-//#region ../stts/node_modules/xstate/dist/xstate-dev.esm.js
+// node_modules/xstate/dist/xstate-dev.esm.js
 function getGlobal() {
 	if (typeof globalThis !== "undefined") return globalThis;
 	if (typeof self !== "undefined") return self;
@@ -8620,8 +9571,7 @@ const devToolsAdapter = (service) => {
 	const devTools = getDevTools();
 	if (devTools) devTools.register(service);
 };
-//#endregion
-//#region ../stts/node_modules/xstate/dist/raise-97446fd4.esm.js
+// node_modules/xstate/dist/raise-97446fd4.esm.js
 var Mailbox = class {
 	constructor(_process) {
 		this._process = _process;
@@ -10586,8 +11536,7 @@ function raise(eventOrExpr, options) {
 	raise.execute = executeRaise;
 	return raise;
 }
-//#endregion
-//#region ../stts/node_modules/xstate/dist/assign-b4b1f28f.esm.js
+// node_modules/xstate/dist/assign-b4b1f28f.esm.js
 function createSpawner(actorScope, { machine, context }, event, spawnedChildren) {
 	const spawn = (src, options) => {
 		if (typeof src === "string") {
@@ -10695,8 +11644,7 @@ function assign(assignment) {
 	assign.resolve = resolveAssign;
 	return assign;
 }
-//#endregion
-//#region ../stts/node_modules/xstate/dist/StateMachine-521e1f66.esm.js
+// node_modules/xstate/dist/StateMachine-521e1f66.esm.js
 const cache = /* @__PURE__ */ new WeakMap();
 function memo$1(object, key, fn) {
 	let memoizedData = cache.get(object);
@@ -11182,8 +12130,7 @@ var StateMachine = class StateMachine {
 		return restoredSnapshot;
 	}
 };
-//#endregion
-//#region ../stts/node_modules/xstate/dist/log-ddf17a4a.esm.js
+// node_modules/xstate/dist/log-ddf17a4a.esm.js
 function resolveEmit(_, snapshot, args, actionParams, { event: eventOrExpr }) {
 	return [
 		snapshot,
@@ -11482,8 +12429,7 @@ function log(value = ({ context, event }) => ({
 	log.execute = executeLog;
 	return log;
 }
-//#endregion
-//#region ../stts/node_modules/xstate/dist/xstate.esm.js
+// node_modules/xstate/dist/xstate.esm.js
 /**
 * Creates a state machine (statechart) with the given configuration.
 *
@@ -11569,8 +12515,7 @@ function setup({ schemas, actors, actions, guards, delays }) {
 		})
 	};
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/util.js
+// node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -11877,6 +12822,17 @@ function prefixIssues(path, issues) {
 function unwrapMessage(message) {
 	return typeof message === "string" ? message : message?.message;
 }
+/** The leading size checks of `defChecks` that set an upper bound, each paired with it. */
+function sizeCaps(defChecks) {
+	const caps = [];
+	for (const ch of defChecks ?? []) {
+		const d = ch._zod.def;
+		if (!/_(length|size)$|_equals$/.test(d.check)) break;
+		const max = d.maximum ?? d.length ?? d.size;
+		if (max >= 0) caps.push([max, ch]);
+	}
+	return caps;
+}
 function attachSchema(issues, start, inst) {
 	var _a;
 	for (let i = start; i < issues.length; i++) (_a = issues[i]).schema ?? (_a.schema = inst);
@@ -11969,6 +12925,7 @@ function hide(inst, key, value) {
 	return own(inst, key, value, false);
 }
 /** Adds members a table derives from the instance: each builds on first read and shadows as own data, and assignment shadows the same way, as when these were own properties. */
+/* @__NO_SIDE_EFFECTS__ */
 function derived(computes, table) {
 	for (const key in computes) {
 		const compute = computes[key];
@@ -12092,8 +13049,7 @@ function constantCatch(value) {
 	fn[CONSTANT_CATCH] = true;
 	return fn;
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/core.js
+// node_modules/zod/v4/core/core.js
 var _a$1;
 const _zodDesc = {
 	value: void 0,
@@ -12120,6 +13076,7 @@ function newError(Definition) {
 	}
 	return new Definition();
 }
+/* @__NO_SIDE_EFFECTS__ */
 function $constructor(name, initializer, proto, params) {
 	const zodProto = {};
 	function Internals(def) {
@@ -12198,8 +13155,7 @@ function config(newConfig) {
 	if (newConfig) Object.assign(globalConfig, newConfig);
 	return globalConfig;
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/errors.js
+// node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -12250,8 +13206,7 @@ const initializer$1 = (inst, def) => {
 		});
 	}
 };
-const $ZodError = $constructor("$ZodError", initializer$1);
-$constructor("$ZodError", initializer$1, void 0, { Parent: Error });
+const $ZodError = /* @__PURE__ */ $constructor("$ZodError", initializer$1);
 /** Get-or-create `obj[key]` as an own data property. A path segment naming an inherited member
 * ("toString", "constructor") would otherwise read through to the prototype, and assigning
 * "__proto__" would hit the setter instead of creating a key. */
@@ -12314,8 +13269,7 @@ function formatError(error, mapper = (issue) => issue.message) {
 	processError(error);
 	return fieldErrors;
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/parse.js
+// node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
 	return {
 		callee: params?.callee ?? callee,
@@ -12517,8 +13471,7 @@ const _safeEncodeAsync = (_Err) => async (schema, value, _ctx) => {
 const _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
 	return _safeParseAsync(_Err)(schema, value, _ctx);
 };
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/regexes.js
+// node_modules/zod/v4/core/regexes.js
 /**
 * @deprecated CUID v1 is deprecated by its authors due to information leakage
 * (timestamps embedded in the id). Use {@link cuid2} instead.
@@ -12589,8 +13542,7 @@ const number$1 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/checks.js
+// node_modules/zod/v4/core/checks.js
 const $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -12885,8 +13837,7 @@ const $ZodCheckOverwrite = /*@__PURE__*/ $constructor("$ZodCheckOverwrite", (ins
 		payload.value = def.tx(payload.value);
 	};
 });
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/doc.js
+// node_modules/zod/v4/core/doc.js
 var Doc = class {
 	constructor(args = [], closed = {}) {
 		this.content = [];
@@ -12919,15 +13870,13 @@ var Doc = class {
 		return new F(...Object.keys(this.closed), `return function (${this.args.join(", ")}) {\n${content.join("\n")}\n};`)(...Object.values(this.closed));
 	}
 };
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/versions.js
+// node_modules/zod/v4/core/versions.js
 const version = {
 	major: 4,
 	minor: 6,
-	patch: 5
+	patch: 7
 };
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/schemas.js
+// node_modules/zod/v4/core/schemas.js
 const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -13424,6 +14373,26 @@ const $ZodNever = /*@__PURE__*/ $constructor("$ZodNever", (inst, def) => {
 		return payload;
 	};
 });
+function capSize(inst, size) {
+	const caps = sizeCaps(inst._zod.def.checks);
+	if (!caps.length) return;
+	const cap = Math.min(...caps.map((c) => c[0]));
+	const parse = inst._zod.parse;
+	inst._zod.parse = (payload, ctx) => {
+		const n = size(payload.value);
+		if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
+			for (const [max, ch] of sizeCaps(inst._zod.def.checks)) if (n > max && ch._zod.def.when(payload)) {
+				const start = payload.issues.length;
+				ch._zod.check(payload);
+				payload.issues[start].continue = false;
+				attachSchema(payload.issues, start, inst);
+				return payload;
+			}
+		}
+		return parse(payload, ctx);
+	};
+}
+const arraySize = (input) => Array.isArray(input) ? input.length : -1;
 function handleArrayResult(result, final, index) {
 	if (result.issues.length) final.issues.push(...prefixIssues(index, result.issues));
 	final.value[index] = result.value;
@@ -13461,6 +14430,7 @@ const $ZodArray = /*@__PURE__*/ $constructor("$ZodArray", (inst, def) => {
 		if (proms.length) return Promise.all(proms).then(() => payload);
 		return payload;
 	};
+	capSize(inst, arraySize);
 });
 function handlePropertyResult(result, final, key, input, optin, optout) {
 	const isPresent = key in input;
@@ -13569,7 +14539,7 @@ const $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 		}
 		return propValues;
 	});
-	const isObject$2 = isObject;
+	const isObject$1 = isObject;
 	const catchall = def.catchall;
 	let value;
 	const memo = globalConfig.memoizer;
@@ -13577,7 +14547,7 @@ const $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 	inst._zod.parse = (payload, ctx) => {
 		value ?? (value = _normalized.value);
 		const input = payload.value;
-		if (!isObject$2(input)) {
+		if (!isObject$1(input)) {
 			payload.issues.push({
 				expected: "object",
 				code: "invalid_type",
@@ -13707,7 +14677,7 @@ const $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) =>
 		return doc.compile();
 	};
 	let fastpass;
-	const isObject$1 = isObject;
+	const isObject$2 = isObject;
 	const jit = !globalConfig.jitless;
 	const fastEnabled = jit && allowsEval.value;
 	const catchall = def.catchall;
@@ -13715,7 +14685,7 @@ const $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) =>
 	inst._zod.parse = (payload, ctx) => {
 		value ?? (value = _normalized.value);
 		const input = payload.value;
-		if (!isObject$1(input)) {
+		if (!isObject$2(input)) {
 			payload.issues.push({
 				expected: "object",
 				code: "invalid_type",
@@ -14360,8 +15330,7 @@ function handleRefineResult(result, payload, input, inst) {
 		payload.issues.push(issue(_iss));
 	}
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/memoizer.js
+// node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
 	constructor() {
 		super(`Cannot parse a reference cycle that closes through a transform`);
@@ -14613,8 +15582,7 @@ function isBackEdge(ctx, value) {
 	const backEdges = ctx[STATE]?.backEdges;
 	return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/locales/en.js
+// node_modules/zod/v4/locales/en.js
 const error = () => {
 	const Sizable = {
 		string: {
@@ -14721,8 +15689,7 @@ const error = () => {
 function en_default() {
 	return { localeError: error() };
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/registries.js
+// node_modules/zod/v4/core/registries.js
 var _a;
 var $ZodRegistry = class {
 	constructor() {
@@ -14768,8 +15735,7 @@ function registry() {
 }
 (_a = globalThis).__zod_globalRegistry ?? (_a.__zod_globalRegistry = registry());
 const globalRegistry = globalThis.__zod_globalRegistry;
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/api.js
+// node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -15277,8 +16243,7 @@ function _check(fn, params) {
 	ch._zod.check = fn;
 	return ch;
 }
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/to-json-schema.js
+// node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
 	for (const source of sources) for (const key of Reflect.ownKeys(source)) if (Object.prototype.propertyIsEnumerable.call(source, key)) assignProp(target, key, source[key]);
 	return target;
@@ -15721,8 +16686,7 @@ const createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params)
 	extractDefs(ctx, schema);
 	return finalize(ctx, schema);
 };
-//#endregion
-//#region ../stts/node_modules/zod/v4/core/json-schema-processors.js
+// node_modules/zod/v4/core/json-schema-processors.js
 const narrowMin = (agg, key, value) => {
 	if (agg[key] === void 0 || value > agg[key]) agg[key] = value;
 };
@@ -16169,8 +17133,7 @@ const optionalProcessor = (schema, ctx, _json, params) => {
 	const seen = ctx.seen.get(schema);
 	seen.ref = def.innerType;
 };
-//#endregion
-//#region ../stts/node_modules/zod/v4/classic/errors.js
+// node_modules/zod/v4/classic/errors.js
 const _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
 	Object.defineProperty(proto, key, {
@@ -16219,8 +17182,7 @@ const initializer = (inst, issues) => {
 	});
 };
 const ZodRealError = /*@__PURE__*/ $constructor("ZodError", initializer, void 0, { Parent: Error });
-//#endregion
-//#region ../stts/node_modules/zod/v4/classic/parse.js
+// node_modules/zod/v4/classic/parse.js
 const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -16233,8 +17195,7 @@ const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
 const safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 const safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 const safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
-//#endregion
-//#region ../stts/node_modules/zod/v4/classic/schemas.js
+// node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
 	if (!globalConfig.localeError) config(en_default());
 }
@@ -17115,8 +18076,7 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
 	return /* @__PURE__ */ _superRefine(fn, params);
 }
-//#endregion
-//#region src/asr.ts
+// src/asr.ts
 const SAMPLE_RATE = 16e3;
 const PRE_ROLL = 8e3;
 const KEEP = 352e3;
@@ -17358,20 +18318,11 @@ const SENTINELS = [
 	STOPPED,
 	BACKGROUND_RESULT
 ];
-const ENDED_NOTE = ` If the reply is exactly ${CONVERSATION_ENDED}, the user pressed End conversation: the window has already shut down, so do not speak, do not call stt or tts again, and stop. The only other end is the user's turn saying "end call". A closed or crashed window is not an end: the next call reopens it. If the reply is exactly ${IDLE_ENDED}, the window ended voice itself after the user's idle-end setting (default 15 minutes) passed with no turn from the user and no background result, usually because you were busy: voice is dormant, not ended. Say nothing now and do not call stt. When a background result lands or you finish your work, call tts (listen=true) with the update: that reopens the window and the loop continues. If the reply starts with ${STOPPED}, the user pressed Stop on your speech only: voice continues. Call stt again at once, without speaking. It is never an end, even when it repeats: keep calling stt; only ${CONVERSATION_ENDED} or the user's turn saying "end call" ends voice.`;
-const NO_SPEECH_NOTE = ` If the reply is exactly ${NO_SPEECH}, the user has said nothing yet within idleSec: the window is still open and listening. If a background result has finished, relay it with tts (listen=true); otherwise call stt again without speaking. It never means the conversation ended. If the reply is exactly ${BACKGROUND_RESULT}, a background agent just finished: relay its result now with tts (listen=true). Anything the user was saying is kept for that listen.`;
-const CONTINUES_NOTE = ` If the reply is exactly ${LISTEN_CONTINUES}, the listen reached the tool-call time limit, usually because the user is still talking. Nothing the user said is lost: call stt again at once, without speaking, and it returns everything the user said.`;
-const NO_SLEEP_NOTE = ` Never sleep or block on another tool to wait for the user: to wait, call stt again (the default idleSec, 200, is already the longest), so you answer the moment the user stops talking. Use the default idleSec for every normal wait: a background result arrives on its own and interrupts the listen. A message the user types into the chat mid-loop (usually something too long to say) is a turn, not an exit: handle it, answer by voice, and go straight back to listening. Typing never ends the conversation.`;
-const TURN_NOTE = " Every turn starts with [turn N, heard HH:MM:SS to HH:MM:SS], or [turn N, typed ...] when the user typed it. The protocol is listen, answer that exact turn at once, listen: your next call must be tts with listen=true answering turn N; an stt before you answer is refused. If turn N needs no spoken answer (not meant for you, or your answer would only repeat your last reply), call stt with ack=N instead. Do not ask the user to finish a sentence: the window already joins a sentence cut mid-thought before returning it, never returns the same speech twice, and keeps speech said while no listen was open for the next listen, so nothing the user says is lost. The user hears a chime when the listen opens (the listen only opens after it, so a reply always comes after the chime and you never speak over it), a tick when the user's turn is captured, and a two-tone when a background result ends a listen; the window shows the same as a coloured banner. Do not announce \"listening\" or \"got it\" yourself.";
-const BARGE_NOTE = " If the user types or speaks while you are talking, your speech stops at once and the call returns the user's message as the next turn, followed by a line saying where it cut you off and, after \"unspoken:\", the words of yours the user never heard, word for word. Treat that message as an addition or a steer: answer it, then briefly repeat those unspoken words (shortened, in your own words) in the same tts, so the user does not miss them; if the line says your reply was not spoken at all, speak that reply folded together with your answer. Skip the repeat when the user said stop, abort, halt or never mind. Then continue the task you were cut off from, unless it explicitly says stop, abort, halt or never mind.";
 const bargeLine = (part, sentence, unspoken = "", started = true, word = 0) => {
 	const where = started ? `interrupted your speech at part ${part} sentence ${sentence}${word > 0 ? ` word ${word}` : ""}` : `interrupted before your reply was spoken at all (part ${part})`;
 	const rest = unspoken.trim();
 	return `(${where}: treat this as an addition and continue the cut-off task unless it says stop, abort, halt or never mind${rest ? started ? "; after answering, briefly repeat the unspoken words below unless the user said stop or never mind" : "; speak that reply folded together with your answer unless the user said stop or never mind" : ""})${rest ? `\nunspoken: ${rest}` : ""}`;
 };
-const NOTES = BARGE_NOTE + ENDED_NOTE + NO_SPEECH_NOTE + CONTINUES_NOTE + NO_SLEEP_NOTE + TURN_NOTE;
-`${NOTES}`;
-`${NOTES}`;
 const UNFINISHED_END = new Set("and or but so because cause like um uh er erm hmm the a an to of with for from in on at by into about if that which who whose when while where what how as than then also just maybe my your our their his her its is are was were be i we you he she they it's i'm thinking wondering saying guess mean know said".split(" "));
 function readsUnfinished(text) {
 	const last = text.toLowerCase().replace(/[^a-z' ]+/g, " ").trim().split(/\s+/).at(-1);
@@ -17486,8 +18437,7 @@ function parseMessage(schema, raw) {
 	const r = schema.safeParse(json);
 	return r.success ? r.data : void 0;
 }
-//#endregion
-//#region src/sentences.ts
+// src/sentences.ts
 const PART_CHARS = 1e3;
 const segmenter = new Intl.Segmenter("en", { granularity: "sentence" });
 const CLAUSE = /[,;:–—](?=\s)/g;
@@ -17646,8 +18596,7 @@ const turnsMachine = setup({
 	}
 });
 const ackGate = (c, ack) => c.answered || ack === c.id ? null : unansweredError(c.id);
-//#endregion
-//#region src/daemon.ts
+// src/daemon.ts
 const port = Number(process.env["STTS_PORT"] ?? 15986);
 const budgetMs = () => Number(process.env["STTS_REQUEST_TIMEOUT_MS"] ?? 24e4);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18630,5 +19579,4 @@ async function boot() {
 	start();
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
-//#endregion
 export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, joinHeld, liveUpdate, loadText, modelsDir, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
