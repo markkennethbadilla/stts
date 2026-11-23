@@ -35,6 +35,7 @@ import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
 import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
 import {
+  afterSent,
   BARGE_FINAL_WAIT_MS,
   BARGE_HOLD_MS,
   bargeText,
@@ -136,6 +137,7 @@ export function App() {
   // Recogniser results this session: how many there are, and how many a kept-open turn already sent.
   const resultsSeen = useRef(0);
   const consumed = useRef(0);
+  const sentLive = useRef('');
   // The most words the window showed for the turn in progress, for the turn-sent log line.
   const shownWords = useRef(0);
   // The mic level, from the browser's own Web Audio analyser: when his voice was last above the
@@ -346,6 +348,9 @@ export function App() {
           // The mic stays open after every turn: results sent so far belong to this turn, later ones
           // to the join or to the next listen (the daemon holds them).
           consumed.current = resultsSeen.current;
+          // Sent on interim words: their slot's final still comes, and its words past them are his tail.
+          sentLive.current = liveWords.current;
+          if (sentLive.current) consumed.current -= 1;
           // The end-of-speech stage, measured: last words to turn sent.
           // Word counts only, never the words: a turn shorter than what the window showed was the
           // recogniser revising itself, or a drop to fix (2026-10-06 11:32, "is it" -> "it's").
@@ -655,7 +660,12 @@ export function App() {
       // Results already sent in a kept-open turn are skipped, or their words would repeat.
       for (let i = Math.max(e.resultIndex, consumed.current); i < e.results.length; i++) {
         const res = e.results[i];
-        const t = res?.[0]?.transcript ?? '';
+        let t = res?.[0]?.transcript ?? '';
+        if (res?.isFinal && i === consumed.current && sentLive.current) {
+          t = afterSent(t, sentLive.current);
+          sentLive.current = '';
+          consumed.current = i + 1;
+        }
         if (res?.isFinal) final = `${final} ${t}`.trim();
         else live += t;
       }

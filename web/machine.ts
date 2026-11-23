@@ -10,7 +10,7 @@ export const CLIPS_AHEAD = 3;
  * interim through a 12 s pause, so only finals arming made every cloud turn wait for the 60 s
  * session end (real Chrome test, 2026-10-06). Interim words unchanged for hold + this are a turn.
  */
-export const INTERIM_EXTRA_MS = 500;
+export const INTERIM_EXTRA_MS = 200;
 export const MAX_TALK_HOLD_MS = 6_000;
 export const WATCHDOG_MS = 2000;
 export const MAX_BACKOFF_MS = 2000;
@@ -50,6 +50,12 @@ export function holdMs(c: Pick<PageContext, 'holdMs' | 'transcript'>): number {
   const base = c.holdMs ?? (readsUnfinished(c.transcript) ? 1200 : 800);
   // 1 to 3 words wait at least 1.5 s: "option two" went alone and "network" was lost (2026-11-16).
   return words(c.transcript).length <= 3 ? Math.max(base, SHORT_HOLD_MS) : base;
+}
+
+// shortcut: counts words, so a final that revised earlier words keeps only its last ones; align words if tails repeat.
+export function afterSent(final: string, sent: string): string {
+  const n = sent.split(/\s+/).filter(Boolean).length;
+  return final.split(/\s+/).filter(Boolean).slice(n).join(' ');
 }
 
 const words = (t: string): string[] =>

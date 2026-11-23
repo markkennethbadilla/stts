@@ -63,3 +63,10 @@ it('a play() aborted by a pause never falls back to the browser voice', () => {
   expect(lines.at(-1)).toMatch(/^voice play interrupted, no fallback/);
   expect(actor.getSnapshot().context.queue).toEqual(['a', 'b']);
 });
+
+it('afterSent keeps only the words a late final adds past the interim already sent', async () => {
+  const { afterSent } = await import('../../web/machine');
+  expect(afterSent('I wanted to ask about the call tomorrow', 'I wanted to')).toBe('ask about the call tomorrow');
+  expect(afterSent('I wanted to', 'I wanted to')).toBe('');
+  expect(afterSent('hi', '')).toBe('hi');
+});

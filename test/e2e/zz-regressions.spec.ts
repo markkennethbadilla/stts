@@ -8,6 +8,18 @@ import { CONVERSATION_ENDED, NO_SPEECH } from '../../src/protocol.ts';
 import { toClips } from '../../src/sentences.ts';
 import { daemonLog, expect, test } from './fixtures.ts';
 
+const emitResults = (voice: Page, results: [string, boolean][], from: number) =>
+  voice.evaluate(
+    ({ results, from }) => {
+      const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+      r.onresult({
+        resultIndex: from,
+        results: results.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: f })),
+      });
+    },
+    { results, from },
+  );
+
 const ask = (request: APIRequestContext, data: object) =>
   request.post('/request', { data: { who: 'session', ...data }, timeout: 60_000 });
 const say = (voice: Page, t: string) =>
@@ -71,17 +83,7 @@ test('at a narrow width the Send button sits under the box, and the box keeps th
 
 test('leading words survive: interim then final, and two finals, all reach the turn', async ({ voice, request }) => {
   // Chrome's shape: one session, results grow; early words go final while later ones are interim.
-  const emit = (results: [string, boolean][], from: number) =>
-    voice.evaluate(
-      ({ results, from }) => {
-        const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
-        r.onresult({
-          resultIndex: from,
-          results: results.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: f })),
-        });
-      },
-      { results, from },
-    );
+  const emit = (results: [string, boolean][], from: number) => emitResults(voice, results, from);
   let reply = listen(request);
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await emit([['is it', false]], 0);
@@ -101,6 +103,21 @@ test('leading words survive: interim then final, and two finals, all reach the t
   await voice.clock.fastForward(1500);
   text = await (await reply).text();
   expect(text).toMatch(/\] is it active right now$/);
+});
+
+test('a turn sent on interim words keeps the tail its late final adds', async ({ voice, request }) => {
+  const emit = (results: [string, boolean][], from: number) => emitResults(voice, results, from);
+  let reply = listen(request);
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await emit([['tell me about the call', false]], 0);
+  await voice.clock.fastForward(1500);
+  let text = await (await reply).text();
+  expect(text).toMatch(/\] tell me about the call$/);
+  reply = ask(request, { kind: 'stt', ack: Number(/turn (\d+)/.exec(text)?.[1]) });
+  await emit([['tell me about the call tomorrow morning', true]], 0);
+  await voice.clock.fastForward(1500);
+  text = await (await reply).text();
+  expect(text).toMatch(/\] tomorrow morning$/);
 });
 
 test('Dark Reader is locked out and the theme setting applies', async ({ voice }) => {

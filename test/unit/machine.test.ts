@@ -174,7 +174,7 @@ describe('page machine', () => {
     expect(startMic).toHaveBeenCalledTimes(1);
   });
 
-  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 0.5 s', () => {
+  it('autosend: a final sends after the hold; interim words that stop changing send after hold + 0.2 s', () => {
     const { actor, sendTurn } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
@@ -185,7 +185,7 @@ describe('page machine', () => {
     actor.send({ type: 'INTERIM', text: 'can you' });
     vi.advanceTimersByTime(1000);
     actor.send({ type: 'INTERIM', text: 'can you hear me' });
-    vi.advanceTimersByTime(1299);
+    vi.advanceTimersByTime(999);
     expect(sendTurn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(sendTurn).toHaveBeenCalledWith(expect.anything(), { text: 'can you hear me', keep: false });
