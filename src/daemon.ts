@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createNodeWebSocket } from '@hono/node-ws';
-import { launch } from 'chrome-launcher';
+import { getChromePath } from 'chrome-launcher';
 import spawn from 'cross-spawn';
 import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
@@ -68,8 +68,6 @@ const configModelsDir = (): string | undefined => {
 };
 export const modelsDir = process.env['STTS_MODELS_DIR'] ?? configModelsDir() ?? join(dataDir, 'models');
 const VOICES = join(modelsDir, 'piper');
-const profileDir =
-  process.env['STTS_PROFILE_DIR'] ?? join(dataDir, port === DEFAULT_PORT ? 'profile' : `profile-${port}`);
 const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
 const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
 const asr = asrPaths(dataDir, modelsDir);
@@ -110,33 +108,19 @@ export const deps = {
   async openWindow(): Promise<void> {
     // The e2e daemon: its pages are Playwright's; a real window would take the page link from them.
     if (process.env['STTS_NO_WINDOW'] === '1') return;
-    mkdirSync(profileDir, { recursive: true }); // chrome-launcher writes chrome.pid into it
-    const chrome = await launch({
-      // The old install's flags (spec 039): chrome-launcher's defaults (muted audio among them) are off.
-      // A fixed debugging port: with port 0, chrome-launcher reads the port from chrome-err.log,
-      // which this kept profile appends to, so it found a stale port from an earlier run.
-      port: port + 100,
-      startingUrl: 'about:blank',
-      ignoreDefaultFlags: true,
-      chromeFlags: [
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-infobars',
-        '--test-type',
-        '--disable-blink-features=AutomationControlled',
-        `--app=http://127.0.0.1:${port}/`,
-        '--window-size=1600,600',
-        '--autoplay-policy=no-user-gesture-required',
-        '--use-fake-ui-for-media-stream',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-      ],
-      userDataDir: profileDir,
-    });
-    // chrome-launcher can hand back no process (Chrome handed off to a running instance).
-    if (!chrome?.process) throw new Error('no chrome process');
-    chrome.process.on('exit', () => deps.log('window closed'));
+    // Mark's main Chrome profile (spec 003 "Window"): a profile of our own got every force-installed
+    // web app and extension, and their installers popped up. Mic and autoplay for this page are
+    // granted by Chrome policy (mkb-winops spec 027), so no prompt and no extra switches.
+    const c = spawn(
+      getChromePath(),
+      ['--profile-directory=Default', `--app=http://127.0.0.1:${port}/`, '--window-size=1600,600'],
+      {
+        stdio: 'ignore', // SILENT-OK: chrome.exe hands the window to the running Chrome and exits
+        detached: true,
+      },
+    );
+    c.on('error', (e) => deps.log(`FAIL chrome launch ${String(e)}`));
+    c.unref();
   },
   exit(code: number): void {
     piper?.kill();
