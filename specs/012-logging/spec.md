@@ -27,6 +27,7 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `page mic switched to default` / `page mic switched to a new device` | the mic picked changed (or fell back to the default after an unplug) while the mic was open; the recogniser restarts on it |
 | `page mic device gone` | the open mic stream's device was unplugged; the mic restarts on the chosen device or the default |
 | `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
+| `page voice play interrupted, no fallback: REASON` | a pause (barge hold, Stop) aborted a clip's `play()`; the clip resumes or is dropped and the browser voice never speaks (it used to speak over the resumed clip) |
 | `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
 | `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |
 | `page live update: reloading for the new version` | the window reloads onto the new code |

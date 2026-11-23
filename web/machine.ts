@@ -652,12 +652,22 @@ export const pageMachine = setup({
                 assign({ queue: [] }),
               ],
             },
-            CLIP_FAILED: {
-              actions: [
-                { type: 'log', params: ({ event }) => ({ line: `voice fallback ${event.reason}` }) },
-                { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
-              ],
-            },
+            CLIP_FAILED: [
+              {
+                // A pause aborted play() and the clip resumes; a fallback here spoke over it in the Windows voice.
+                guard: ({ event }) => event.reason.startsWith('play AbortError'),
+                actions: {
+                  type: 'log',
+                  params: ({ event }) => ({ line: `voice play interrupted, no fallback: ${event.reason}` }),
+                },
+              },
+              {
+                actions: [
+                  { type: 'log', params: ({ event }) => ({ line: `voice fallback ${event.reason}` }) },
+                  { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
+                ],
+              },
+            ],
             CLIP_ENDED: [
               {
                 guard: ({ context }) => context.queue.length <= 1,

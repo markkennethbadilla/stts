@@ -15,7 +15,15 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] B09 this file
 - [x] B10 `test/e2e/` drives the page through roles and test ids with a fake recogniser, fake media and `page.clock` (spec 011)
 - [x] B11 n/a: not created from the site starter; a local plugin, not a site or app
-- [x] B12 gap: no knip step in `npm run gate`
+- [x] B12 knip in `npm run maint` (`knip.json`, unused exports baselined per file)
+- [x] B13 `maintainability-on-push` in `.trunk/trunk.yaml` runs `npm run maint`: dependency-cruiser (`.dependency-cruiser.cjs`), knip, jscpd (`.jscpd.json`, threshold 1 percent); size and complexity stay with biome
+- [x] B14 n/a: we own this repo; every push runs our own gate
+- [x] B15 `specs/alignment.md`
+- [x] B16 `specs/006-screen/spec.md` `## Journeys`, each row walked by its named e2e test
+- [x] B17 gap: page changes ship with e2e and log read-back, no screenshot demo HTML yet
+- [x] R16 gap: the plugin install is checked by mkb-agentops `setup-stts.ps1`, not by a live check here
+- [x] R17 n/a: no automation sends or reports events
+- [x] R18 n/a: sends no email
 
 ## Test
 

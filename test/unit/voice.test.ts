@@ -45,3 +45,21 @@ it('a failed clip logs page voice fallback <reason> before the browser voice spe
   expect(order).toEqual(['page voice fallback clip 502 en_GB-jenny_dioco-medium']);
   link.detach();
 });
+
+it('a play() aborted by a pause never falls back to the browser voice', () => {
+  const lines: string[] = [];
+  let fell = 0;
+  const actor = createActor(
+    pageMachine.provide({
+      actions: { log: (_, { line }) => void lines.push(line), speakFallback: () => void fell++ },
+    }),
+  ).start();
+  actor.send({ type: 'ENQUEUE', clips: ['a', 'b'] });
+  actor.send({
+    type: 'CLIP_FAILED',
+    reason: 'play AbortError: The play() request was interrupted by a call to pause().',
+  });
+  expect(fell).toBe(0);
+  expect(lines.at(-1)).toMatch(/^voice play interrupted, no fallback/);
+  expect(actor.getSnapshot().context.queue).toEqual(['a', 'b']);
+});

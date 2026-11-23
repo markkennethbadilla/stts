@@ -28,6 +28,20 @@ He talks hands-free and glances at the window. Colour and sound tell him the sta
 
 The status icon turns red when the mic has failed (spec 005).
 
+## Journeys
+
+One user type: the person talking to the agent. Each e2e test starts a fresh Playwright browser context, so every row is also a new-device, cleared-browser visit.
+
+| User | Entry point | Device or visit | Failure | Path back | e2e test |
+| --- | --- | --- | --- | --- | --- |
+| speaker | agent calls `stt` | new device, fresh profile | none | n/a, turn returned | `a listen produces a turn` |
+| speaker | types in the box | new device | voice not usable | typed text is the turn | `a typed message is returned by stt as a turn` |
+| speaker | agent speaks, he talks over it | return visit, window already open | barge misjudged as echo | his words still cut it off | `speaking over the agent cuts it off, a filler included; its own echo does not` |
+| speaker | pauses mid-sentence | return visit | second half lost | both parts join into one turn | `a pause mid-sentence loses nothing: both parts arrive, short or long pause` |
+| speaker | mic unplugged | return visit | open mic gone | falls back to the default mic | `a mic plugged in later is listed, picking it switches the open mic, unplugging it falls back` |
+| speaker | presses End | return visit | agent keeps calling | next call reopens the window | `End reaches the open listen once; the next call carries on` |
+| speaker | narrow window | new device, small screen | layout breaks | Send moves under the box | `at a narrow width the Send button sits under the box, and the box keeps the row` |
+
 ## What it reads and writes
 
 Reads the mic and the daemon's WebSocket messages. Writes `localStorage` settings and history, and sends page messages (spec 001) back to the daemon.
