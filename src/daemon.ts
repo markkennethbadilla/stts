@@ -116,7 +116,7 @@ export const deps = {
       ['--profile-directory=Default', `--app=http://127.0.0.1:${port}/`, '--window-size=1600,600'],
       {
         stdio: 'ignore', // SILENT-OK: chrome.exe hands the window to the running Chrome and exits
-        detached: true,
+        windowsHide: true, // only the console; Chrome shows its own window
       },
     );
     c.on('error', (e) => deps.log(`FAIL chrome launch ${String(e)}`));

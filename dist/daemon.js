@@ -18707,7 +18707,7 @@ const deps = {
 			"--window-size=1600,600"
 		], {
 			stdio: "ignore",
-			detached: true
+			windowsHide: true
 		});
 		c.on("error", (e) => deps.log(`FAIL chrome launch ${String(e)}`));
 		c.unref();
