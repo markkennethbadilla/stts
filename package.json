@@ -58,7 +58,7 @@
     "markdownlint-cli2": "0.24.2",
     "shadcn": "4.23.0",
     "tailwindcss": "4.3.3",
-    "tsdown": "0.23.0",
+    "tsdown": "0.23.7",
     "typescript": "7.0.2",
     "vite": "8.3.8",
     "vitest": "5.0.3"
