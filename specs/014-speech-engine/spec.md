@@ -21,10 +21,6 @@ The local engine was built because Chrome's recogniser lost words: sessions that
 - **Listens never clear words.** Opening a listen never clears words already heard: the mic stays on between listens. Only a sent turn clears them.
 - **Tests.** The e2e suite injects a fake recogniser as `globalThis.__sttsRecognition` and a fake `speechSynthesis` (`__tts`, `test/e2e/fixtures.ts`); `test/unit/chrome-recognition.test.ts` covers the restart and error rules.
 
-## What it reads and writes
-
-Reads the microphone through Chrome and uses Chrome's speech services (recognition goes to Google's service, so it needs a network). Writes nothing; audio is never stored; the daemon has no `/asr` or `/voice` route, no child process and no models folder.
-
 ## Quality bar
 
 | Aspect | Metric | Best practice | Baseline (2026-11-25) | Alternatives tried | Gate floor |
@@ -40,6 +36,10 @@ Reads the microphone through Chrome and uses Chrome's speech services (recogniti
 | Safety | n/a | n/a | n/a | n/a | n/a: speech I/O only |
 | Business outcome | n/a | n/a | n/a | n/a | n/a: personal tool |
 | Cost | $0 | built-in browser services | $0 | n/a | n/a: no paid API |
+
+## What it reads and writes
+
+Reads the microphone through Chrome and uses Chrome's speech services (recognition goes to Google's service, so it needs a network). Writes nothing; audio is never stored; the daemon has no `/asr` or `/voice` route, no child process and no models folder.
 
 ## How to run, check and hand over
 
