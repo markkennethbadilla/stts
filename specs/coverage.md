@@ -96,3 +96,6 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] V02 n/a: no database
 - [x] V03 rule 5 and hook `guard-irreversible`; nothing stateful here to back up
 - [x] V04 n/a: not a server
+- [x] B18 gap: cases are the e2e and unit suites by flow (listen, typed, barge, mute, restart); no full input-matrix table yet
+- [x] B19 gap: spec 014 states the speech limits; no per-characteristic quality table yet
+- [x] T23 n/a: no search or retrieval
