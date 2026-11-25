@@ -25,7 +25,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	value: mod,
 	enumerable: true
 }) : target, mod));
-// node_modules/zod/v3/helpers/util.js
+// ../stts/node_modules/zod/v3/helpers/util.js
 var util;
 (function(util) {
 	util.assertEqual = (_) => {};
@@ -120,7 +120,7 @@ const getParsedType = (data) => {
 		default: return ZodParsedType.unknown;
 	}
 };
-// node_modules/zod/v3/ZodError.js
+// ../stts/node_modules/zod/v3/ZodError.js
 const ZodIssueCode = util.arrayToEnum([
 	"invalid_type",
 	"invalid_literal",
@@ -229,7 +229,7 @@ var ZodError = class ZodError extends Error {
 ZodError.create = (issues) => {
 	return new ZodError(issues);
 };
-// node_modules/zod/v3/locales/en.js
+// ../stts/node_modules/zod/v3/locales/en.js
 const errorMap = (issue, _ctx) => {
 	let message;
 	switch (issue.code) {
@@ -306,12 +306,12 @@ const errorMap = (issue, _ctx) => {
 	}
 	return { message };
 };
-// node_modules/zod/v3/errors.js
+// ../stts/node_modules/zod/v3/errors.js
 let overrideErrorMap = errorMap;
 function getErrorMap() {
 	return overrideErrorMap;
 }
-// node_modules/zod/v3/helpers/parseUtil.js
+// ../stts/node_modules/zod/v3/helpers/parseUtil.js
 const makeIssue = (params) => {
 	const { data, path, errorMaps, issueData } = params;
 	const fullPath = [...path, ...issueData.path || []];
@@ -414,13 +414,13 @@ const isAborted = (x) => x.status === "aborted";
 const isDirty = (x) => x.status === "dirty";
 const isValid = (x) => x.status === "valid";
 const isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
-// node_modules/zod/v3/helpers/errorUtil.js
+// ../stts/node_modules/zod/v3/helpers/errorUtil.js
 var errorUtil;
 (function(errorUtil) {
 	errorUtil.errToObj = (message) => typeof message === "string" ? { message } : message || {};
 	errorUtil.toString = (message) => typeof message === "string" ? message : message?.message;
 })(errorUtil || (errorUtil = {}));
-// node_modules/zod/v3/types.js
+// ../stts/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
 	constructor(parent, value, path, key) {
 		this._cachedPath = [];
@@ -734,7 +734,8 @@ var ZodType$1 = class {
 		});
 	}
 	describe(description) {
-		return new this.constructor({
+		const This = this.constructor;
+		return new This({
 			...this._def,
 			description
 		});
@@ -2561,7 +2562,9 @@ function mergeValues$1(a, b) {
 		if (a.length !== b.length) return { valid: false };
 		const newArray = [];
 		for (let index = 0; index < a.length; index++) {
-			const sharedValue = mergeValues$1(a[index], b[index]);
+			const itemA = a[index];
+			const itemB = b[index];
+			const sharedValue = mergeValues$1(itemA, itemB);
 			if (!sharedValue.valid) return { valid: false };
 			newArray.push(sharedValue.data);
 		}
@@ -3577,7 +3580,7 @@ ZodOptional$1.create;
 ZodNullable$1.create;
 ZodEffects.createWithPreprocess;
 ZodPipeline.create;
-// node_modules/zod/v4/core/util.js
+// ../stts/node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -3766,8 +3769,8 @@ function optionalKeys(shape) {
 }
 const NUMBER_FORMAT_RANGES = /*@__PURE__*/ (() => ({
 	safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-	int32: [-0x80000000, 0x7fffffff],
-	uint32: [0, 0xffffffff],
+	int32: [-2147483648, 2147483647],
+	uint32: [0, 4294967295],
 	float32: [-34028234663852886e22, 34028234663852886e22],
 	float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
 }))();
@@ -4111,7 +4114,7 @@ function constantCatch(value) {
 	fn[CONSTANT_CATCH] = true;
 	return fn;
 }
-// node_modules/zod/v4/core/core.js
+// ../stts/node_modules/zod/v4/core/core.js
 var _a$1;
 const _zodDesc = {
 	value: void 0,
@@ -4217,7 +4220,7 @@ function config(newConfig) {
 	if (newConfig) Object.assign(globalConfig, newConfig);
 	return globalConfig;
 }
-// node_modules/zod/v4/core/errors.js
+// ../stts/node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -4332,7 +4335,7 @@ function formatError(error, mapper = (issue) => issue.message) {
 	processError(error);
 	return fieldErrors;
 }
-// node_modules/zod/v4/core/parse.js
+// ../stts/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
 	return {
 		callee: params?.callee ?? callee,
@@ -4538,7 +4541,7 @@ const _safeEncodeAsync = (_Err) => async (schema, value, _ctx) => {
 const _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
 	return _safeParseAsync(_Err)(schema, value, _ctx);
 };
-// node_modules/zod/v4/core/regexes.js
+// ../stts/node_modules/zod/v4/core/regexes.js
 /**
 * @deprecated CUID v1 is deprecated by its authors due to information leakage
 * (timestamps embedded in the id). Use {@link cuid2} instead.
@@ -4610,7 +4613,7 @@ const boolean$1 = /^(?:true|false)$/i;
 const _null$2 = /^null$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
-// node_modules/zod/v4/core/checks.js
+// ../stts/node_modules/zod/v4/core/checks.js
 const $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -4905,7 +4908,7 @@ const $ZodCheckOverwrite = /*@__PURE__*/ $constructor("$ZodCheckOverwrite", (ins
 		payload.value = def.tx(payload.value);
 	};
 });
-// node_modules/zod/v4/core/doc.js
+// ../stts/node_modules/zod/v4/core/doc.js
 var Doc = class {
 	constructor(args = [], closed = {}) {
 		this.content = [];
@@ -4938,13 +4941,13 @@ var Doc = class {
 		return new F(...Object.keys(this.closed), `return function (${this.args.join(", ")}) {\n${content.join("\n")}\n};`)(...Object.values(this.closed));
 	}
 };
-// node_modules/zod/v4/core/versions.js
+// ../stts/node_modules/zod/v4/core/versions.js
 const version = {
 	major: 4,
 	minor: 6,
 	patch: 7
 };
-// node_modules/zod/v4/core/schemas.js
+// ../stts/node_modules/zod/v4/core/schemas.js
 const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -5962,7 +5965,9 @@ function mergeValues(a, b) {
 		};
 		const newArray = [];
 		for (let index = 0; index < a.length; index++) {
-			const sharedValue = mergeValues(a[index], b[index]);
+			const itemA = a[index];
+			const itemB = b[index];
+			const sharedValue = mergeValues(itemA, itemB);
 			if (!sharedValue.valid) return {
 				valid: false,
 				mergeErrorPath: [index, ...sharedValue.mergeErrorPath]
@@ -6415,7 +6420,7 @@ function handleRefineResult(result, payload, input, inst) {
 		payload.issues.push(issue(_iss));
 	}
 }
-// node_modules/zod/v4/core/memoizer.js
+// ../stts/node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
 	constructor() {
 		super(`Cannot parse a reference cycle that closes through a transform`);
@@ -6667,7 +6672,7 @@ function isBackEdge(ctx, value) {
 	const backEdges = ctx[STATE]?.backEdges;
 	return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
-// node_modules/zod/v4/locales/en.js
+// ../stts/node_modules/zod/v4/locales/en.js
 const error = () => {
 	const Sizable = {
 		string: {
@@ -6774,7 +6779,7 @@ const error = () => {
 function en_default() {
 	return { localeError: error() };
 }
-// node_modules/zod/v4/core/registries.js
+// ../stts/node_modules/zod/v4/core/registries.js
 var _a;
 var $ZodRegistry = class {
 	constructor() {
@@ -6820,7 +6825,7 @@ function registry() {
 }
 (_a = globalThis).__zod_globalRegistry ?? (_a.__zod_globalRegistry = registry());
 const globalRegistry = globalThis.__zod_globalRegistry;
-// node_modules/zod/v4/core/api.js
+// ../stts/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -7346,7 +7351,7 @@ function _check(fn, params) {
 	ch._zod.check = fn;
 	return ch;
 }
-// node_modules/zod/v4/core/to-json-schema.js
+// ../stts/node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
 	for (const source of sources) for (const key of Reflect.ownKeys(source)) if (Object.prototype.propertyIsEnumerable.call(source, key)) assignProp(target, key, source[key]);
 	return target;
@@ -7789,7 +7794,7 @@ const createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params)
 	extractDefs(ctx, schema);
 	return finalize(ctx, schema);
 };
-// node_modules/zod/v4/core/json-schema-processors.js
+// ../stts/node_modules/zod/v4/core/json-schema-processors.js
 const narrowMin = (agg, key, value) => {
 	if (agg[key] === void 0 || value > agg[key]) agg[key] = value;
 };
@@ -7951,7 +7956,8 @@ const dateProcessor = (schema, ctx, json, params) => {
 	handleUnrepresentable(schema, ctx, json, params, "Date cannot be represented in JSON Schema");
 };
 const enumProcessor = (schema, _ctx, json, _params) => {
-	const values = getEnumValues(schema._zod.def.entries);
+	const def = schema._zod.def;
+	const values = getEnumValues(def.entries);
 	if (values.length === 0) {
 		json.not = {};
 		return;
@@ -8433,7 +8439,7 @@ function toJSONSchema(input, params) {
 	extractDefs(ctx, input);
 	return finalize(ctx, input);
 }
-// node_modules/zod/v4/mini/schemas.js
+// ../stts/node_modules/zod/v4/mini/schemas.js
 const ZodMiniType = /*@__PURE__*/ $constructor("ZodMiniType", (inst, def) => {
 	if (!inst._zod) throw new Error("Uninitialized schema in ZodMiniType.");
 	$ZodType.init(inst, def);
@@ -8497,7 +8503,7 @@ function object$1(shape, params) {
 	};
 	return new ZodMiniObject(def);
 }
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
 function isZ4Schema(s) {
 	return !!s._zod;
 }
@@ -8619,7 +8625,7 @@ function getLiteralValue(schema) {
 	const directValue = schema.value;
 	if (directValue !== void 0) return directValue;
 }
-// node_modules/zod/v4/classic/errors.js
+// ../stts/node_modules/zod/v4/classic/errors.js
 const _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
 	Object.defineProperty(proto, key, {
@@ -8668,7 +8674,7 @@ const initializer = (inst, issues) => {
 	});
 };
 const ZodRealError = /*@__PURE__*/ $constructor("ZodError", initializer, void 0, { Parent: Error });
-// node_modules/zod/v4/classic/parse.js
+// ../stts/node_modules/zod/v4/classic/parse.js
 const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -8681,7 +8687,7 @@ const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
 const safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 const safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 const safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
-// node_modules/zod/v4/classic/schemas.js
+// ../stts/node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
 	if (!globalConfig.localeError) config(en_default());
 }
@@ -9592,11 +9598,11 @@ function preprocess(fn, schema) {
 		out: schema
 	});
 }
-// node_modules/zod/v4/classic/iso.js
+// ../stts/node_modules/zod/v4/classic/iso.js
 function datetime(params) {
 	return /* @__PURE__ */ _isoDateTime(ZodISODateTime, params);
 }
-// node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 const LATEST_PROTOCOL_VERSION = "2025-11-25";
 const SUPPORTED_PROTOCOL_VERSIONS = [
 	LATEST_PROTOCOL_VERSION,
@@ -11496,7 +11502,7 @@ var UrlElicitationRequiredError = class extends McpError {
 		return this.data?.elicitations ?? [];
 	}
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
 /**
 * Experimental task interfaces for MCP SDK.
 * WARNING: These APIs are experimental and may change without notice.
@@ -11512,7 +11518,7 @@ var UrlElicitationRequiredError = class extends McpError {
 function isTerminal(status) {
 	return status === "completed" || status === "failed" || status === "cancelled";
 }
-// node_modules/zod-to-json-schema/dist/esm/Options.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/Options.js
 const ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
 const defaultOptions = {
 	name: void 0,
@@ -11545,7 +11551,7 @@ const getDefaultOptions = (options) => typeof options === "string" ? {
 	...defaultOptions,
 	...options
 };
-// node_modules/zod-to-json-schema/dist/esm/Refs.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/Refs.js
 const getRefs = (options) => {
 	const _options = getDefaultOptions(options);
 	const currentPath = _options.name !== void 0 ? [
@@ -11569,7 +11575,7 @@ const getRefs = (options) => {
 		}]))
 	};
 };
-// node_modules/zod-to-json-schema/dist/esm/errorMessages.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/errorMessages.js
 function addErrorMessage(res, key, errorMessage, refs) {
 	if (!refs?.errorMessages) return;
 	if (errorMessage) res.errorMessage = {
@@ -11581,13 +11587,13 @@ function setResponseValueAndErrors(res, key, value, errorMessage, refs) {
 	res[key] = value;
 	addErrorMessage(res, key, errorMessage, refs);
 }
-// node_modules/zod-to-json-schema/dist/esm/getRelativePath.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/getRelativePath.js
 const getRelativePath = (pathA, pathB) => {
 	let i = 0;
 	for (; i < pathA.length && i < pathB.length; i++) if (pathA[i] !== pathB[i]) break;
 	return [(pathA.length - i).toString(), ...pathB.slice(i)].join("/");
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/any.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/any.js
 function parseAnyDef(refs) {
 	if (refs.target !== "openAi") return {};
 	const anyDefinitionPath = [
@@ -11598,7 +11604,7 @@ function parseAnyDef(refs) {
 	refs.flags.hasReferencedOpenAiAnyType = true;
 	return { $ref: refs.$refStrategy === "relative" ? getRelativePath(anyDefinitionPath, refs.currentPath) : anyDefinitionPath.join("/") };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/array.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/array.js
 function parseArrayDef(def, refs) {
 	const res = { type: "array" };
 	if (def.type?._def && def.type?._def?.typeName !== ZodFirstPartyTypeKind.ZodAny) res.items = parseDef(def.type._def, {
@@ -11613,7 +11619,7 @@ function parseArrayDef(def, refs) {
 	}
 	return res;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/bigint.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/bigint.js
 function parseBigintDef(def, refs) {
 	const res = {
 		type: "integer",
@@ -11643,19 +11649,19 @@ function parseBigintDef(def, refs) {
 	}
 	return res;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/boolean.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/boolean.js
 function parseBooleanDef() {
 	return { type: "boolean" };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/branded.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/branded.js
 function parseBrandedDef(_def, refs) {
 	return parseDef(_def.type._def, refs);
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/catch.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/catch.js
 const parseCatchDef = (def, refs) => {
 	return parseDef(def.innerType._def, refs);
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/date.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/date.js
 function parseDateDef(def, refs, overrideDateStrategy) {
 	const strategy = overrideDateStrategy ?? refs.dateStrategy;
 	if (Array.isArray(strategy)) return { anyOf: strategy.map((item, i) => parseDateDef(def, refs, item)) };
@@ -11686,25 +11692,25 @@ const integerDateParser = (def, refs) => {
 	}
 	return res;
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/default.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/default.js
 function parseDefaultDef(_def, refs) {
 	return {
 		...parseDef(_def.innerType._def, refs),
 		default: _def.defaultValue()
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/effects.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/effects.js
 function parseEffectsDef(_def, refs) {
 	return refs.effectStrategy === "input" ? parseDef(_def.schema._def, refs) : parseAnyDef(refs);
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/enum.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/enum.js
 function parseEnumDef(def) {
 	return {
 		type: "string",
 		enum: Array.from(def.values)
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/intersection.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/intersection.js
 const isJsonSchema7AllOfType = (type) => {
 	if ("type" in type && type.type === "string") return false;
 	return "allOf" in type;
@@ -11745,7 +11751,7 @@ function parseIntersectionDef(def, refs) {
 		...unevaluatedProperties
 	} : void 0;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/literal.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/literal.js
 function parseLiteralDef(def, refs) {
 	const parsedType = typeof def.value;
 	if (parsedType !== "bigint" && parsedType !== "number" && parsedType !== "boolean" && parsedType !== "string") return { type: Array.isArray(def.value) ? "array" : "object" };
@@ -11758,7 +11764,7 @@ function parseLiteralDef(def, refs) {
 		const: def.value
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/string.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/string.js
 let emojiRegex = void 0;
 /**
 * Generated from the regular expressions found here as of 2024-05-22:
@@ -12020,7 +12026,7 @@ function stringifyRegExpWithFlags(regex, refs) {
 	}
 	return pattern;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/record.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/record.js
 function parseRecordDef(def, refs) {
 	if (refs.target === "openAi") console.warn("Warning: OpenAI may not support records in schemas! Try an array of key-value pairs instead.");
 	if (refs.target === "openApi3" && def.keyType?._def.typeName === ZodFirstPartyTypeKind.ZodEnum) return {
@@ -12066,7 +12072,7 @@ function parseRecordDef(def, refs) {
 	}
 	return schema;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/map.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/map.js
 function parseMapDef(def, refs) {
 	if (refs.mapStrategy === "record") return parseRecordDef(def, refs);
 	return {
@@ -12096,7 +12102,7 @@ function parseMapDef(def, refs) {
 		}
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/nativeEnum.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/nativeEnum.js
 function parseNativeEnumDef(def) {
 	const object = def.values;
 	const actualValues = Object.keys(def.values).filter((key) => {
@@ -12108,21 +12114,21 @@ function parseNativeEnumDef(def) {
 		enum: actualValues
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/never.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/never.js
 function parseNeverDef(refs) {
 	return refs.target === "openAi" ? void 0 : { not: parseAnyDef({
 		...refs,
 		currentPath: [...refs.currentPath, "not"]
 	}) };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/null.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/null.js
 function parseNullDef(refs) {
 	return refs.target === "openApi3" ? {
 		enum: ["null"],
 		nullable: true
 	} : { type: "null" };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/union.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/union.js
 const primitiveMappings = {
 	ZodString: "string",
 	ZodNumber: "number",
@@ -12177,7 +12183,7 @@ const asAnyOf = (def, refs) => {
 	})).filter((x) => !!x && (!refs.strictUnions || typeof x === "object" && Object.keys(x).length > 0));
 	return anyOf.length ? { anyOf } : void 0;
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/nullable.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/nullable.js
 function parseNullableDef(def, refs) {
 	if ([
 		"ZodString",
@@ -12216,7 +12222,7 @@ function parseNullableDef(def, refs) {
 	});
 	return base && { anyOf: [base, { type: "null" }] };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/number.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/number.js
 function parseNumberDef(def, refs) {
 	const res = { type: "number" };
 	if (!def.checks) return res;
@@ -12247,7 +12253,7 @@ function parseNumberDef(def, refs) {
 	}
 	return res;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/object.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/object.js
 function parseObjectDef(def, refs) {
 	const forceOptionalIntoNullable = refs.target === "openAi";
 	const result = {
@@ -12305,7 +12311,7 @@ function safeIsOptional(schema) {
 		return true;
 	}
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/optional.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/optional.js
 const parseOptionalDef = (def, refs) => {
 	if (refs.currentPath.toString() === refs.propertyPath?.toString()) return parseDef(def.innerType._def, refs);
 	const innerSchema = parseDef(def.innerType._def, {
@@ -12318,7 +12324,7 @@ const parseOptionalDef = (def, refs) => {
 	});
 	return innerSchema ? { anyOf: [{ not: parseAnyDef(refs) }, innerSchema] } : parseAnyDef(refs);
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/pipeline.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/pipeline.js
 const parsePipelineDef = (def, refs) => {
 	if (refs.pipeStrategy === "input") return parseDef(def.in._def, refs);
 	else if (refs.pipeStrategy === "output") return parseDef(def.out._def, refs);
@@ -12339,11 +12345,11 @@ const parsePipelineDef = (def, refs) => {
 		]
 	})].filter((x) => x !== void 0) };
 };
-// node_modules/zod-to-json-schema/dist/esm/parsers/promise.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/promise.js
 function parsePromiseDef(def, refs) {
 	return parseDef(def.type._def, refs);
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/set.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/set.js
 function parseSetDef(def, refs) {
 	const schema = {
 		type: "array",
@@ -12357,7 +12363,7 @@ function parseSetDef(def, refs) {
 	if (def.maxSize) setResponseValueAndErrors(schema, "maxItems", def.maxSize.value, def.maxSize.message, refs);
 	return schema;
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/tuple.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/tuple.js
 function parseTupleDef(def, refs) {
 	if (def.rest) return {
 		type: "array",
@@ -12389,19 +12395,19 @@ function parseTupleDef(def, refs) {
 		})).reduce((acc, x) => x === void 0 ? acc : [...acc, x], [])
 	};
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/undefined.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/undefined.js
 function parseUndefinedDef(refs) {
 	return { not: parseAnyDef(refs) };
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/unknown.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/unknown.js
 function parseUnknownDef(refs) {
 	return parseAnyDef(refs);
 }
-// node_modules/zod-to-json-schema/dist/esm/parsers/readonly.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parsers/readonly.js
 const parseReadonlyDef = (def, refs) => {
 	return parseDef(def.innerType._def, refs);
 };
-// node_modules/zod-to-json-schema/dist/esm/selectParser.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/selectParser.js
 const selectParser = (def, typeName, refs) => {
 	switch (typeName) {
 		case ZodFirstPartyTypeKind.ZodString: return parseStringDef(def, refs);
@@ -12443,7 +12449,7 @@ const selectParser = (def, typeName, refs) => {
 		default: return ((_) => void 0)(typeName);
 	}
 };
-// node_modules/zod-to-json-schema/dist/esm/parseDef.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/parseDef.js
 function parseDef(def, refs, forceResolution = false) {
 	const seenItem = refs.seen.get(def);
 	if (refs.override) {
@@ -12491,7 +12497,7 @@ const addMeta = (def, refs, jsonSchema) => {
 	}
 	return jsonSchema;
 };
-// node_modules/zod-to-json-schema/dist/esm/zodToJsonSchema.js
+// ../stts/node_modules/zod-to-json-schema/dist/esm/zodToJsonSchema.js
 const zodToJsonSchema = (schema, options) => {
 	const refs = getRefs(options);
 	let definitions = typeof options === "object" && options.definitions ? Object.entries(options.definitions).reduce((acc, [name, schema]) => ({
@@ -12553,7 +12559,7 @@ const zodToJsonSchema = (schema, options) => {
 	if (refs.target === "openAi" && ("anyOf" in combined || "oneOf" in combined || "allOf" in combined || "type" in combined && Array.isArray(combined.type))) console.warn("Warning: OpenAI may not support schemas with unions as roots! Try wrapping it in an object property.");
 	return combined;
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-json-schema-compat.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-json-schema-compat.js
 function mapMiniTarget(t) {
 	if (!t) return "draft-7";
 	if (t === "jsonSchema7" || t === "draft-7") return "draft-7";
@@ -13449,7 +13455,7 @@ function mergeCapabilities(base, additional) {
 	}
 	return result;
 }
-// node_modules/ajv/dist/compile/codegen/code.js
+// ../stts/node_modules/ajv/dist/compile/codegen/code.js
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -13583,7 +13589,7 @@ var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.regexpCode = regexpCode;
 }));
-// node_modules/ajv/dist/compile/codegen/scope.js
+// ../stts/node_modules/ajv/dist/compile/codegen/scope.js
 var require_scope = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = void 0;
@@ -13719,7 +13725,7 @@ var require_scope = /* @__PURE__ */ __commonJSMin(((exports) => {
 	};
 	exports.ValueScope = ValueScope;
 }));
-// node_modules/ajv/dist/compile/codegen/index.js
+// ../stts/node_modules/ajv/dist/compile/codegen/index.js
 var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.or = exports.and = exports.not = exports.CodeGen = exports.operators = exports.varKinds = exports.ValueScopeName = exports.ValueScope = exports.Scope = exports.Name = exports.regexpCode = exports.stringify = exports.getProperty = exports.nil = exports.strConcat = exports.str = exports._ = void 0;
@@ -14387,7 +14393,7 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
 		return x instanceof code_1.Name ? x : (0, code_1._)`(${x})`;
 	}
 }));
-// node_modules/ajv/dist/compile/util.js
+// ../stts/node_modules/ajv/dist/compile/util.js
 var require_util = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.checkStrictMode = exports.getErrorPath = exports.Type = exports.useFunc = exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = void 0;
@@ -14527,7 +14533,7 @@ var require_util = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.checkStrictMode = checkStrictMode;
 }));
-// node_modules/ajv/dist/compile/names.js
+// ../stts/node_modules/ajv/dist/compile/names.js
 var require_names = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -14550,7 +14556,7 @@ var require_names = /* @__PURE__ */ __commonJSMin(((exports) => {
 		jsonPart: new codegen_1.Name("jsonPart")
 	};
 }));
-// node_modules/ajv/dist/compile/errors.js
+// ../stts/node_modules/ajv/dist/compile/errors.js
 var require_errors = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.extendErrors = exports.resetErrorsCount = exports.reportExtraError = exports.reportError = exports.keyword$DataError = exports.keywordError = void 0;
@@ -14645,7 +14651,7 @@ var require_errors = /* @__PURE__ */ __commonJSMin(((exports) => {
 		if (propertyName) keyValues.push([E.propertyName, propertyName]);
 	}
 }));
-// node_modules/ajv/dist/compile/validate/boolSchema.js
+// ../stts/node_modules/ajv/dist/compile/validate/boolSchema.js
 var require_boolSchema = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.boolOrEmptySchema = exports.topBoolOrEmptySchema = void 0;
@@ -14686,7 +14692,7 @@ var require_boolSchema = /* @__PURE__ */ __commonJSMin(((exports) => {
 		(0, errors_1.reportError)(cxt, boolError, void 0, overrideAllErrors);
 	}
 }));
-// node_modules/ajv/dist/compile/rules.js
+// ../stts/node_modules/ajv/dist/compile/rules.js
 var require_rules = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.getRules = exports.isJSONType = void 0;
@@ -14743,7 +14749,7 @@ var require_rules = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.getRules = getRules;
 }));
-// node_modules/ajv/dist/compile/validate/applicability.js
+// ../stts/node_modules/ajv/dist/compile/validate/applicability.js
 var require_applicability = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.shouldUseRule = exports.shouldUseGroup = exports.schemaHasRulesForType = void 0;
@@ -14762,7 +14768,7 @@ var require_applicability = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.shouldUseRule = shouldUseRule;
 }));
-// node_modules/ajv/dist/compile/validate/dataType.js
+// ../stts/node_modules/ajv/dist/compile/validate/dataType.js
 var require_dataType = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.reportTypeError = exports.checkDataTypes = exports.checkDataType = exports.coerceAndCheckDataType = exports.getJSONTypes = exports.getSchemaTypes = exports.DataType = void 0;
@@ -14925,7 +14931,7 @@ var require_dataType = /* @__PURE__ */ __commonJSMin(((exports) => {
 		};
 	}
 }));
-// node_modules/ajv/dist/compile/validate/defaults.js
+// ../stts/node_modules/ajv/dist/compile/validate/defaults.js
 var require_defaults = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.assignDefaults = void 0;
@@ -14950,7 +14956,7 @@ var require_defaults = /* @__PURE__ */ __commonJSMin(((exports) => {
 		gen.if(condition, (0, codegen_1._)`${childData} = ${(0, codegen_1.stringify)(defaultValue)}`);
 	}
 }));
-// node_modules/ajv/dist/vocabularies/code.js
+// ../stts/node_modules/ajv/dist/vocabularies/code.js
 var require_code = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = void 0;
@@ -15073,7 +15079,7 @@ var require_code = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.validateUnion = validateUnion;
 }));
-// node_modules/ajv/dist/compile/validate/keyword.js
+// ../stts/node_modules/ajv/dist/compile/validate/keyword.js
 var require_keyword = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.validateKeywordUsage = exports.validSchemaType = exports.funcKeywordCode = exports.macroKeywordCode = void 0;
@@ -15178,7 +15184,7 @@ var require_keyword = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.validateKeywordUsage = validateKeywordUsage;
 }));
-// node_modules/ajv/dist/compile/validate/subschema.js
+// ../stts/node_modules/ajv/dist/compile/validate/subschema.js
 var require_subschema = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.extendSubschemaMode = exports.extendSubschemaData = exports.getSubschema = void 0;
@@ -15244,7 +15250,7 @@ var require_subschema = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.extendSubschemaMode = extendSubschemaMode;
 }));
-// node_modules/fast-deep-equal/index.js
+// ../stts/node_modules/fast-deep-equal/index.js
 var require_fast_deep_equal = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = function equal(a, b) {
 		if (a === b) return true;
@@ -15273,7 +15279,7 @@ var require_fast_deep_equal = /* @__PURE__ */ __commonJSMin(((exports, module) =
 		return a !== a && b !== b;
 	};
 }));
-// node_modules/json-schema-traverse/index.js
+// ../stts/node_modules/json-schema-traverse/index.js
 var require_json_schema_traverse = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	var traverse = module.exports = function(schema, opts, cb) {
 		if (typeof opts == "function") {
@@ -15347,7 +15353,7 @@ var require_json_schema_traverse = /* @__PURE__ */ __commonJSMin(((exports, modu
 		return str.replace(/~/g, "~0").replace(/\//g, "~1");
 	}
 }));
-// node_modules/ajv/dist/compile/resolve.js
+// ../stts/node_modules/ajv/dist/compile/resolve.js
 var require_resolve = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.getSchemaRefs = exports.resolveUrl = exports.normalizeId = exports._getFullPath = exports.getFullPath = exports.inlineRef = void 0;
@@ -15398,11 +15404,11 @@ var require_resolve = /* @__PURE__ */ __commonJSMin(((exports) => {
 	function countKeys(schema) {
 		let count = 0;
 		for (const key in schema) {
-			if (key === "$ref") return 1e400;
+			if (key === "$ref") return Infinity;
 			count++;
 			if (SIMPLE_INLINED.has(key)) continue;
 			if (typeof schema[key] == "object") (0, util_1.eachItem)(schema[key], (sch) => count += countKeys(sch));
-			if (count === 1e400) return 1e400;
+			if (count === Infinity) return Infinity;
 		}
 		return count;
 	}
@@ -15475,7 +15481,7 @@ var require_resolve = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.getSchemaRefs = getSchemaRefs;
 }));
-// node_modules/ajv/dist/compile/validate/index.js
+// ../stts/node_modules/ajv/dist/compile/validate/index.js
 var require_validate = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.getData = exports.KeywordCxt = exports.validateFunctionCode = void 0;
@@ -15893,7 +15899,7 @@ var require_validate = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.getData = getData;
 }));
-// node_modules/ajv/dist/runtime/validation_error.js
+// ../stts/node_modules/ajv/dist/runtime/validation_error.js
 var require_validation_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	var ValidationError = class extends Error {
@@ -15905,7 +15911,7 @@ var require_validation_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	};
 	exports.default = ValidationError;
 }));
-// node_modules/ajv/dist/compile/ref_error.js
+// ../stts/node_modules/ajv/dist/compile/ref_error.js
 var require_ref_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const resolve_1 = require_resolve();
@@ -15918,7 +15924,7 @@ var require_ref_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	};
 	exports.default = MissingRefError;
 }));
-// node_modules/ajv/dist/compile/index.js
+// ../stts/node_modules/ajv/dist/compile/index.js
 var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = void 0;
@@ -16131,7 +16137,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
 		if (env.schema !== env.root.schema) return env;
 	}
 }));
-// node_modules/ajv/dist/refs/data.json
+// ../stts/node_modules/ajv/dist/refs/data.json
 var require_data = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = {
 		"$id": "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#",
@@ -16145,7 +16151,7 @@ var require_data = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		"additionalProperties": false
 	};
 }));
-// node_modules/fast-uri/lib/utils.js
+// ../stts/node_modules/fast-uri/lib/utils.js
 var require_utils = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	/** @type {(value: string) => boolean} */
 	const isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
@@ -16781,7 +16787,7 @@ var require_utils = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		stringArrayToHexStripped
 	};
 }));
-// node_modules/fast-uri/lib/schemes.js
+// ../stts/node_modules/fast-uri/lib/schemes.js
 var require_schemes = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { isUUID } = require_utils();
 	const URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
@@ -16964,7 +16970,7 @@ var require_schemes = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		getSchemeHandler
 	};
 }));
-// node_modules/fast-uri/index.js
+// ../stts/node_modules/fast-uri/index.js
 var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	const { normalizeIPv6, removeDotSegments, removeDotSegmentsRelative, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
 	const { SCHEMES, getSchemeHandler } = require_schemes();
@@ -17414,14 +17420,14 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports.default = fastUri;
 	module.exports.fastUri = fastUri;
 }));
-// node_modules/ajv/dist/runtime/uri.js
+// ../stts/node_modules/ajv/dist/runtime/uri.js
 var require_uri = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const uri = require_fast_uri();
 	uri.code = "require(\"ajv/dist/runtime/uri\").default";
 	exports.default = uri;
 }));
-// node_modules/ajv/dist/core.js
+// ../stts/node_modules/ajv/dist/core.js
 var require_core$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
@@ -17989,7 +17995,7 @@ var require_core$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 		return { anyOf: [schema, $dataRef] };
 	}
 }));
-// node_modules/ajv/dist/vocabularies/core/id.js
+// ../stts/node_modules/ajv/dist/vocabularies/core/id.js
 var require_id = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.default = {
@@ -17999,7 +18005,7 @@ var require_id = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/core/ref.js
+// ../stts/node_modules/ajv/dist/vocabularies/core/ref.js
 var require_ref = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.callRef = exports.getValidate = void 0;
@@ -18105,7 +18111,7 @@ var require_ref = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.callRef = callRef;
 	exports.default = def;
 }));
-// node_modules/ajv/dist/vocabularies/core/index.js
+// ../stts/node_modules/ajv/dist/vocabularies/core/index.js
 var require_core = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const id_1 = require_id();
@@ -18121,7 +18127,7 @@ var require_core = /* @__PURE__ */ __commonJSMin(((exports) => {
 		ref_1.default
 	];
 }));
-// node_modules/ajv/dist/vocabularies/validation/limitNumber.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/limitNumber.js
 var require_limitNumber = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18163,7 +18169,7 @@ var require_limitNumber = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/multipleOf.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/multipleOf.js
 var require_multipleOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18185,7 +18191,7 @@ var require_multipleOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/runtime/ucs2length.js
+// ../stts/node_modules/ajv/dist/runtime/ucs2length.js
 var require_ucs2length = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	function ucs2length(str) {
@@ -18206,7 +18212,7 @@ var require_ucs2length = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.default = ucs2length;
 	ucs2length.code = "require(\"ajv/dist/runtime/ucs2length\").default";
 }));
-// node_modules/ajv/dist/vocabularies/validation/limitLength.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/limitLength.js
 var require_limitLength = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18232,7 +18238,7 @@ var require_limitLength = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/pattern.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/pattern.js
 var require_pattern = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const code_1 = require_code();
@@ -18263,7 +18269,7 @@ var require_pattern = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/limitProperties.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/limitProperties.js
 var require_limitProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18286,7 +18292,7 @@ var require_limitProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/required.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/required.js
 var require_required = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const code_1 = require_code();
@@ -18351,7 +18357,7 @@ var require_required = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/limitItems.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/limitItems.js
 var require_limitItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18374,14 +18380,14 @@ var require_limitItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/runtime/equal.js
+// ../stts/node_modules/ajv/dist/runtime/equal.js
 var require_equal = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const equal = require_fast_deep_equal();
 	equal.code = "require(\"ajv/dist/runtime/equal\").default";
 	exports.default = equal;
 }));
-// node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
 var require_uniqueItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const dataType_1 = require_dataType();
@@ -18443,7 +18449,7 @@ var require_uniqueItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/const.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/const.js
 var require_const = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18463,7 +18469,7 @@ var require_const = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/enum.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/enum.js
 var require_enum = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18505,7 +18511,7 @@ var require_enum = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/validation/index.js
+// ../stts/node_modules/ajv/dist/vocabularies/validation/index.js
 var require_validation = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const limitNumber_1 = require_limitNumber();
@@ -18539,7 +18545,7 @@ var require_validation = /* @__PURE__ */ __commonJSMin(((exports) => {
 		enum_1.default
 	];
 }));
-// node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
 var require_additionalItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.validateAdditionalItems = void 0;
@@ -18590,7 +18596,7 @@ var require_additionalItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.validateAdditionalItems = validateAdditionalItems;
 	exports.default = def;
 }));
-// node_modules/ajv/dist/vocabularies/applicator/items.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/items.js
 var require_items = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.validateTuple = void 0;
@@ -18642,7 +18648,7 @@ var require_items = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.validateTuple = validateTuple;
 	exports.default = def;
 }));
-// node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
 var require_prefixItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const items_1 = require_items();
@@ -18654,7 +18660,7 @@ var require_prefixItems = /* @__PURE__ */ __commonJSMin(((exports) => {
 		code: (cxt) => (0, items_1.validateTuple)(cxt, "items")
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/items2020.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/items2020.js
 var require_items2020 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18680,7 +18686,7 @@ var require_items2020 = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/contains.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/contains.js
 var require_contains = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18763,7 +18769,7 @@ var require_contains = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/dependencies.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/dependencies.js
 var require_dependencies = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.validateSchemaDeps = exports.validatePropertyDeps = exports.error = void 0;
@@ -18843,7 +18849,7 @@ var require_dependencies = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.validateSchemaDeps = validateSchemaDeps;
 	exports.default = def;
 }));
-// node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
 var require_propertyNames = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -18878,7 +18884,7 @@ var require_propertyNames = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
 var require_additionalProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const code_1 = require_code();
@@ -18966,7 +18972,7 @@ var require_additionalProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/properties.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/properties.js
 var require_properties = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const validate_1 = require_validate();
@@ -19010,7 +19016,7 @@ var require_properties = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
 var require_patternProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const code_1 = require_code();
@@ -19064,7 +19070,7 @@ var require_patternProperties = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/not.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/not.js
 var require_not = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const util_1 = require_util();
@@ -19090,7 +19096,7 @@ var require_not = /* @__PURE__ */ __commonJSMin(((exports) => {
 		error: { message: "must NOT be valid" }
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/anyOf.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/anyOf.js
 var require_anyOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.default = {
@@ -19101,7 +19107,7 @@ var require_anyOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 		error: { message: "must match a schema in anyOf" }
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/oneOf.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/oneOf.js
 var require_oneOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -19146,7 +19152,7 @@ var require_oneOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/allOf.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/allOf.js
 var require_allOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const util_1 = require_util();
@@ -19170,7 +19176,7 @@ var require_allOf = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/if.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/if.js
 var require_if = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -19226,7 +19232,7 @@ var require_if = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.default = def;
 }));
-// node_modules/ajv/dist/vocabularies/applicator/thenElse.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/thenElse.js
 var require_thenElse = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const util_1 = require_util();
@@ -19238,7 +19244,7 @@ var require_thenElse = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/applicator/index.js
+// ../stts/node_modules/ajv/dist/vocabularies/applicator/index.js
 var require_applicator = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const additionalItems_1 = require_additionalItems();
@@ -19278,7 +19284,7 @@ var require_applicator = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 	exports.default = getApplicator;
 }));
-// node_modules/ajv/dist/vocabularies/format/format.js
+// ../stts/node_modules/ajv/dist/vocabularies/format/format.js
 var require_format$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -19365,12 +19371,12 @@ var require_format$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/vocabularies/format/index.js
+// ../stts/node_modules/ajv/dist/vocabularies/format/index.js
 var require_format = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.default = [require_format$1().default];
 }));
-// node_modules/ajv/dist/vocabularies/metadata.js
+// ../stts/node_modules/ajv/dist/vocabularies/metadata.js
 var require_metadata = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.contentVocabulary = exports.metadataVocabulary = void 0;
@@ -19389,7 +19395,7 @@ var require_metadata = /* @__PURE__ */ __commonJSMin(((exports) => {
 		"contentSchema"
 	];
 }));
-// node_modules/ajv/dist/vocabularies/draft7.js
+// ../stts/node_modules/ajv/dist/vocabularies/draft7.js
 var require_draft7 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const core_1 = require_core();
@@ -19406,7 +19412,7 @@ var require_draft7 = /* @__PURE__ */ __commonJSMin(((exports) => {
 		metadata_1.contentVocabulary
 	];
 }));
-// node_modules/ajv/dist/vocabularies/discriminator/types.js
+// ../stts/node_modules/ajv/dist/vocabularies/discriminator/types.js
 var require_types = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.DiscrError = void 0;
@@ -19416,7 +19422,7 @@ var require_types = /* @__PURE__ */ __commonJSMin(((exports) => {
 		DiscrError["Mapping"] = "mapping";
 	})(DiscrError || (exports.DiscrError = DiscrError = {}));
 }));
-// node_modules/ajv/dist/vocabularies/discriminator/index.js
+// ../stts/node_modules/ajv/dist/vocabularies/discriminator/index.js
 var require_discriminator = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const codegen_1 = require_codegen();
@@ -19508,7 +19514,7 @@ var require_discriminator = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 }));
-// node_modules/ajv/dist/refs/json-schema-draft-07.json
+// ../stts/node_modules/ajv/dist/refs/json-schema-draft-07.json
 var require_json_schema_draft_07 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = {
 		"$schema": "http://json-schema.org/draft-07/schema#",
@@ -19645,7 +19651,7 @@ var require_json_schema_draft_07 = /* @__PURE__ */ __commonJSMin(((exports, modu
 		"default": true
 	};
 }));
-// node_modules/ajv/dist/ajv.js
+// ../stts/node_modules/ajv/dist/ajv.js
 var require_ajv = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = void 0;
@@ -19736,7 +19742,7 @@ var require_ajv = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		}
 	});
 }));
-// node_modules/ajv-formats/dist/formats.js
+// ../stts/node_modules/ajv-formats/dist/formats.js
 var require_formats = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.formatNames = exports.fastFormats = exports.fullFormats = void 0;
@@ -19923,7 +19929,7 @@ var require_formats = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	}
 }));
-// node_modules/ajv-formats/dist/limit.js
+// ../stts/node_modules/ajv-formats/dist/limit.js
 var require_limit = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.formatLimitDefinition = void 0;
@@ -20000,7 +20006,7 @@ var require_limit = /* @__PURE__ */ __commonJSMin(((exports) => {
 	};
 	exports.default = formatLimitPlugin;
 }));
-// node_modules/ajv-formats/dist/index.js
+// ../stts/node_modules/ajv-formats/dist/index.js
 var require_dist = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	const formats_1 = require_formats();
@@ -20033,7 +20039,7 @@ var require_dist = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.default = formatsPlugin;
 }));
-// node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
 var import_ajv = /* @__PURE__ */ __toESM(require_ajv(), 1);
 var import_dist = /* @__PURE__ */ __toESM(require_dist(), 1);
 function createDefaultAjvInstance() {
@@ -20108,7 +20114,7 @@ var AjvJsonSchemaValidator = class {
 		};
 	}
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/server.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/server.js
 /**
 * Experimental server task features for MCP SDK.
 * WARNING: These APIs are experimental and may change without notice.
@@ -20325,7 +20331,7 @@ var ExperimentalServerTasks = class {
 		return this._server.cancelTask({ taskId }, options);
 	}
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/helpers.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/helpers.js
 /**
 * Experimental task capability assertion helpers.
 * WARNING: These APIs are experimental and may change without notice.
@@ -20369,7 +20375,7 @@ function assertClientRequestTaskCapability(requests, method, entityName) {
 		case "elicitation/create": if (!requests.elicitation?.create) throw new Error(`${entityName} does not support task creation for elicitation/create (required for ${method})`);
 	}
 }
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js
 /**
 * An MCP server on top of a pluggable transport.
 *
@@ -20691,7 +20697,7 @@ var Server = class extends Protocol {
 		return this.notification({ method: "notifications/prompts/list_changed" });
 	}
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
 const COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
 /**
 * Checks if a schema is completable (has completion metadata).
@@ -20709,7 +20715,7 @@ var McpZodTypeKind;
 (function(McpZodTypeKind) {
 	McpZodTypeKind["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
-// node_modules/@modelcontextprotocol/sdk/dist/esm/shared/toolNameValidation.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/toolNameValidation.js
 /**
 * Tool name validation utilities according to SEP: Specify Format for Tool Names
 *
@@ -20779,7 +20785,7 @@ function validateAndWarnToolName(name) {
 	issueToolNameWarning(name, result.warnings);
 	return result.isValid;
 }
-// node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/mcp-server.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/mcp-server.js
 /**
 * Experimental McpServer task features for MCP SDK.
 * WARNING: These APIs are experimental and may change without notice.
@@ -20809,7 +20815,7 @@ var ExperimentalMcpServerTasks = class {
 		return this._mcpServer._createRegisteredTool(name, config.title, config.description, config.inputSchema, config.outputSchema, config.annotations, execution, config._meta, handler);
 	}
 };
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
 function toolInputElementCount(value, max) {
 	let count = 0;
 	const stack = [value];
@@ -20830,7 +20836,7 @@ function toolInputElementCount(value, max) {
 	return count;
 }
 function resolveMaxToolInputElements(value) {
-	if (value === void 0 || value === 1e400) return void 0;
+	if (value === void 0 || value === Infinity) return void 0;
 	if (typeof value !== "number" || Number.isNaN(value) || value < 1) throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
 	return value;
 }
@@ -20851,9 +20857,6 @@ var McpServer = class {
 		this._promptHandlersInitialized = false;
 		this.server = new Server(serverInfo, options);
 		this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
-		if (options?.capabilities?.tools) this.setToolRequestHandlers();
-		if (options?.capabilities?.resources) this.setResourceRequestHandlers();
-		if (options?.capabilities?.prompts) this.setPromptRequestHandlers();
 	}
 	/**
 	* Access experimental features.
@@ -21468,7 +21471,7 @@ const EMPTY_COMPLETION_RESULT = { completion: {
 */
 var ReadBuffer = class {
 	constructor(options) {
-		this._maxBufferSize = options?.maxBufferSize ?? 0xa00000;
+		this._maxBufferSize = options?.maxBufferSize ?? 10485760;
 	}
 	append(chunk) {
 		if ((this._buffer?.length ?? 0) + chunk.length > this._maxBufferSize) {
@@ -21495,7 +21498,7 @@ function deserializeMessage(line) {
 function serializeMessage(message) {
 	return JSON.stringify(message) + "\n";
 }
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
+// ../stts/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 /**
 * Server transport for stdio: this communicates with an MCP client by reading from the current process' stdin and writing to stdout.
 *

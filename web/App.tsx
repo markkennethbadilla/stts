@@ -74,10 +74,10 @@ const CHIME: Record<Cue, string> = {
 };
 const WORD: Partial<Record<Cue, string>> = { listen: 'Speak.', captured: 'Stop.' };
 
-/** The saved voice if the browser has it, else the best English one: Natural, then Google, then any. */
+/** The saved voice if the browser has it, else the best English one: Natural or Online (neural), then Google, then any. */
 function pickVoice(name: string): SpeechSynthesisVoice | undefined {
   const en = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('en'));
-  const rank = (v: SpeechSynthesisVoice): number => (/natural/i.test(v.name) ? 0 : /google/i.test(v.name) ? 1 : 2);
+  const rank = (v: SpeechSynthesisVoice): number => (/natural|online/i.test(v.name) ? 0 : /google/i.test(v.name) ? 1 : 2);
   return en.find((v) => v.name === name) ?? en.sort((a, b) => rank(a) - rank(b))[0];
 }
 const ECHO_TAIL_MS = 3000;
