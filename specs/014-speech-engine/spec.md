@@ -25,6 +25,22 @@ The local engine was built because Chrome's recogniser lost words: sessions that
 
 Reads the microphone through Chrome and uses Chrome's speech services (recognition goes to Google's service, so it needs a network). Writes nothing; audio is never stored; the daemon has no `/asr` or `/voice` route, no child process and no models folder.
 
+## Quality bar
+
+| Aspect | Metric | Best practice | Baseline (2026-11-25) | Alternatives tried | Gate floor |
+| --- | --- | --- | --- | --- | --- |
+| Functional suitability | words heard come back as text; turn rules unchanged | Web Speech API continuous + interim results, restart on `end` | e2e 31/31 with the fake recogniser; unit 204/204 | local Parakeet via onnx-asr (dropped: Mark wants no local model) | `npm test` all pass |
+| Performance efficiency | no local model, no child process | browser engine, nothing loaded on the PC | daemon has no asr or Piper process | Parakeet worker (about 5 s load, 640 MB) | no model files under the data folder |
+| Compatibility | Chrome and Chromium only | feature-detect `SpeechRecognition` / `webkitSpeechRecognition` | Chrome on this PC: recognizer present, 19 voices with online neural ones | none | e2e on Chromium |
+| Interaction capability | natural voice picked by default | rank Natural or Online neural, then Google, then any English | Microsoft Aria/Andrew/Ava Online available | robotic SAPI David/Zira (ranked last) | `pickVoice` unit cases |
+| Reliability | no words lost across recogniser restarts | restart at once on `end`, keep interim text | covered by e2e restart cases | daemon ASR with audio pipe (removed) | e2e restart cases pass |
+| Security | audio never stored | no local recording | nothing written | n/a | n/a: no data at rest |
+| Maintainability | engine code size | use the platform API | asr.ts, asr_worker.py, Piper code removed | n/a | knip/depcruise clean (`npm run maint`) |
+| Flexibility | voice choice | saved setting wins | settings list shows browser English voices | n/a | n/a: settings unchanged |
+| Safety | n/a | n/a | n/a | n/a | n/a: speech I/O only |
+| Business outcome | n/a | n/a | n/a | n/a | n/a: personal tool |
+| Cost | $0 | built-in browser services | $0 | n/a | n/a: no paid API |
+
 ## How to run, check and hand over
 
 `npm test` runs the unit tests (including `chrome-recognition.test.ts`) and the e2e suite. By hand: open the window (`/stts`), speak, and watch interim words appear and a turn arrive; speak for over a minute and check no words are lost across Chrome's session restarts. An agent shell cannot speak aloud (never unprompted), so the voice is checked by the e2e fake and by reading the built page bundle. Machines that ran the old engine can delete their `piper` and `asr` folders under the data folder, `silero_vad.onnx` under `models`, and the shared `piper` and `parakeet` model folders; mkb-agentops `setup-stts.ps1` recycles what it installed.
