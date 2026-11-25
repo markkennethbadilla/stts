@@ -7,7 +7,7 @@ const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
 const CLAUSE = /[,;:–—](?=\s)/g;
 
 // Where to cut a sentence longer than `max`: after the last clause mark within `max`, else after
-// the first one past it, else not at all up to PART_CHARS. Each clip is its own Piper render, so a
+// the first one past it, else not at all up to PART_CHARS. Each clip is its own utterance, so a
 // cut at a bare space put a pause and a falling tone mid-phrase ("a threat ... detection service",
 // Mark 2026-10-12). Only past PART_CHARS: the last space, else a hard cut.
 // A clause under 8 characters ("Okay,") is too short a clip to cover the next one's synthesis.
@@ -54,7 +54,7 @@ export function toParts(text: string, max = PART_CHARS): string[] {
   return parts;
 }
 
-// The first spoken clip is short, so Piper renders it in about 0.1 s and he hears the first word
+// The first spoken clip is short, so the voice starts at once and he hears the first word
 // at once; the rest are clips of up to `max`, synthesised while it plays (Mark 2026-10-10).
 export const FIRST_CHARS = 40;
 /** The page's clip size: sentence N in a barge is clip N of toClips(part, CLIP_CHARS). */

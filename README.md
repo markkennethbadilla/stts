@@ -1,6 +1,6 @@
 # stts
 
-stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt` and `tts`) talks to a small local daemon on `127.0.0.1:15986`, which drives a Chrome app window that listens with on-device speech recognition and speaks with Piper. It ships as the Claude Code plugin `stts` from the `stts-marketplace` and also runs over stdio behind an MCP gateway. Data lives in `%LOCALAPPDATA%\stts\`. MIT licence, see `LICENSE`.
+stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt` and `tts`) talks to a small local daemon on `127.0.0.1:15986`, which drives a Chrome app window that listens with Chrome's built-in speech recognition and speaks with the browser's voice (`speechSynthesis`). No speech model is downloaded or installed. It ships as the Claude Code plugin `stts` from the `stts-marketplace` and also runs over stdio behind an MCP gateway. Data lives in `%LOCALAPPDATA%\stts\`. MIT licence, see `LICENSE`.
 
 ## Install
 
@@ -8,15 +8,13 @@ stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt`
 2. `/plugin install stts@stts-marketplace`
 3. Run `/stts` to start a voice conversation.
 
-Needs Node 20+, Chrome and Python 3.10+ on PATH. On the first start the daemon fetches the pinned voice and speech parts (Piper, the `en_GB-jenny_dioco-medium` voice, onnx-asr with NVIDIA Parakeet TDT 0.6B v3, sherpa-onnx's Silero voice detector; about 760 MB, SHA256-checked; about 20 minutes on a typical connection, measured at 0.5 MB/s from Hugging Face) into `%LOCALAPPDATA%\stts\` (`~/.local/share/stts/` on Linux) and logs each step to `daemon.log` there. Until it finishes, the window speaks with the browser's voice. To run it yourself: `node scripts/install.mjs` in the plugin folder (`--check` lists what is missing).
-
-Models folder: `STTS_MODELS_DIR`, else `modelsDir` in `<data>/config.json`, else `<data>/models`. Point it at a folder you already keep models in to share one copy.
+Needs Node 20+ and Chrome. Speech recognition is Chrome's own (it uses Google's service, so it needs a network); the voice is the best English voice the browser offers, changeable in settings.
 
 No `npm install` or build happens on install: the bundled `dist/` (self-contained `dist/mcp.js` and `dist/daemon.js`, plus the page) is committed to the repository. After changing `src/`, `web/` or `public/`, run `npm run build` and commit `dist/` with the change; the push gate fails on a stale `dist/`.
 
 Gateway (MCPJungle, every agent): register a stdio server with command `node <repo>/dist/mcp.js` (no build needed, `dist/` is committed) and env `STTS_WHO=agent`, so a helper agent cannot close the session's window. Our own machines register it from mkb-agentops (spec 010).
 
-For development: `npm ci`, then `npm run check` and `npm run build`. `npm run e2e` builds, starts the daemon on `STTS_TEST_PORT` (default 15990) with its own data dir under `test-results/`, and drives the page in headless Chromium with a fake speech recogniser, fake media, `page.clock` and a fake Piper server. Locally it uses the shared Playwright headless shell from `mkb-agentops/versions.json`.
+For development: `npm ci`, then `npm run check` and `npm run build`. `npm run e2e` builds, starts the daemon on `STTS_TEST_PORT` (default 15990) with its own data dir under `test-results/`, and drives the page in headless Chromium with a fake speech recogniser, a fake browser voice, fake media and `page.clock`. Locally it uses the shared Playwright headless shell from `mkb-agentops/versions.json`.
 
 Checks: a local Trunk push gate (`npm run gate`, spec 011), no GitHub Actions. Run `trunk git-hooks sync` once per clone.
 

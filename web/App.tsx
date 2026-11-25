@@ -22,6 +22,7 @@ import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DaemonMessage, type PageMessage, parseMessage } from '../src/protocol.ts';
 import { CLIP_CHARS, toClips } from '../src/sentences.ts';
+import { ChromeRecognition } from './chromeRecognition.ts';
 import { Button } from './components/ui/button.tsx';
 import { LiveWaveform } from './components/ui/live-waveform.tsx';
 import { type AgentState, Orb } from './components/ui/orb.tsx';
@@ -33,7 +34,6 @@ import { Slider } from './components/ui/slider.tsx';
 import { Switch } from './components/ui/switch.tsx';
 import { TextShimmer } from './components/ui/text-shimmer.tsx';
 import { Textarea } from './components/ui/textarea.tsx';
-import { DaemonRecognition, feed, setAsrLog, setMuted } from './daemonRecognition.ts';
 import {
   afterSent,
   BARGE_FINAL_WAIT_MS,
@@ -41,7 +41,6 @@ import {
   bargeText,
   bargeVerdict,
   confirmsBarge,
-  estimateWord,
   holdMs,
   isEcho,
   pageMachine,
@@ -74,7 +73,13 @@ const CHIME: Record<Cue, string> = {
   background: 'background-result',
 };
 const WORD: Partial<Record<Cue, string>> = { listen: 'Speak.', captured: 'Stop.' };
-const DEFAULT_PIPER = 'en_GB-jenny_dioco-medium';
+
+/** The saved voice if the browser has it, else the best English one: Natural, then Google, then any. */
+function pickVoice(name: string): SpeechSynthesisVoice | undefined {
+  const en = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('en'));
+  const rank = (v: SpeechSynthesisVoice): number => (/natural/i.test(v.name) ? 0 : /google/i.test(v.name) ? 1 : 2);
+  return en.find((v) => v.name === name) ?? en.sort((a, b) => rank(a) - rank(b))[0];
+}
 const ECHO_TAIL_MS = 3000;
 const VOICE_MIN = 0.015;
 const VOICE_X = 3;
@@ -114,8 +119,6 @@ type Recognition = {
   onspeechstart: (() => void) | null;
   onspeechend: (() => void) | null;
   onaudiostart: (() => void) | null;
-  onnowords?: (() => void) | null;
-  keepsAudio?: boolean;
   onresult:
     | ((e: {
         resultIndex: number;
@@ -173,12 +176,10 @@ export function App() {
   }
   // Any audio of the current tts has played: a barge before it means the reply was never heard.
   const audioStarted = useRef(true);
-  // The browser's own voice is speaking (Piper failed).
-  const fallbackVoice = useRef(false);
   // A session that stops, ends or fails mid-sentence keeps its interim words as heard: a network
   // error cut utterances off in the real Chrome test (2026-10-06), and the next session starts empty.
   const keepLive = (): void => {
-    if (!liveWords.current || rec.current?.keepsAudio) return;
+    if (!liveWords.current) return;
     heard.current.final = `${heard.current.final} ${liveWords.current}`.trim();
     liveWords.current = '';
     actor.send({ type: 'RESULT', text: heard.current.final });
@@ -204,7 +205,6 @@ export function App() {
       }, sec * 1000);
     }
   };
-  const audio = useRef<HTMLAudioElement | null>(null);
   // When the last tts reached the page, for the "first audio" log line: how long he waited for the first word.
   const ttsAt = useRef(0);
   // A Repeat is playing: page-only speech the daemon never asked for, so its end, Stop or barge
@@ -213,7 +213,6 @@ export function App() {
   // A new tts cut the old speech off: that stop answers nothing (the daemon already moved on).
   const superseding = useRef(false);
   // The clip paused the moment his voice started over it, until his final says barge or not.
-  const ducked = useRef<HTMLAudioElement | null>(null);
   const duckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Bumped every time speech is cut off: a clip still synthesising, or a ducked clip whose resume
   // timer is pending, belongs to the old speech and never plays over the new one (Mark 2026-10-16
@@ -237,31 +236,21 @@ export function App() {
     pending.current = false;
     bargeWords.current = '';
     clearTimeout(duckTimer.current);
-    ducked.current = null;
-    audio.current?.pause();
-    audio.current = null;
     speechSynthesis.cancel();
+    // Chrome keeps a cancelled queue paused: resume clears it so the next speech plays.
+    speechSynthesis.resume();
   };
   const unduck = (): void => {
     clearTimeout(duckTimer.current);
     pending.current = false;
-    const a = ducked.current;
-    ducked.current = null;
-    if (a && a === audio.current && actor.getSnapshot().matches({ speech: 'playing' })) void a.play().catch(() => {});
+    if (actor.getSnapshot().matches({ speech: 'playing' })) speechSynthesis.resume();
   };
-  // ponytail: entries for clips skipped by a Stop stay until a reload; a few KB of promises.
-  const clipCache = useRef(new Map<string, Promise<Blob | string>>());
-  // The end of the synthesis queue: prefetches start one at a time, after the clip playing now.
-  const synthTail = useRef<Promise<unknown>>(Promise.resolve());
-  // Clips queued for a prefetch and not yet asked for: one that already played, or was dropped by a
-  // Stop, is skipped, so Piper never renders it a second time.
-  const ahead = useRef(new Set<string>());
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
   const [turnNo, setTurnNo] = useState(0);
   const [spoken, setSpoken] = useState({ done: 0, of: 0 });
   const [browse, setBrowse] = useState<{ side: 'prompts' | 'responses'; i: number } | null>(null);
-  const [voice, setVoice] = useSetting('voice', DEFAULT_PIPER);
+  const [voice, setVoice] = useSetting('voice', '');
   const [rate, setRate] = useSetting('rate', '1');
   // Refs: the machine's actions are bound once at mount, so a state read there is the first render's.
   const rateRef = useRef(rate);
@@ -315,10 +304,7 @@ export function App() {
     log(why);
     rec.current?.abort();
   }
-  const [localVoices, setLocalVoices] = useState<string[]>([]);
-  const [piperVoices, setPiperVoices] = useState<string[]>([DEFAULT_PIPER]);
-  // A saved voice that is not an installed Piper voice (an old Windows pick) still speaks with Piper.
-  const clipVoice = piperVoices.includes(voice) ? voice : DEFAULT_PIPER;
+  const [voices, setVoices] = useState<string[]>([]);
 
   const post = (m: PageMessage): void => {
     if (m.type === 'complete' && m.text.trim()) activeAt.current = Date.now();
@@ -392,10 +378,7 @@ export function App() {
           keepResults.current = false;
           // The cut-off tts already returns this turn: its end must not open a listen.
           if (interrupted) listen.current.after = false;
-          // Piper gives no word timings: estimate the word from the share of the clip played.
-          const a = audio.current;
-          const clipNow = actor.getSnapshot().context.queue[0] ?? '';
-          const word = wordAt.current > 0 ? wordAt.current : a ? estimateWord(clipNow, a.currentTime, a.duration) : 0;
+          const word = wordAt.current;
           const now = Date.now();
           post({
             type: 'complete',
@@ -415,39 +398,8 @@ export function App() {
           });
         },
         stopAudio: () => cutSpeech(),
-        playClip: (_, { clip }) => void playClip(clip),
-        // Clips ahead synthesise while the current one plays, so the next starts with no gap.
-        // One at a time, after the clip playing now: clips sent together share Piper's CPU, and the
-        // first one, the one he waits to hear, came back 2-3x slower (bench 2026-10-10: 391 ms alone,
-        // 941 ms beside three others).
-        prefetchClips: (_, { clips }) => {
-          for (const c of clips) {
-            if (clipCache.current.has(c) || ahead.current.has(c)) continue;
-            ahead.current.add(c);
-            synthTail.current = synthTail.current.then(() => (ahead.current.delete(c) ? fetchClip(c) : null));
-          }
-        },
+        playClip: (_, { clip }) => speak(clip),
         log: (_, { line }) => log(line === 'mic start timed out' ? `${line} at ${startStage.current}` : line),
-        speakFallback: (_, { clip }) => {
-          const u = new SpeechSynthesisUtterance(clip);
-          const v = speechSynthesis.getVoices().find((x) => x.name === voice && x.localService);
-          if (v) u.voice = v;
-          u.rate = speed();
-          u.volume = callVolume.current ?? 1;
-          fallbackVoice.current = true;
-          audioStarted.current = true;
-          // Word boundary events give the word he cut in on (Mark 2026-10-30); Piper clips have none.
-          wordAt.current = 0;
-          u.onboundary = (e) => {
-            if (e.name === 'word') wordAt.current = clip.slice(0, e.charIndex).split(/\s+/).filter(Boolean).length + 1;
-          };
-          u.onend = () => {
-            fallbackVoice.current = false;
-            send({ type: 'CLIP_ENDED' });
-          };
-          spokenLog.current.push({ text: clip, at: Date.now() });
-          speechSynthesis.speak(u);
-        },
       },
     }),
   );
@@ -455,80 +407,54 @@ export function App() {
   const paused = state.matches({ mic: 'paused' });
   const armed = state.matches({ autosend: 'armed' });
 
-  // One synthesis per clip text: a prefetch and the later play share it.
-  // The audio is cached, not the Response: a body reads once, so two equal sentences in a row
-  // shared one Response and the second failed into the browser voice.
-  function fetchClip(clip: string): Promise<Blob | string> {
-    let p = clipCache.current.get(clip);
-    if (!p) {
-      p = (async (): Promise<Blob | string> => {
-        const r = await fetch('/voice/clip', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: clip, voice: clipVoice, rate: speed() }),
-        }).catch(() => null);
-        if (!r) return 'clip unreachable';
-        return r.ok ? await r.blob() : `clip ${r.status} ${clipVoice}`;
-      })();
-      clipCache.current.set(clip, p);
-    }
-    return p;
-  }
-
-  async function playClip(clip: string): Promise<void> {
-    // The clip to play now goes first; prefetches queue behind it.
-    ahead.current.delete(clip);
-    wordAt.current = 0; // Piper gives no word timings: a barge estimates the word from the time played
-    const gen = speechGen.current;
-    const p = fetchClip(clip);
-    synthTail.current = Promise.all([synthTail.current, p]);
-    const r = await p;
-    clipCache.current.delete(clip);
-    // The speech this clip belonged to was cut off while it synthesised: it must not play.
-    if (gen !== speechGen.current) return;
-    if (typeof r === 'string') {
-      send({ type: 'CLIP_FAILED', reason: r });
-      return;
-    }
-    const a = new Audio(URL.createObjectURL(r));
-    a.volume = callVolume.current ?? 1;
-    audio.current = a;
-    if (ttsAt.current) {
-      const at = ttsAt.current;
-      ttsAt.current = 0;
-      a.onplaying = () =>
-        log(`first audio ${Math.round(performance.now() - at)}ms after the tts, clip of ${clip.length} chars`);
-    }
-    a.addEventListener('playing', () => {
-      audioStarted.current = true;
-    });
-    a.onended = () => {
+  // One clip through the browser's voice; an error ends the clip so the speech never stalls.
+  function speak(clip: string): void {
+    const u = new SpeechSynthesisUtterance(clip);
+    const v = pickVoice(voice);
+    if (v) u.voice = v;
+    u.rate = speed();
+    u.volume = callVolume.current ?? 1;
+    audioStarted.current = true;
+    wordAt.current = 0;
+    u.onboundary = (e) => {
+      if (e.name === 'word') wordAt.current = clip.slice(0, e.charIndex).split(/\s+/).filter(Boolean).length + 1;
+    };
+    const done = (): void => {
       setSpoken((s) => ({ ...s, done: s.done + 1 }));
       send({ type: 'CLIP_ENDED' });
     };
+    u.onend = done;
+    u.onerror = (e) => {
+      // cancel() ends a clip with interrupted or canceled: the speech was cut on purpose.
+      if (e.error === 'interrupted' || e.error === 'canceled') return;
+      log(`voice error ${e.error}`);
+      done();
+    };
     spokenLog.current.push({ text: clip, at: Date.now() });
-    // A barge confirmed between clips: the next clip never starts; the barge stops the speech.
     if (confirmed.current) return;
-    a.play().catch((e: unknown) => send({ type: 'CLIP_FAILED', reason: `play ${String(e)}` }));
+    speechSynthesis.speak(u);
   }
 
-  // A turn cue: "Speak" / "Stop" in Piper's voice (a chime when the clip fails, or in chime mode).
+  // A turn cue: "Speak" / "Stop" in the browser voice, or a chime (chime mode, or cues off).
   // The word goes in the spoken log and restarts the echo tail, so it is never heard as his words.
   async function playCue(cue: Cue): Promise<void> {
     if (cues === 'off') return;
     const word = cues === 'words' ? WORD[cue] : undefined;
-    // Never hold the mic for the word: if Piper is not ready within 1.5 s the chime plays instead
-    // (a dead Piper held every start for 17 s, log 2026-10-06 02:19 UTC).
-    const clip = word
-      ? await Promise.race([fetchClip(word), new Promise<string>((r) => setTimeout(() => r('cue timeout'), 1500))])
-      : '';
-    if (word && typeof clip === 'string') clipCache.current.delete(word); // retry Piper next time
-    const a = new Audio(typeof clip === 'string' || !word ? `/earcon/${CHIME[cue]}.ogg` : URL.createObjectURL(clip));
-    // The cue word counts as speech from its start, so the mic never takes it for his words.
     if (word) spokenLog.current.push({ text: word, at: Date.now() });
     speechEndedAt.current = Date.now();
-    a.volume = Number(earconVol);
     await new Promise<void>((done) => {
+      if (word) {
+        const u = new SpeechSynthesisUtterance(word);
+        const v = pickVoice(voice);
+        if (v) u.voice = v;
+        u.volume = Number(earconVol);
+        u.onend = () => done();
+        u.onerror = () => done();
+        speechSynthesis.speak(u);
+        return;
+      }
+      const a = new Audio(`/earcon/${CHIME[cue]}.ogg`);
+      a.volume = Number(earconVol);
       a.onended = () => done();
       a.play().catch(() => done());
     });
@@ -599,9 +525,8 @@ export function App() {
     }
     if (startSeq.current !== myStart) return;
     const stream = aec.current?.stream ?? null;
-    if (stream) void feed(stream);
-    // The e2e suite injects a fake recogniser here; the real one is the daemon's engine.
-    const Rec = (globalThis as { __sttsRecognition?: new () => Recognition }).__sttsRecognition ?? DaemonRecognition;
+    // The e2e suite injects a fake recogniser here.
+    const Rec = (globalThis as { __sttsRecognition?: new () => Recognition }).__sttsRecognition ?? ChromeRecognition;
     const r = new Rec();
     consumed.current = 0;
     resultsSeen.current = 0;
@@ -630,28 +555,16 @@ export function App() {
       // Barge latency (Mark 2026-10-15): the speech used to stop only on his final (end of his
       // sentence plus decode). It pauses the moment his voice starts; the final then decides: a
       // barge stops it, an echo or a short sound resumes it, and no final within BARGE_HOLD_MS resumes it.
-      const a = audio.current;
-      if (actor.getSnapshot().matches({ speech: 'playing' }) && !fallbackVoice.current) {
+      if (actor.getSnapshot().matches({ speech: 'playing' })) {
         // Paused or between clips too: his words confirm the barge either way (Fable review 2026-10-30).
         if (!pending.current) log(`voice over speech, clip ${actor.getSnapshot().context.sentence}`);
         pending.current = true;
         clearTimeout(duckTimer.current);
-        if (a && !a.paused) {
-          a.pause();
-          ducked.current = a;
-        }
+        speechSynthesis.pause();
         duckTimer.current = setTimeout(unduck, BARGE_HOLD_MS);
       }
     };
     r.onspeechend = () => mine() && send({ type: 'SPEECH_END', text: heard.current.final });
-    r.onnowords = () => {
-      if (!mine()) return;
-      if (!heard.current.final && !liveWords.current) heard.current.startAt = 0;
-      if (pending.current && !confirmed.current) {
-        log('speech resumed: a sound with no words');
-        unduck();
-      }
-    };
     r.onresult = (e) => {
       if (!mine()) return;
       let live = '';
@@ -672,9 +585,6 @@ export function App() {
       // While the agent speaks only a final of 3+ words that is not its own echo cuts it off.
       const snap = actor.getSnapshot();
       if (snap.matches({ speech: 'playing' })) {
-        // The browser voice plays outside the page's audio, so echo cancellation cannot remove it:
-        // its own words cut it off (2026-10-05 23:49 UTC). No spoken barge while it plays.
-        if (fallbackVoice.current) return;
         const clip = snap.context.queue[0] ?? '';
         // Hard stop (Mark 2026-10-30: the first barge only paused the speech, it resumed after 2.5 s
         // while his final was still decoding, and he had to barge again and again). The pause at his
@@ -691,14 +601,13 @@ export function App() {
         ) {
           confirmed.current = true;
           setInterim(words);
-          audio.current?.pause();
+          speechSynthesis.pause();
           clearTimeout(duckTimer.current);
           duckTimer.current = setTimeout(
             () => {
               if (!confirmed.current || !actor.getSnapshot().matches({ speech: 'playing' })) return;
               confirmed.current = false;
               pending.current = false;
-              ducked.current = null;
               // No final in time: the words heard by now go, and the results stay unused so the late
               // final still reaches the next turn (the daemon drops a repeat).
               keepResults.current = true;
@@ -718,7 +627,6 @@ export function App() {
           confirmed.current = false;
           pending.current = false;
           clearTimeout(duckTimer.current);
-          ducked.current = null;
           // The barge carries every word heard before it: words said before the speech started and
           // short finals said over it (Mark 2026-10-16 08:06: only the last fragment came through).
           send({ type: 'BARGE', text: bargeText(heard.current.final, final), part: listen.current.part });
@@ -857,10 +765,8 @@ export function App() {
       }
       listen.current.part = b.part ?? 1;
       if (b.volume !== undefined) callVolume.current = b.volume;
-      // Clips cached at the old rate would play at the old speed.
       if (b.rate !== undefined && b.rate !== speed()) {
         callRate.current = b.rate;
-        clipCache.current.clear();
         log(`rate ${b.rate} for this window`);
       }
       if (raise === '1') window.focus();
@@ -869,8 +775,7 @@ export function App() {
         armIdle(b.idleSec ?? 200);
         return;
       }
-      // Short clips: Piper renders a whole clip before it plays, so a 1000-char first clip
-      // held the first word 2-5 s (log, 2026-10-05). The rest synthesise ahead while it plays.
+      // Short clips: the browser voice never cuts a long text off part-way (Chrome stops one near 15 s).
       const clips = toClips(b.text ?? '', CLIP_CHARS);
       ls.push('history_responses', b.text ?? '');
       setSaid(b.text ?? '');
@@ -898,7 +803,6 @@ export function App() {
     const s2 = actor.subscribe((s) => {
       const playing = s.matches({ speech: 'playing' });
       if (wasPlaying && !playing) {
-        ahead.current.clear(); // clips a Stop dropped are never rendered
         speechEndedAt.current = Date.now();
         setSpoken({ done: 0, of: 0 });
         if (superseding.current) {
@@ -969,31 +873,23 @@ export function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: post only reads the ws ref; runs on each mute change.
   useEffect(() => {
     document.title = paused ? 'stts (muted)' : 'stts';
-    // Unmuted: ask the daemon for any open listen again, so the mic comes back even if the page lost it.
+    // Unmuted: the machine restarts the mic; ask the daemon for any open listen again.
     if (!paused) {
-      setAsrLog(log);
-      // No mic frames after unmute: switchMic drops the stream and the restart reopens it.
-      setMuted(false, undefined, (why) => switchMic(why));
       post({ type: 'relisten' });
       return;
     }
-    // Mute (spec 005, Mark 2026-10-18): what he said before the mute, finals and the words in flight,
-    // is his turn (or held by the daemon for the next listen); only audio while muted is dropped.
-    const before = heard.current.final;
-    const live = liveWords.current;
+    // Mute (spec 005): the words he said before it, finals and the words in flight, are his turn.
+    const text = `${heard.current.final} ${liveWords.current}`.trim();
     const startAt = heard.current.startAt || Date.now();
     heard.current.final = '';
     heard.current.startAt = 0;
     liveWords.current = '';
     setInterim('');
-    setMuted(true, (flushed) => {
-      const text = [before, ...(flushed.length ? flushed : [live])].join(' ').trim();
-      if (!text) return;
-      log(`mute sent the words before it, ${text.split(/\s+/).length} words`);
-      ls.push('history_prompts', text);
-      setSaid(text);
-      post({ type: 'complete', text, startAt, endAt: Date.now() });
-    });
+    if (!text) return;
+    log(`mute sent the words before it, ${text.split(/\s+/).length} words`);
+    ls.push('history_prompts', text);
+    setSaid(text);
+    post({ type: 'complete', text, startAt, endAt: Date.now() });
   }, [paused]);
 
   useEffect(() => {
@@ -1040,28 +936,17 @@ export function App() {
       switchMic(`mic switched to ${mic === 'default' ? 'default' : 'a new device'}`);
   }, [mic]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once; the warm-up uses the voice saved at load.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once.
   useEffect(() => {
     refreshMics();
     const fill = () =>
-      setLocalVoices(
+      setVoices(
         speechSynthesis
           .getVoices()
-          .filter((v) => v.localService)
+          .filter((v) => v.lang.toLowerCase().startsWith('en'))
           .map((v) => v.name),
       );
     fill();
-    fetch('/voice/list')
-      .then((r) => r.json() as Promise<string[]>)
-      .then((l) => {
-        if (l.length) setPiperVoices(l);
-        void fetch('/voice/warm', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ voice: l.includes(voice) ? voice : DEFAULT_PIPER }),
-        }).catch(() => {});
-      })
-      .catch(() => {});
     speechSynthesis.addEventListener('voiceschanged', fill);
     return () => speechSynthesis.removeEventListener('voiceschanged', fill);
   }, []);
@@ -1076,8 +961,7 @@ export function App() {
   };
 
   // Repeat: the last reply plays again from the page alone (Mark 2026-10-10: "without having to go
-  // through you so we save tokens"). Re-synthesised by the same local Piper (played clips leave the
-  // cache); the daemon is never told, so no turn and no agent call.
+  // through you so we save tokens"). Spoken again by the browser voice; the daemon is never told, so no turn and no agent call.
   const lastReply = ls.list('history_responses').findLast((t) => t.trim() !== '') ?? '';
   const replay = (): void => {
     if (!lastReply || actor.getSnapshot().matches({ speech: 'playing' })) return;
@@ -1134,7 +1018,7 @@ export function App() {
 
   const shown = browse ? (ls.list(`history_${browse.side}`)[browse.i] ?? '') : interim || said;
   // Lyrics view (Mark 2026-10-10, like Spotify's): one line per clip, the clip playing now lit and
-  // the rest dimmed, scrolled to the middle once per clip. No word timings: Piper gives none.
+  // the rest dimmed, scrolled to the middle once per clip. Word timings only where the voice reports them.
   const lines = useMemo(() => toClips(shown, CLIP_CHARS), [shown]);
   const now = turn === 'agentSpeaking' && !interim && !browse && spoken.of > 0 ? spoken.done : -1;
   const words = useRef<HTMLElement | null>(null);
@@ -1254,12 +1138,15 @@ export function App() {
                 </Select>
               </Row>
               <Row label="Voice">
-                <Select value={voice} onValueChange={(v) => v && setVoice(String(v))}>
+                <Select
+                  value={voices.length ? (pickVoice(voice)?.name ?? '') : ''}
+                  onValueChange={(v) => v && setVoice(String(v))}
+                >
                   <SelectTrigger className="w-40 max-w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...piperVoices, ...localVoices].map((n) => (
+                    {voices.map((n) => (
                       <SelectItem key={n} value={n}>
                         {n}
                       </SelectItem>
@@ -1276,7 +1163,6 @@ export function App() {
                   value={[Number(rate)]}
                   onValueChange={(v) => {
                     callRate.current = null;
-                    clipCache.current.clear();
                     setRate(String(first(v)));
                   }}
                 />

@@ -25,28 +25,9 @@ for (const [name, width, height, theme = 'dark'] of [
   page.on('pageerror', (e) => errors.push(`${name} pageerror ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && errors.push(`${name} console ${m.text()}`));
   let send: (m: object) => void = () => {};
-  // The mic's audio feed to the daemon's speech engine (spec 014): accepted and dropped.
-  await page.routeWebSocket('**/asr', () => {});
   await page.routeWebSocket('**/ws', (ws) => {
     send = (m) => ws.send(JSON.stringify(m));
   });
-  // Piper stand-in: two seconds of silent 8 kHz mono WAV per clip.
-  const pcm = 16000;
-  const wav = Buffer.alloc(44 + pcm);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm, 4);
-  wav.write('WAVEfmt ', 8);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(8000, 24);
-  wav.writeUInt32LE(8000, 28);
-  wav.writeUInt16LE(1, 32);
-  wav.writeUInt16LE(8, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm, 40);
-  wav.fill(128, 44);
-  await page.route('**/voice/clip', (r) => r.fulfill({ status: 200, contentType: 'audio/wav', body: wav }));
   // Headless Chrome has no speech service: a stand-in recogniser that starts and reports words.
   await page.addInitScript(() => {
     class FakeRec {
@@ -60,7 +41,6 @@ for (const [name, width, height, theme = 'dark'] of [
       stop() {}
       abort() {}
     }
-    // The page takes its recogniser from __sttsRecognition (spec 014); SpeechRecognition is no longer read.
     (globalThis as unknown as { __sttsRecognition: unknown }).__sttsRecognition = FakeRec;
   });
   await page.goto(url);

@@ -1,11 +1,9 @@
-import { once } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import type { APIRequestContext } from '@playwright/test';
-import { dataRoot, testPort } from '../../playwright.config.ts';
+import { dataRoot } from '../../playwright.config.ts';
 import { BACKGROUND_RESULT, readNotes, STOPPED, SUPERSEDED } from '../../src/protocol.ts';
-import { daemonLog, expect, test } from './fixtures.ts';
+import { daemonLog, expect, holdSpeech, spokenRates, spokenTexts, test } from './fixtures.ts';
 
 const ask = (request: APIRequestContext, data: object) =>
   request.post('/request', { data: { who: 'session', ...data }, timeout: 150_000 });
@@ -73,72 +71,28 @@ test('/notify produces a background result', async ({ voice, request }) => {
   await expect(voice.getByLabel('background')).toBeVisible();
 });
 
-// One second of 8 kHz 16-bit mono silence.
-function wav(): Buffer {
-  const data = 8000 * 2;
-  const b = Buffer.alloc(44 + data);
-  b.write('RIFF', 0);
-  b.writeUInt32LE(36 + data, 4);
-  b.write('WAVEfmt ', 8);
-  b.writeUInt32LE(16, 16);
-  b.writeUInt16LE(1, 20);
-  b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(8000, 24);
-  b.writeUInt32LE(16000, 28);
-  b.writeUInt16LE(2, 32);
-  b.writeUInt16LE(16, 34);
-  b.write('data', 36);
-  b.writeUInt32LE(data, 40);
-  return b;
-}
-
 test('a file is read in parts and resumed', async ({ voice, request }) => {
-  // Sentence-sized clips (spec 006) play one by one: three parts of real-time clips need over a minute.
-  test.setTimeout(180_000);
-  let clips = 0;
   // Hold every clip after the first until Stop is pressed, so a fast runner cannot finish part 1 first.
-  const held: (() => void)[] = [];
-  let hold = true;
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      clips++;
-      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-      if (hold && clips > 1) held.push(send);
-      else send();
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    mkdirSync(dataRoot, { recursive: true });
-    const file = join(dataRoot, 'read.txt');
-    // Distinct sentences: clips are cached by text, so a repeated sentence made one request, the hold
-    // never engaged, and a slow runner read all three parts before Stop landed (CI, 2026-10-07).
-    writeFileSync(
-      file,
-      Array.from({ length: 40 }, (_, i) => `This is sentence number ${i} that the voice reads out loud.`).join(' '),
-    );
-    const first = ask(request, { kind: 'tts', file });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => clips).toBeGreaterThan(0);
-    // Focus and Enter: a trusted click with no actionability wait on animation frames, which page.clock holds.
-    await voice.getByLabel('Stop').focus();
-    await voice.keyboard.press('Enter');
-    hold = false;
-    for (const send of held.splice(0)) send();
-    const stopped = await (await first).text();
-    expect(stopped).toMatch(new RegExp(`^${STOPPED} 1 `));
-    const n = Number(/of (\d+)/.exec(stopped)?.[1]);
-    expect(n).toBeGreaterThan(1);
-    const rest = await ask(request, { kind: 'tts', file, part: 2 });
-    expect(await rest.text()).toBe(readNotes.end(n));
-    expect(clips).toBeGreaterThanOrEqual(n);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await holdSpeech(voice, 1);
+  mkdirSync(dataRoot, { recursive: true });
+  const file = join(dataRoot, 'read.txt');
+  writeFileSync(
+    file,
+    Array.from({ length: 40 }, (_, i) => `This is sentence number ${i} that the voice reads out loud.`).join(' '),
+  );
+  const first = ask(request, { kind: 'tts', file });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(async () => (await spokenTexts(voice)).length).toBeGreaterThan(1);
+  // Focus and Enter: a trusted click with no actionability wait on animation frames, which page.clock holds.
+  await voice.getByLabel('Stop').focus();
+  await voice.keyboard.press('Enter');
+  const stopped = await (await first).text();
+  expect(stopped).toMatch(new RegExp(`^${STOPPED} 1 `));
+  const n = Number(/of (\d+)/.exec(stopped)?.[1]);
+  expect(n).toBeGreaterThan(1);
+  await holdSpeech(voice, Number.POSITIVE_INFINITY);
+  const rest = await ask(request, { kind: 'tts', file, part: 2 });
+  expect(await rest.text()).toBe(readNotes.end(n));
 });
 
 // The message box is always shown (Mark 2026-10-10).
@@ -151,6 +105,7 @@ test('a typed message is returned by stt as a turn', { tag: '@smoke' }, async ({
   const reply = ask(request, { kind: 'stt' });
   await expect(voice.getByLabel('speakNow')).toBeVisible();
   await voice.getByLabel('Message').fill('typed from the keyboard');
+  await expect(voice.getByLabel('Message')).toHaveValue('typed from the keyboard');
   await voice.getByLabel('Message').press('Enter');
   const text = await (await reply).text();
   expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] typed from the keyboard$/);
@@ -158,226 +113,125 @@ test('a typed message is returned by stt as a turn', { tag: '@smoke' }, async ({
   expect(daemonLog()).toMatch(/page typed turn \d+/);
 });
 
-// Mark 2026-11-05: speaking over a file read did not cut it off; only Stop did. A file or url read
-// barges in exactly like a text tts: his turn, the unspoken rest and the part to resume.
+// Mark 2026-11-05: a file or url read barges in exactly like a text tts (his turn, the unspoken rest, the part to resume).
 test('speaking over a file read cuts it off like a text tts', async ({ voice, request }) => {
-  const held: (() => void)[] = [];
-  let clips = 0;
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      clips++;
-      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-      if (clips > 1) held.push(send);
-      else send();
+  await holdSpeech(voice, 1);
+  mkdirSync(dataRoot, { recursive: true });
+  const file = join(dataRoot, 'barge.txt');
+  writeFileSync(file, Array.from({ length: 30 }, (_, i) => `Barge sentence ${i} is read aloud now.`).join(' '));
+  const read = ask(request, { kind: 'tts', file, listen: true });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await expect.poll(async () => (await spokenTexts(voice)).length).toBeGreaterThan(1);
+  await voice.clock.fastForward(700);
+  await voice.evaluate(() => {
+    const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } }).__rec;
+    r.onspeechstart();
+    r.onresult({
+      resultIndex: 0,
+      results: [Object.assign([{ transcript: 'wait stop reading please' }], { isFinal: true })],
     });
   });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    mkdirSync(dataRoot, { recursive: true });
-    const file = join(dataRoot, 'barge.txt');
-    writeFileSync(file, Array.from({ length: 30 }, (_, i) => `Barge sentence ${i} is read aloud now.`).join(' '));
-    const read = ask(request, { kind: 'tts', file, listen: true });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await expect.poll(() => clips).toBeGreaterThan(0);
-    await voice.clock.fastForward(700);
-    await voice.evaluate(() => {
-      const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })
-        .__rec;
-      r.onspeechstart();
-      r.onresult({
-        resultIndex: 0,
-        results: [Object.assign([{ transcript: 'wait stop reading please' }], { isFinal: true })],
-      });
-    });
-    const text = await (await read).text();
-    expect(text.split('\n')[0]).toMatch(/\] wait stop reading please$/);
-    expect(text).toContain('interrupted your speech at part 1 sentence');
-    expect(text).toMatch(/\nunspoken: .*Barge sentence 26 is read aloud now\.$/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  const text = await (await read).text();
+  expect(text.split('\n')[0]).toMatch(/\] wait stop reading please$/);
+  expect(text).toContain('interrupted your speech at part 1 sentence');
+  expect(text).toMatch(/\nunspoken: .*Barge sentence 26 is read aloud now\.$/);
 });
 
-test('a tts rate reaches Piper and holds for the window', async ({ voice, request }) => {
-  const scales: number[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (d) => {
-      body += d;
-    });
-    req.on('end', () => {
-      scales.push((JSON.parse(body) as { length_scale: number }).length_scale);
-      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await expect(voice.getByLabel('agentSpeaking')).toBeHidden();
-    await (await ask(request, { kind: 'tts', text: 'Slow sentence one.', rate: 0.75 })).text();
-    await (await ask(request, { kind: 'tts', text: 'Slow sentence two.' })).text();
-    expect(scales.length).toBeGreaterThanOrEqual(2);
-    for (const s of scales) expect(s).toBeCloseTo(1 / 0.75, 3);
-    await expect.poll(daemonLog).toContain('page rate 0.75 for this window');
-  } finally {
-    piper.closeAllConnections();
-    piper.close();
-  }
+test('a tts rate reaches the browser voice and holds for the window', async ({ voice, request }) => {
+  await expect(voice.getByLabel('agentSpeaking')).toBeHidden();
+  await (await ask(request, { kind: 'tts', text: 'Slow sentence one.', rate: 0.75 })).text();
+  await (await ask(request, { kind: 'tts', text: 'Slow sentence two.' })).text();
+  const rates = await spokenRates(voice);
+  expect(rates.length).toBeGreaterThanOrEqual(2);
+  for (const r of rates) expect(r).toBeCloseTo(0.75, 3);
+  await expect.poll(daemonLog).toContain('page rate 0.75 for this window');
 });
 
 test('typing during speech cuts it off and the tts returns the turn with the barge note', async ({
   voice,
   request,
 }) => {
-  // Hold every clip so the speech is still playing when the message is sent.
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await keyboardMode(voice);
-    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await voice.getByLabel('Message').fill('also check the logs');
-    // The page re-renders the box after the fill; Enter before that sent an empty box (busy machine, 2026-10-10).
-    await expect(voice.getByLabel('Message')).toHaveValue('also check the logs');
-    await voice.getByLabel('Message').press('Enter');
-    const text = await (await speech).text();
-    expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] also check the logs\n/);
-    expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await holdSpeech(voice, 0);
+  await keyboardMode(voice);
+  const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await voice.getByLabel('Message').fill('also check the logs');
+  // The page re-renders the box after the fill; Enter before that sent an empty box (busy machine, 2026-10-10).
+  await expect(voice.getByLabel('Message')).toHaveValue('also check the logs');
+  await voice.getByLabel('Message').press('Enter');
+  const text = await (await speech).text();
+  expect(text).toMatch(/^\[turn \d+, typed [\d:]+ to [\d:]+\] also check the logs\n/);
+  expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
 });
 
 test('speaking over the agent cuts it off, a filler included; its own echo does not', { tag: '@smoke' }, async ({
   voice,
   request,
 }) => {
-  // Hold every clip so the speech is still playing when the words arrive.
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    const say = (t: string) =>
-      voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
-    await say('one sentence here');
-    await expect.poll(daemonLog).toContain('page echo discarded');
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await say('okay');
-    const text = await (await speech).text();
-    // Anything he says cuts it off, a lone filler included.
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] okay\n/);
-    expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await holdSpeech(voice, 0);
+  const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await voice.clock.fastForward(700);
+  const say = (t: string) =>
+    voice.evaluate((x) => (globalThis as unknown as { __say: (s: string) => void }).__say(x), t);
+  await say('one sentence here');
+  await expect.poll(daemonLog).toContain('page echo discarded');
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await say('okay');
+  const text = await (await speech).text();
+  // Anything he says cuts it off, a lone filler included.
+  expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] okay\n/);
+  expect(text).toMatch(/interrupted (your speech at part 1 sentence 1|before your reply was spoken at all)/);
 });
 
 test('one word of his own, "hello", cuts the agent off', async ({ voice, request }) => {
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await voice.evaluate(() => (globalThis as unknown as { __say: (s: string) => void }).__say('hello'));
-    const text = await (await speech).text();
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] hello\n/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await holdSpeech(voice, 0);
+  const speech = ask(request, { kind: 'tts', text: 'One sentence here. Another sentence there. A third one.' });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await voice.clock.fastForward(700);
+  await voice.evaluate(() => (globalThis as unknown as { __say: (s: string) => void }).__say('hello'));
+  const text = await (await speech).text();
+  expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] hello\n/);
 });
 
 test('Repeat replays the last reply from the page alone; Stop over it leaves the listen open', async ({
   voice,
   request,
 }) => {
-  test.setTimeout(120_000);
-  let clips = 0;
-  let hold = false;
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      clips++;
-      const send = () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-      if (hold) held.push(send);
-      else send();
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
   const press = async (label: string) => {
     await voice.getByLabel(label).focus();
     await voice.keyboard.press('Enter');
   };
-  try {
-    // Nothing spoken yet: nothing to repeat.
-    await expect(voice.getByLabel('Repeat last reply')).toBeDisabled();
-    const long = Array.from({ length: 12 }, (_, i) => `Sentence ${i} of the long reply is read again.`).join(' ');
-    await (await ask(request, { kind: 'tts', text: long })).text();
-    const spoken = clips;
-    expect(spoken).toBeGreaterThan(1);
-    // A listen is open; Repeat plays every clip again and the listen stays open.
-    const reply = ask(request, { kind: 'stt' });
-    await expect(voice.getByLabel('speakNow')).toBeVisible();
-    await press('Repeat last reply');
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect(voice.getByLabel('Repeat last reply')).toBeDisabled();
-    await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 60_000 });
-    expect(clips).toBeGreaterThanOrEqual(spoken * 2);
-    expect(daemonLog()).toContain('page repeat by Mark');
-    // Stop during a repeat silences it only: the same listen still returns his words, with no barge line.
-    hold = true;
-    await press('Repeat last reply');
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await press('Stop');
-    await expect(voice.getByLabel('speakNow')).toBeVisible();
-    await voice.evaluate(() => (globalThis as unknown as { __say: (t: string) => void }).__say('after the repeat'));
-    await voice.clock.fastForward(1500);
-    const text = await (await reply).text();
-    expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] after the repeat$/);
-    expect(text).not.toContain(STOPPED);
-    // A new reply arriving during a repeat cuts it short and still returns as spoken.
-    for (const send of held.splice(0)) send();
-    hold = false;
-    await press('Repeat last reply');
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    expect(await (await ask(request, { kind: 'tts', text: 'A brand new reply.' })).text()).toBe(readNotes.spoken);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  // Nothing spoken yet: nothing to repeat.
+  await expect(voice.getByLabel('Repeat last reply')).toBeDisabled();
+  const long = Array.from({ length: 12 }, (_, i) => `Sentence ${i} of the long reply is read again.`).join(' ');
+  await (await ask(request, { kind: 'tts', text: long })).text();
+  const spoken = (await spokenTexts(voice)).length;
+  expect(spoken).toBeGreaterThan(1);
+  // A listen is open; Repeat plays every clip again and the listen stays open.
+  const reply = ask(request, { kind: 'stt' });
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await press('Repeat last reply');
+  await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 60_000 });
+  expect((await spokenTexts(voice)).length).toBeGreaterThanOrEqual(spoken * 2);
+  expect(daemonLog()).toContain('page repeat by Mark');
+  // Stop during a repeat silences it only: the same listen still returns his words, with no barge line.
+  await holdSpeech(voice, (await spokenTexts(voice)).length);
+  await press('Repeat last reply');
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await press('Stop');
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await voice.evaluate(() => (globalThis as unknown as { __say: (t: string) => void }).__say('after the repeat'));
+  await voice.clock.fastForward(1500);
+  const text = await (await reply).text();
+  expect(text).toMatch(/^\[turn \d+, heard [\d:]+ to [\d:]+\] after the repeat$/);
+  expect(text).not.toContain(STOPPED);
+  // A new reply arriving during a repeat cuts it short and still returns as spoken.
+  await press('Repeat last reply');
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await holdSpeech(voice, Number.POSITIVE_INFINITY);
+  expect(await (await ask(request, { kind: 'tts', text: 'A brand new reply.' })).text()).toBe(readNotes.spoken);
 });

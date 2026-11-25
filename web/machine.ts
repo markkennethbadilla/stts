@@ -4,7 +4,6 @@ import { distance } from 'fastest-levenshtein';
 import { and, assign, not, or, raise, setup, stateIn } from 'xstate';
 import { readsUnfinished } from '../src/protocol';
 
-export const CLIPS_AHEAD = 3;
 /**
  * Extra hold when the words are still interim. Chrome's cloud recogniser can keep every result
  * interim through a 12 s pause, so only finals arming made every cloud turn wait for the 60 s
@@ -159,16 +158,6 @@ export function confirmsBarge(heard: string, clip: string, spoken: readonly stri
   return !isEcho(heard, [clip, ...spoken]);
 }
 
-/**
- * The word of a clip playing at `at` of `duration` seconds, 1-based, from the share of time played:
- * an estimate for a voice with no word timings (Piper). 0 when the duration is unknown.
- */
-export function estimateWord(clip: string, at: number, duration: number): number {
-  const n = words(clip).length;
-  if (!n || !Number.isFinite(duration) || duration <= 0) return 0;
-  return Math.min(n, Math.max(1, Math.floor((at / duration) * n) + 1));
-}
-
 /** A barge's text: the words already heard for this turn, then the final that cut the speech off. */
 export function bargeText(held: string, final: string): string {
   return `${held} ${final}`.trim();
@@ -203,7 +192,6 @@ export type PageEvent =
   // notice: a one-off notice (speak, then close): the mic never runs for it (Mark 2026-11-05).
   | { type: 'ENQUEUE'; clips: string[]; listen?: boolean; notice?: boolean }
   | { type: 'CLIP_ENDED' }
-  | { type: 'CLIP_FAILED'; reason: string }
   | { type: 'STOP' }
   | { type: 'QUEUE_EMPTY' }
   // A message typed into the box and sent; part is the agent's current read-aloud part.
@@ -277,9 +265,7 @@ export const pageMachine = setup({
     startMic: () => {},
     stopMic: () => {},
     sendTurn: (_: unknown, _p: { text: string; keep: boolean }) => {},
-    prefetchClips: (_: unknown, _p: { clips: string[] }) => {},
     playClip: (_: unknown, _p: { clip: string }) => {},
-    speakFallback: (_: unknown, _p: { clip: string }) => {},
     // Sends a typed message or a barge to the daemon as a turn.
     deliver: (_: unknown, _p: Delivery) => {},
     // Silences the playing clip at once (the Stop button's path).
@@ -601,22 +587,10 @@ export const pageMachine = setup({
         playing: {
           // The watchdog clocks restart when the speech ends, so a long speech is not "no audio".
           exit: assign({ heardAt: now, speechAt: 0 }),
-          entry: [
-            { type: 'playClip', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
-            {
-              type: 'prefetchClips',
-              params: ({ context }) => ({ clips: context.queue.slice(1, 1 + CLIPS_AHEAD) }),
-            },
-          ],
+          entry: [{ type: 'playClip', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) }],
           on: {
             ENQUEUE: {
-              actions: [
-                assign({ queue: ({ context, event }) => [...context.queue, ...event.clips] }),
-                {
-                  type: 'prefetchClips',
-                  params: ({ context }) => ({ clips: context.queue.slice(1, 1 + CLIPS_AHEAD) }),
-                },
-              ],
+              actions: assign({ queue: ({ context, event }) => [...context.queue, ...event.clips] }),
             },
             // Stop: the paused clip never ends, so the queue is dropped here or the next tts never plays.
             STOP: { target: 'idle', actions: assign({ queue: [] }) },
@@ -658,22 +632,6 @@ export const pageMachine = setup({
                 assign({ queue: [] }),
               ],
             },
-            CLIP_FAILED: [
-              {
-                // A pause aborted play() and the clip resumes; a fallback here spoke over it in the Windows voice.
-                guard: ({ event }) => event.reason.startsWith('play AbortError'),
-                actions: {
-                  type: 'log',
-                  params: ({ event }) => ({ line: `voice play interrupted, no fallback: ${event.reason}` }),
-                },
-              },
-              {
-                actions: [
-                  { type: 'log', params: ({ event }) => ({ line: `voice fallback ${event.reason}` }) },
-                  { type: 'speakFallback', params: ({ context }) => ({ clip: context.queue[0] ?? '' }) },
-                ],
-              },
-            ],
             CLIP_ENDED: [
               {
                 guard: ({ context }) => context.queue.length <= 1,

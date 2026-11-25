@@ -4,7 +4,6 @@ import {
   bargeText,
   bargeVerdict,
   confirmsBarge,
-  estimateWord,
   holdMs as holdFor,
   isEcho,
   nextBackoff,
@@ -17,17 +16,15 @@ function start(talking: () => boolean = () => false) {
   const startMic = vi.fn();
   const sendTurn = vi.fn();
   const playClip = vi.fn();
-  const prefetchClips = vi.fn();
-  const speakFallback = vi.fn();
   const deliver = vi.fn();
   const stopAudio = vi.fn();
   const actor = createActor(
     pageMachine.provide({
       guards: { stillTalking: talking },
-      actions: { startMic, sendTurn, playClip, prefetchClips, speakFallback, deliver, stopAudio },
+      actions: { startMic, sendTurn, playClip, deliver, stopAudio },
     }),
   ).start();
-  return { actor, startMic, sendTurn, playClip, prefetchClips, speakFallback, deliver, stopAudio };
+  return { actor, startMic, sendTurn, playClip, deliver, stopAudio };
 }
 
 beforeEach(() => {
@@ -317,18 +314,15 @@ describe('page machine', () => {
     expect(actor.getSnapshot().matches({ autosend: 'off' })).toBe(true);
   });
 
-  it('speech: 3 clips ahead, fallback on failure, results discarded, mic stays on through it', () => {
-    const { actor, startMic, playClip, prefetchClips, speakFallback } = start();
+  it('speech: results discarded, mic stays on through it', () => {
+    const { actor, startMic, playClip } = start();
     actor.send({ type: 'REQUEST', kind: 'listen' });
     actor.send({ type: 'MIC_STARTED' });
     actor.send({ type: 'ENQUEUE', clips: ['a', 'b', 'c', 'd', 'e'] });
     expect(actor.getSnapshot().matches({ mic: { live: 'listening' }, turn: 'agentSpeaking' })).toBe(true);
     expect(playClip).toHaveBeenLastCalledWith(expect.anything(), { clip: 'a' });
-    expect(prefetchClips).toHaveBeenLastCalledWith(expect.anything(), { clips: ['b', 'c', 'd'] });
     actor.send({ type: 'RESULT', text: 'echo' });
     expect(actor.getSnapshot().matches({ turn: 'agentSpeaking' })).toBe(true);
-    actor.send({ type: 'CLIP_FAILED', reason: 'clip 502 x' });
-    expect(speakFallback).toHaveBeenCalledWith(expect.anything(), { clip: 'a' });
     for (let i = 0; i < 4; i++) actor.send({ type: 'CLIP_ENDED' });
     expect(startMic).toHaveBeenCalledTimes(1);
     // 20 s of speech with no words: the watchdog leaves the mic alone.
@@ -541,12 +535,6 @@ describe('barge confirmation and word estimate (Fable review 2026-10-30)', () =>
     expect(confirmsBarge('okay', clip, [], 2000)).toBe(true);
     expect(confirmsBarge('um', clip, [], 2000)).toBe(true);
     expect(confirmsBarge('wait', clip, [], 2000)).toBe(true);
-  });
-  it('estimates the word from the share of the clip played, 1-based, clamped', () => {
-    expect(estimateWord(clip, 0, 4)).toBe(1);
-    expect(estimateWord(clip, 2, 4)).toBe(6);
-    expect(estimateWord(clip, 4, 4)).toBe(11);
-    expect(estimateWord(clip, 1, Number.NaN)).toBe(0);
   });
 });
 

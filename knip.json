@@ -1,16 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["hooks/*.mjs", "scripts/*.mjs", "test/screenshots/*.ts"],
+  "entry": ["hooks/*.mjs", "test/screenshots/*.ts"],
   "ignore": ["dist/**"],
   "ignoreDependencies": ["@swc/core"],
   "ignoreIssues": {
-    "src/asr.ts": ["exports"],
     "src/client.ts": ["exports"],
     "src/protocol.ts": ["exports"],
     "src/turns.ts": ["exports"],
     "test/e2e/fixtures.ts": ["exports"],
     "web/components/ui/*.tsx": ["exports"],
-    "web/daemonRecognition.ts": ["exports"],
     "web/machine.ts": ["exports"]
   }
 }

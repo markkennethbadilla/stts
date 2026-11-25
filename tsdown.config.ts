@@ -20,7 +20,6 @@ export default defineConfig([
     entry: ['src/daemon.ts'],
     clean: false,
     copy: [
-      { from: 'src/asr_worker.py', to: 'dist' },
       // The earcons sit next to dist/daemon.js, where its /earcon route serves them.
       { from: 'public/earcon/*.ogg', to: 'dist/earcon' },
       // Icons and manifest go beside dist/web/index.html (Vite keeps them: emptyOutDir false).

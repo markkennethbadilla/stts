@@ -1,7 +1,6 @@
 // The voice daemon: one hono app on 127.0.0.1 that holds one request slot, talks to the
-// page over /ws, launches the Chrome --app window and runs Piper as a child process.
+// page over /ws and launches the Chrome --app window. Speech is Chrome's own, in the page (spec 014).
 
-import type { ChildProcess } from 'node:child_process';
 import {
   appendFileSync,
   existsSync,
@@ -14,7 +13,7 @@ import {
   watchFile,
   writeFileSync,
 } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { constants, homedir, setPriority } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -27,8 +26,6 @@ import spawn from 'cross-spawn';
 import { Hono } from 'hono';
 import removeMarkdown from 'remove-markdown';
 import { createActor } from 'xstate';
-import { z } from 'zod';
-import { asrPaths, createEngine, preload, stopAsr } from './asr.js';
 import {
   BACKGROUND_RESULT,
   BAD_MESSAGE_LOG,
@@ -59,47 +56,8 @@ export const dataDir =
   process.platform === 'win32'
     ? join(process.env['LOCALAPPDATA'] ?? homedir(), 'stts')
     : join(homedir(), '.local', 'share', 'stts');
-const configModelsDir = (): string | undefined => {
-  try {
-    return (JSON.parse(readFileSync(join(dataDir, 'config.json'), 'utf8')) as { modelsDir?: string }).modelsDir;
-  } catch {
-    return undefined;
-  }
-};
-export const modelsDir = process.env['STTS_MODELS_DIR'] ?? configModelsDir() ?? join(dataDir, 'models');
-const VOICES = join(modelsDir, 'piper');
-const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
-const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
-const asr = asrPaths(dataDir, modelsDir);
 
-// A user who never ran our setup gets the pinned voice and speech parts on the first start
-// (scripts/install.mjs, spec 009); an install that has them all exits at once.
-function installMissing(): void {
-  const script = join(here, '..', 'scripts', 'install.mjs');
-  if (process.env['STTS_NO_INSTALL'] === '1' || !existsSync(script)) return;
-  const c = spawn(process.execPath, [script, '--auto'], {
-    stdio: ['ignore', 'pipe', 'pipe'], // SILENT-OK: stdin only; stdout and stderr go to daemon.log
-    windowsHide: true,
-    env: { ...process.env, STTS_DATA_DIR: dataDir, STTS_MODELS_DIR: modelsDir, STTS_PIPER_HOME: PIPER_HOME },
-  });
-  let fetched = false;
-  const lines = (d: Buffer) => {
-    for (const l of String(d).split(/\r?\n/)) {
-      if (!l.trim()) continue;
-      if (l.startsWith('START install')) fetched = true;
-      deps.log(l);
-    }
-  };
-  c.stdout?.on('data', lines);
-  c.stderr?.on('data', lines);
-  c.on('error', (e) => deps.log(`FAIL install could not start: ${String(e)}`));
-  c.on('exit', (code) => {
-    if (code !== 0) deps.log(`FAIL install exit ${code}`);
-    else if (fetched) preload(asr, deps.log);
-  });
-}
-
-// Swappable side effects, so the tests run with no Chrome, no Piper and no exit.
+// Swappable side effects, so the tests run with no Chrome and no exit.
 export const deps = {
   log(line: string): void {
     mkdirSync(dataDir, { recursive: true });
@@ -123,8 +81,6 @@ export const deps = {
     c.unref();
   },
   exit(code: number): void {
-    piper?.kill();
-    stopAsr();
     deps.log(`daemon exit pid ${process.pid} code ${code}`);
     process.exit(code);
   },
@@ -957,88 +913,6 @@ app.post('/request', async (c) => {
   return c.text(`${heard.text}\n\n${note}`);
 });
 
-// Piper: its own HTTP server, started on the first clip if nothing answers on its port,
-// proxied so the page needs one origin. The page calls POST /voice/clip {text, voice, rate}.
-let piper: ChildProcess | null = null;
-// voice becomes a file name for Piper: no path separators.
-const ClipBody = z.object({
-  text: z.string(),
-  voice: z.string().regex(/^[\w.-]+$/),
-  rate: z.number().min(0.5).max(2).optional(),
-});
-const piperClip = (text: string, voice: string, rate: number) =>
-  fetch(`http://127.0.0.1:${PIPER_PORT}/synthesize`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, voice, length_scale: 1 / rate }),
-    signal: AbortSignal.timeout(20_000),
-  }).catch(() => null);
-
-function startPiper(voice: string): void {
-  const voices = VOICES;
-  const py = join(PIPER_HOME, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-  const args = ['-m', 'piper.http_server', '--host', '127.0.0.1', '--port', String(PIPER_PORT)];
-  piper = spawn(py, [...args, '-m', join(voices, `${voice}.onnx`), '--data-dir', voices, '--sentence-silence', '0.2'], {
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  piper.on('error', (e) => deps.log(`piper start failed ${String(e)}`));
-  // A Piper that exits (its port still held by the old daemon's Piper during a live update) is
-  // forgotten, so the next clip starts a fresh one: a dead handle failed every clip for 17 s and
-  // the browser voice spoke instead (log 2026-10-05 23:49 UTC).
-  const p = piper;
-  p.on('exit', () => {
-    if (piper === p) piper = null;
-  });
-}
-
-// The Piper voices installed: every .onnx in the voices folder, by name, sorted.
-app.get('/voice/list', async (c) => {
-  const files = await readdir(VOICES).catch(() => [] as string[]);
-  return c.json(
-    files
-      .filter((f) => f.endsWith('.onnx'))
-      .map((f) => f.slice(0, -5))
-      .sort(),
-  );
-});
-
-// The page calls this on load: Piper loads its model while Mark speaks, not on the first
-// reply (that cost 5.5 s, log 2026-10-05).
-app.post('/voice/warm', async (c) => {
-  const parsed = ClipBody.pick({ voice: true }).safeParse(await c.req.json().catch(() => null));
-  if (parsed.success && !piper) startPiper(parsed.data.voice);
-  return c.body(null, 204);
-});
-
-app.post('/voice/clip', async (c) => {
-  const parsed = ClipBody.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) {
-    deps.log('piper clip refused: bad body or voice name');
-    return c.text(parsed.error.message, 400);
-  }
-  const { text, voice, rate } = parsed.data;
-  const t0 = Date.now();
-  let r = await piperClip(text, voice, rate ?? 1);
-  // Not up yet: start it, or wait for the one the warm-up started.
-  if (!r) {
-    if (!piper) startPiper(voice);
-    for (let i = 0; i < 30 && !r; i++) {
-      await sleep(500);
-      r = await piperClip(text, voice, rate ?? 1);
-    }
-  }
-  const wav = r?.ok ? await r.arrayBuffer() : null;
-  // ponytail: logs the first 30 chars, as the old line did; never the full text.
-  const head = JSON.stringify(text.slice(0, 30));
-  if (!wav) {
-    deps.log(`piper clip failed ${voice} ${Date.now() - t0}ms ${head}`);
-    return c.text('piper failed', 502);
-  }
-  deps.log(`piper clip ok ${voice} ${wav.byteLength}B ${Date.now() - t0}ms ${head}`);
-  return c.body(wav, 200, { 'content-type': 'audio/wav' });
-});
-
 app.get(
   '/ws',
   upgradeWebSocket(() => {
@@ -1050,36 +924,6 @@ app.get(
       },
       onMessage: (e) => link?.onMessage(String(e.data)),
       onClose: () => link?.detach(),
-    };
-  }),
-);
-
-// Speech to text (spec 014): the page streams 16 kHz float audio here, the engine answers with
-// speechstart and final text on the same socket.
-app.get(
-  '/asr',
-  upgradeWebSocket(() => {
-    let engine: ReturnType<typeof createEngine> | null = null;
-    return {
-      onOpen: (_e, ws) => {
-        engine = createEngine(
-          asr,
-          (ev) => {
-            if (ev.type === 'error') deps.log(`asr ${ev.error}`);
-            ws.send(JSON.stringify(ev));
-          },
-          deps.log,
-        );
-      },
-      onMessage: (e) => {
-        const d = e.data;
-        if (typeof d === 'string') {
-          if (d === 'flush') engine?.flush();
-          return;
-        }
-        const u8 = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array((d as Blob & Uint8Array).buffer);
-        engine?.push(new Float32Array(u8.slice().buffer));
-      },
     };
   }),
 );
@@ -1100,19 +944,13 @@ export async function exitCodeWhenTaken(p: number): Promise<0 | 1> {
 }
 
 export function start(p: number = port): void {
-  // Normal priority, whatever started it: an agent spawned the daemon below normal, and Piper and
-  // the window inherited that, so a busy machine held the first word for seconds (2026-10-10).
+  // Normal priority, whatever started it: an agent spawned the daemon below normal, and the window
+  // inherited that, so a busy machine held the first word for seconds (2026-10-10).
   try {
     setPriority(constants.priority.PRIORITY_NORMAL);
   } catch {}
   const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
     deps.log(`daemon start pid ${process.pid}`);
-    // The speech engine loads now, before any window or speech (spec 014); a part still missing is
-    // fetched first (spec 009), then the engine loads.
-    setTimeout(() => {
-      preload(asr, deps.log);
-      installMissing();
-    }, 0);
   });
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;

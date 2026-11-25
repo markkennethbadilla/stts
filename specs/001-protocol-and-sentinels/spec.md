@@ -21,7 +21,6 @@ The daemon listens on `127.0.0.1`, port `STTS_PORT` or 15986 by default.
 | `GET /barge` | Answers `{text:"", open}`; `open` is true while a window is connected |
 | `POST /notify` | A background helper finished (spec 007) |
 | `GET /earcon/:name.ogg` | The short sounds |
-| `POST /voice/clip` | `{text, voice, rate}` in, Piper's `audio/wav` out; the page speaks through it so it needs one origin |
 | WebSocket `/ws` | The live link to the page |
 
 `/request` answers 200 with the reply text. Any other status is an error whose body is the error text: 400 bad input, 409 unanswered turn (spec 002), 504 `superseded` (spec 003).

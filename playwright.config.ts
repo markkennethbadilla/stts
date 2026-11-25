@@ -9,7 +9,7 @@ export const dataRoot = join(import.meta.dirname, 'test-results', 'e2e-data');
 export default defineConfig({
   testDir: 'test/e2e',
   workers: 1,
-  // Cold starts (Piper warm-up, a fresh window) take more than the 5 s default on a busy machine.
+  // Cold starts (a fresh window) take more than the 5 s default on a busy machine.
   expect: { timeout: 15_000 },
   fullyParallel: false,
   timeout: 60_000,
@@ -26,12 +26,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       STTS_PORT: String(testPort),
-      STTS_PIPER_PORT: String(testPort + 1),
-      STTS_PIPER_HOME: join(dataRoot, 'no-piper'),
-      STTS_MODELS_DIR: join(dataRoot, 'no-models'),
       STTS_LIVE_UPDATE: '0',
       STTS_NO_WINDOW: '1',
-      STTS_NO_INSTALL: '1',
       LOCALAPPDATA: dataRoot,
       HOME: dataRoot,
     },

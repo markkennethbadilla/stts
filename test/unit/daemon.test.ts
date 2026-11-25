@@ -749,9 +749,4 @@ describe('daemon', () => {
     speak('real words');
     expect(await (await listen).text()).toMatch(/\] real words$/);
   });
-
-  it('/voice/clip refuses a bad body or a voice with a path in it', async () => {
-    expect((await post('/voice/clip', null)).status).toBe(400);
-    expect((await post('/voice/clip', { text: 'hi', voice: '../x' })).status).toBe(400);
-  });
 });

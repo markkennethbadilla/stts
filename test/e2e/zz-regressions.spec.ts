@@ -1,12 +1,9 @@
 // Regressions fixed on 2026-10-06; each test guards one behaviour Mark saw come back.
 // Named zz- so it runs after voice.spec.ts: its last test presses End, which stops the daemon.
-import { once } from 'node:events';
-import { createServer } from 'node:http';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { testPort } from '../../playwright.config.ts';
 import { CONVERSATION_ENDED, NO_SPEECH } from '../../src/protocol.ts';
 import { toClips } from '../../src/sentences.ts';
-import { daemonLog, expect, test } from './fixtures.ts';
+import { daemonLog, expect, holdSpeech, releaseSpeech, spokenTexts, test, voiceCount } from './fixtures.ts';
 
 const emitResults = (voice: Page, results: [string, boolean][], from: number) =>
   voice.evaluate(
@@ -36,40 +33,9 @@ async function reload(voice: Page) {
   await voice.waitForTimeout(300);
 }
 
-function wav(seconds = 1): Buffer {
-  const data = 8000 * 2 * seconds;
-  const b = Buffer.alloc(44 + data);
-  b.write('RIFF', 0);
-  b.writeUInt32LE(36 + data, 4);
-  b.write('WAVEfmt ', 8);
-  b.writeUInt32LE(16, 16);
-  b.writeUInt16LE(1, 20);
-  b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(8000, 24);
-  b.writeUInt32LE(16000, 28);
-  b.writeUInt16LE(2, 32);
-  b.writeUInt16LE(16, 34);
-  b.write('data', 36);
-  b.writeUInt32LE(data, 40);
-  return b;
-}
-
-// A turn left unanswered by an earlier test makes a bare stt a 409: answer it with a short tts
-// (a fake Piper replies at once), then listen.
+// A turn left unanswered by an earlier test makes a bare stt a 409: answer it with a short tts, then listen.
 async function listen(request: APIRequestContext) {
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await ask(request, { kind: 'tts', text: 'Okay.' });
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await ask(request, { kind: 'tts', text: 'Okay.' });
   return ask(request, { kind: 'stt' });
 }
 
@@ -157,458 +123,172 @@ test('an automatic mic restart plays no chime', async ({ voice, request }) => {
 });
 
 test('a fragment of the long sentence being spoken is echo, not a barge', async ({ voice, request }) => {
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav())));
+  await holdSpeech(voice, 0);
+  const speech = ask(request, {
+    kind: 'tts',
+    text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
   });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    const speech = ask(request, {
-      kind: 'tts',
-      text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
-    });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await say(voice, 'our conversations carry on');
-    await expect.poll(daemonLog).toContain('page echo discarded');
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    for (const send of held.splice(0)) send();
-    await voice.getByLabel(/Skip/).click();
-    expect(await (await speech).text()).not.toMatch(/\[turn/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await say(voice, 'our conversations carry on');
+  await expect.poll(daemonLog).toContain('page echo discarded');
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await voice.getByLabel(/Skip/).click();
+  expect(await (await speech).text()).not.toMatch(/\[turn/);
 });
 
-// Mark 2026-10-15: a new tts arrived while the last one still spoke; the old audio played on while the
-// highlight followed the new text. The new tts cuts the old one off: no old clip is asked for again.
+// Mark 2026-10-15: a new tts arrived while the last one still spoke; the new tts cuts the old one off for good.
 test('a new tts mid-speech cuts the old speech off; only the new clips follow', async ({ voice, request }) => {
-  const said: string[] = [];
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => {
-      body += c;
-    });
-    req.on('end', () => {
-      said.push((JSON.parse(body) as { text: string }).text);
-      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
+  await holdSpeech(voice, 1);
   const old = 'Old one. Old two is here. Old three is here. Old four is here.';
   const next = 'New one. New two is here.';
-  try {
-    const first = ask(request, { kind: 'tts', text: old, listen: true });
-    await expect.poll(() => said.length).toBe(1);
-    held.shift()?.();
-    await expect.poll(() => said.length).toBe(2); // old two prefetching while old one plays
-    const second = ask(request, { kind: 'tts', text: next });
-    expect(await (await first).text()).not.toMatch(/\[turn/);
-    await expect.poll(() => said.includes('New one.')).toBe(true);
-    for (let i = 0; i < 20 && said.at(-1) !== 'New two is here.'; i++) {
-      for (const send of held.splice(0)) send();
-      await voice.waitForTimeout(100);
-    }
-    for (const send of held.splice(0)) send();
-    await second;
-    const from = said.indexOf('New one.');
-    expect(said.slice(from)).toEqual(['New one.', 'New two is here.']);
-    expect(said.slice(0, from).every((s) => s.startsWith('Old'))).toBe(true);
-    expect(said).not.toContain('Old three is here.');
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
+  const first = ask(request, { kind: 'tts', text: old, listen: true });
+  await expect.poll(async () => (await spokenTexts(voice)).length).toBe(2);
+  const second = ask(request, { kind: 'tts', text: next });
+  expect(await (await first).text()).not.toMatch(/\[turn/);
+  await expect.poll(async () => (await spokenTexts(voice)).includes('New one.')).toBe(true);
+  for (let i = 0; i < 20 && (await spokenTexts(voice)).at(-1) !== 'New two is here.'; i++) {
+    await releaseSpeech(voice);
+    await voice.waitForTimeout(100);
   }
+  await releaseSpeech(voice);
+  await second;
+  const said = await spokenTexts(voice);
+  const from = said.indexOf('New one.');
+  expect(said.slice(from)).toEqual(['New one.', 'New two is here.']);
+  expect(said.slice(0, from).every((s) => s.startsWith('Old'))).toBe(true);
+  expect(said).not.toContain('Old three is here.');
 });
 
-// Mark 2026-10-16 08:15 ("you were talking over yourself"): a clip still synthesising when its speech
-// was cut off played anyway, on top of the next tts. A cut-off speech's late clip never plays.
-test('a clip that arrives after its speech was cut off never plays over the new tts', async ({ voice, request }) => {
-  const said: string[] = [];
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => {
-      body += c;
-    });
-    req.on('end', () => {
-      said.push((JSON.parse(body) as { text: string }).text);
-      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await voice.evaluate(() => {
-      const g = globalThis as { __plays?: number };
-      g.__plays = 0;
-      const orig = HTMLMediaElement.prototype.play;
-      HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
-        if (this.src.startsWith('blob:')) g.__plays = (g.__plays ?? 0) + 1;
-        return orig.call(this);
-      };
-    });
-    const first = ask(request, { kind: 'tts', text: 'Old one.' });
-    await expect.poll(() => said.length).toBe(1);
-    const second = ask(request, { kind: 'tts', text: 'New one.' });
-    expect(await (await first).text()).not.toMatch(/\[turn/);
-    await expect.poll(() => said.includes('New one.')).toBe(true);
-    // The old clip lands only now, after the new tts cut its speech off.
-    for (const send of held.splice(0)) send();
-    await second;
-    expect(await voice.evaluate(() => (globalThis as { __plays?: number }).__plays)).toBe(1);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
-});
-
-// Mark 2026-11-05: the engine sends only a final at the end of his sentence, so the 2.5 s hold resumed
-// the speech while he was still talking. It stays paused until his final, then cuts off for good.
+// Mark 2026-11-05: his first words keep the speech paused until his final, then it is cut off for good.
 test('a long sentence over the speech keeps it paused until his final, then barges', async ({ voice, request }) => {
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
+  await holdSpeech(voice, 0);
+  const speech = ask(request, { kind: 'tts', text: 'A long reply about the hold that he talks over for a while.' });
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await voice.clock.fastForward(700);
+  const resumes = await voiceCount(voice, 'resumes');
+  await voice.evaluate(() => (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart());
+  // His first interim words confirm the barge: past the 3 s hold the speech must stay paused.
   await voice.evaluate(() => {
-    const g = globalThis as unknown as Record<string, number>;
-    g['__plays'] = 0;
-    const p = HTMLMediaElement.prototype;
-    const play = p.play;
-    p.play = function (this: HTMLMediaElement) {
-      g['__plays'] = (g['__plays'] ?? 0) + 1;
-      return play.call(this);
-    };
+    const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+    r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'no wait I want' }], { isFinal: false })] });
   });
-  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
-  try {
-    const speech = ask(request, { kind: 'tts', text: 'A long reply about the hold that he talks over for a while.' });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await expect.poll(count).toBeGreaterThan(0);
-    await voice.clock.fastForward(700);
-    const plays = await count();
-    await voice.evaluate(() =>
-      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
-    );
-    // His first interim words confirm the barge: past the 3 s hold the speech must stay paused.
-    await voice.evaluate(() => {
-      const r = (globalThis as unknown as { __rec: { keepsAudio: boolean; onresult: (e: unknown) => void } }).__rec;
-      // Like the daemon engine: a recogniser restart loses no audio, so interim words are not kept twice.
-      r.keepsAudio = true;
-      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'no wait I want' }], { isFinal: false })] });
-    });
-    await voice.clock.fastForward(4000);
-    expect(await count()).toBe(plays);
-    const said = 'no wait I want you to explain the other option first';
-    await voice.evaluate((t) => {
-      const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
-      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
-    }, said);
-    const text = await (await speech).text();
-    expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${said}$`));
-    expect(text).toContain('interrupted your speech at part 1 sentence 1');
-    expect(await count()).toBe(plays);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await voice.clock.fastForward(4000);
+  expect(await voiceCount(voice, 'resumes')).toBe(resumes);
+  const said = 'no wait I want you to explain the other option first';
+  await voice.evaluate((t) => {
+    const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+    r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
+  }, said);
+  const text = await (await speech).text();
+  expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${said}$`));
+  expect(text).toContain('interrupted your speech at part 1 sentence 1');
+  expect(await voiceCount(voice, 'resumes')).toBe(resumes);
 });
 
-test('a sound with no words over the speech resumes it at once @smoke', async ({ voice, request }) => {
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  await voice.evaluate(() => {
-    const g = globalThis as unknown as Record<string, number>;
-    g['__plays'] = 0;
-    const p = HTMLMediaElement.prototype;
-    const play = p.play;
-    p.play = function (this: HTMLMediaElement) {
-      g['__plays'] = (g['__plays'] ?? 0) + 1;
-      return play.call(this);
-    };
-  });
-  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
-  try {
-    const speech = ask(request, { kind: 'tts', text: 'A long reply that a cough interrupts for a moment.' });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await expect.poll(count).toBeGreaterThan(0);
-    await voice.clock.fastForward(700);
-    const plays = await count();
-    await voice.evaluate(() =>
-      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
-    );
-    await voice.clock.fastForward(500);
-    expect(await count()).toBe(plays);
-    await voice.evaluate(() => (globalThis as unknown as { __rec: { onnowords: () => void } }).__rec.onnowords());
-    expect(await count()).toBe(plays + 1);
-    await voice.getByLabel('Stop').click();
-    expect(await (await speech).text()).toContain('__STTS_STOPPED__');
-  } finally {
-    piper.closeAllConnections();
-    piper.close();
-  }
-});
-
-// Mark 2026-10-15: barge-in was slow; speech stopped only after his whole sentence was decoded.
-// It now pauses the moment his voice starts, and resumes if the final turns out to be echo.
+// Mark 2026-10-15: speech pauses the moment his voice starts, and resumes if the final turns out to be echo.
 test('his voice starting over the speech pauses it at once; an echo final resumes it', async ({ voice, request }) => {
-  const piper = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
+  await holdSpeech(voice, 0);
+  const speech = ask(request, {
+    kind: 'tts',
+    text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
   });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  await voice.evaluate(() => {
-    const g = globalThis as unknown as Record<string, number>;
-    g['__pauses'] = 0;
-    g['__plays'] = 0;
-    const p = HTMLMediaElement.prototype;
-    const pause = p.pause;
-    const play = p.play;
-    p.pause = function (this: HTMLMediaElement) {
-      g['__pauses'] = (g['__pauses'] ?? 0) + 1;
-      return pause.call(this);
-    };
-    p.play = function (this: HTMLMediaElement) {
-      g['__plays'] = (g['__plays'] ?? 0) + 1;
-      return play.call(this);
-    };
-  });
-  const count = (k: string) => voice.evaluate((x) => (globalThis as unknown as Record<string, number>)[x], k);
-  try {
-    const speech = ask(request, {
-      kind: 'tts',
-      text: 'Our conversation would carry on, and the listen you have open stays open while it reloads.',
-    });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await expect.poll(() => count('__plays')).toBeGreaterThan(0);
-    const plays = (await count('__plays')) ?? 0;
-    await voice.evaluate(() =>
-      (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart(),
-    );
-    expect(await count('__pauses')).toBe(1);
-    await say(voice, 'our conversations carry on');
-    await expect.poll(() => count('__plays')).toBe(plays + 1);
-    await voice.getByLabel(/Skip/).click();
-    expect(await (await speech).text()).not.toMatch(/\[turn/);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  await voice.evaluate(() => (globalThis as unknown as { __rec: { onspeechstart: () => void } }).__rec.onspeechstart());
+  expect(await voiceCount(voice, 'pauses')).toBe(1);
+  await say(voice, 'our conversations carry on');
+  await expect.poll(() => voiceCount(voice, 'resumes')).toBe(1);
+  await voice.getByLabel(/Skip/).click();
+  expect(await (await speech).text()).not.toMatch(/\[turn/);
 });
 
-// Mark 2026-10-30: the first barge only paused the speech; it resumed while his final was still
-// decoding and he had to barge again. His first non-echo words now stop it for good.
+// Mark 2026-10-30: his first non-echo words stop the speech for good, final or not.
 test('his first words over the speech stop it for good, final or not', async ({ voice, request }) => {
-  const piper = createServer((req, res) => {
-    req.resume();
-    // 30 s of audio: real playback runs in real time, so a 1 s clip ended before the barge on a busy run.
-    req.on('end', () => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav(30)));
+  await holdSpeech(voice, 0);
+  const speech = ask(request, {
+    kind: 'tts',
+    text: 'Here is the long plan for the migration of every service to the new cluster.',
   });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
+  await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
+  await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
+  // Past BARGE_MIN_MS into the clip: words sooner are its own echo, never a hard stop.
+  await voice.clock.fastForward(700);
+  // A fast-forward through animation frames takes real seconds, so the 10 s final wait is lengthened here.
   await voice.evaluate(() => {
-    const g = globalThis as unknown as Record<string, number>;
-    g['__plays'] = 0;
-    const p = HTMLMediaElement.prototype;
-    const play = p.play;
-    p.play = function (this: HTMLMediaElement) {
-      g['__plays'] = (g['__plays'] ?? 0) + 1;
-      return play.call(this);
-    };
+    (globalThis as unknown as { __sttsBargeFinalWaitMs: number }).__sttsBargeFinalWaitMs = 600_000;
   });
-  const count = () => voice.evaluate(() => (globalThis as unknown as Record<string, number>)['__plays'] ?? 0);
-  try {
-    const speech = ask(request, {
-      kind: 'tts',
-      // Its own text: the earlier test's 1 s clips of the same words are cached.
-      text: 'Here is the long plan for the migration of every service to the new cluster.',
-    });
-    await expect(voice.getByLabel('agentSpeaking')).toBeVisible();
-    await expect.poll(() => voice.evaluate(() => '__rec' in globalThis)).toBe(true);
-    await expect.poll(count).toBeGreaterThan(0);
-    // Past BARGE_MIN_MS into the clip: words sooner are its own echo, never a hard stop.
-    await voice.clock.fastForward(700);
-    // A fast-forward through animation frames takes real seconds and the page clock runs on in real
-    // time, so the 10 s final wait is lengthened here; its fallback is covered by the spec.
-    await voice.evaluate(() => {
-      (globalThis as unknown as { __sttsBargeFinalWaitMs: number }).__sttsBargeFinalWaitMs = 600_000;
-    });
-    const plays = await count();
-    await voice.evaluate(() => {
-      const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } })
-        .__rec;
-      r.onspeechstart();
-      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'hold on a' }], { isFinal: false })] });
-    });
-    // A long sentence: its final comes after 2.5 s. The speech stays stopped and the barge waits
-    // for the final, so every word arrives once (Fable round 3: the rest of the sentence was lost).
-    await voice.clock.fastForward(3000);
-    expect(await count()).toBe(plays);
-    const long = 'hold on a second I need you to change the whole plan first';
-    await voice.evaluate((t) => {
-      const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
-      r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
-    }, long);
-    const text = await (await speech).text();
-    expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${long}$`));
-    // The sentence is never sent again: nothing held for the next listen repeats it.
-    await voice.clock.fastForward(1500);
-    const held = (await (await voice.request.post('/held')).json()) as { text: string };
-    expect(held.text).not.toContain('whole plan');
-    // The second listen after the barge opens and runs its idle timer like any other (proof the
-    // earlier hang was the test's, not the window's).
-    const turn = Number(/turn (\d+)/.exec(text)?.[1]);
-    const second = ask(request, { kind: 'stt', ack: turn, idleSec: 2 });
-    await expect(voice.getByLabel('speakNow')).toBeVisible();
-    await voice.clock.fastForward(2500);
-    expect(await (await second).text()).toBe(NO_SPEECH);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  const resumes = await voiceCount(voice, 'resumes');
+  await voice.evaluate(() => {
+    const r = (globalThis as unknown as { __rec: { onspeechstart: () => void; onresult: (e: unknown) => void } }).__rec;
+    r.onspeechstart();
+    r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'hold on a' }], { isFinal: false })] });
+  });
+  // A long sentence: its final comes after 2.5 s. The speech stays stopped and the barge waits for the final.
+  await voice.clock.fastForward(3000);
+  expect(await voiceCount(voice, 'resumes')).toBe(resumes);
+  const long = 'hold on a second I need you to change the whole plan first';
+  await voice.evaluate((t) => {
+    const r = (globalThis as unknown as { __rec: { onresult: (e: unknown) => void } }).__rec;
+    r.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: t }], { isFinal: true })] });
+  }, long);
+  const text = await (await speech).text();
+  expect(text.split('\n')[0]).toMatch(new RegExp(`\\] ${long}$`));
+  // The sentence is never sent again: nothing held for the next listen repeats it.
+  await voice.clock.fastForward(1500);
+  const held = (await (await voice.request.post('/held')).json()) as { text: string };
+  expect(held.text).not.toContain('whole plan');
+  // The second listen after the barge opens and runs its idle timer like any other.
+  const turn = Number(/turn (\d+)/.exec(text)?.[1]);
+  const second = ask(request, { kind: 'stt', ack: turn, idleSec: 2 });
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  await voice.clock.fastForward(2500);
+  expect(await (await second).text()).toBe(NO_SPEECH);
 });
 
-// Mark 2026-10-10: "could it be instantaneous?" The first clip is the short first sentence, and
-// Piper gets it alone: prefetches sent beside it shared the CPU and held the first word 2-3x longer.
-test('the first clip is short and synthesised alone; the rest follow one at a time, in order', async ({
-  voice,
-  request,
-}) => {
-  const said: string[] = [];
-  const held: (() => void)[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => {
-      body += c;
-    });
-    req.on('end', () => {
-      said.push((JSON.parse(body) as { text: string }).text);
-      held.push(() => res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav()));
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
+test('the first clip is short; the clips follow one at a time, in order', async ({ voice, request }) => {
   const text =
     'Good point. A helper is updating the rules so a phone push means asking you. ' +
     'The vault note says the same thing, and nothing else changes today. That is all for now.';
-  try {
-    const speech = ask(request, { kind: 'tts', text });
-    await expect.poll(() => said.length).toBe(1);
-    expect(said[0]).toBe('Good point.');
-    // Clip one is still synthesising: no other clip may be asked for beside it.
-    await voice.waitForTimeout(300);
-    expect(said).toHaveLength(1);
-    for (let n = 1; n <= toClips(text, 120).length; n++) {
-      await expect.poll(() => said.length).toBe(n);
-      held.shift()?.();
-      // Each prefetch waits for the one before it.
-      expect(said).toHaveLength(n);
-    }
-    expect(said).toEqual(toClips(text, 120));
-    await speech;
-    expect(daemonLog()).toMatch(/first audio \d+ms after the tts, clip of 11 chars/);
-  } finally {
-    for (const send of held.splice(0)) send();
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await ask(request, { kind: 'tts', text });
+  const said = await spokenTexts(voice);
+  expect(said[0]).toBe('Good point.');
+  expect(said).toEqual(toClips(text, 120));
 });
 
 test('spoken cues: Speak when the listen opens, Stop when the turn is sent, nothing on a restart', async ({
   voice,
   request,
 }) => {
-  const said: string[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => {
-      body += c;
-    });
-    req.on('end', () => {
-      said.push((JSON.parse(body) as { text: string }).text);
-      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
-    await reload(voice);
-    // This test's Piper is already up: answer and listen without the helper's own.
-    const reply = ask(request, { kind: 'tts', text: 'Okay.' }).then(() => ask(request, { kind: 'stt' }));
-    await expect(voice.getByLabel('speakNow')).toBeVisible();
-    await expect.poll(() => said.filter((t) => t === 'Speak.').length).toBe(1);
-    await voice.evaluate(() =>
-      (globalThis as unknown as { __rec: { onerror: (e: unknown) => void } }).__rec.onerror({ error: 'network' }),
-    );
-    await voice.clock.fastForward(3000);
-    await expect.poll(daemonLog).toMatch(/mic restart #\d+: mic error/);
-    expect(said.filter((t) => t === 'Speak.').length).toBe(1);
-    await say(voice, 'that is all for now');
-    await voice.clock.fastForward(1500);
-    expect(await (await reply).text()).toMatch(/that is all for now$/);
-    await expect.poll(() => said.includes('Stop.')).toBe(true);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
+  await reload(voice);
+  const reply = ask(request, { kind: 'tts', text: 'Okay.' }).then(() => ask(request, { kind: 'stt' }));
+  await expect(voice.getByLabel('speakNow')).toBeVisible();
+  const cue = async (w: string) => (await spokenTexts(voice)).filter((t) => t === w).length;
+  await expect.poll(() => cue('Speak.')).toBe(1);
+  await voice.evaluate(() =>
+    (globalThis as unknown as { __rec: { onerror: (e: unknown) => void } }).__rec.onerror({ error: 'network' }),
+  );
+  await voice.clock.fastForward(3000);
+  await expect.poll(daemonLog).toMatch(/mic restart #\d+: mic error/);
+  expect(await cue('Speak.')).toBe(1);
+  await say(voice, 'that is all for now');
+  await voice.clock.fastForward(1500);
+  expect(await (await reply).text()).toMatch(/that is all for now$/);
+  await expect.poll(() => cue('Stop.')).toBe(1);
 });
 
 test('spoken cue: Speak plays when the light goes green right after the agent speaks', async ({ voice, request }) => {
-  const said: string[] = [];
-  const piper = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => {
-      body += c;
-    });
-    req.on('end', () => {
-      said.push((JSON.parse(body) as { text: string }).text);
-      res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav());
-    });
-  });
-  piper.listen(testPort + 1, '127.0.0.1');
-  await once(piper, 'listening');
-  try {
-    await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
-    await reload(voice);
-    // A reply with listen: the mic runs through the speech, so the light goes speaking -> green.
-    const reply = ask(request, { kind: 'tts', text: 'Here is my answer.', listen: true });
-    await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => said.filter((t) => t === 'Speak.').length).toBe(1);
-    await say(voice, 'thanks that works');
-    await voice.clock.fastForward(1500);
-    expect(await (await reply).text()).toMatch(/thanks that works$/);
-  } finally {
-    // Drop the daemon's keep-alive sockets too, or its next clip reaches this test's server.
-    piper.closeAllConnections();
-    piper.close();
-  }
+  await voice.addInitScript(() => localStorage.setItem('__stts__cues', 'words'));
+  await reload(voice);
+  // A reply with listen: the mic runs through the speech, so the light goes speaking -> green.
+  const reply = ask(request, { kind: 'tts', text: 'Here is my answer.', listen: true });
+  await expect(voice.getByLabel('speakNow')).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => (await spokenTexts(voice)).filter((t) => t === 'Speak.').length).toBe(1);
+  await say(voice, 'thanks that works');
+  await voice.clock.fastForward(1500);
+  expect(await (await reply).text()).toMatch(/thanks that works$/);
 });
 
 test('a pause mid-sentence loses nothing: both parts arrive, short or long pause', async ({ voice, request }) => {

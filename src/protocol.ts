@@ -4,8 +4,7 @@ import { z } from 'zod';
 
 // Daemon routes on 127.0.0.1:${STTS_PORT ?? 15986}: GET / (the page), GET /api/ping (ok + X-Stts-Dir),
 // POST /request, POST /api/shutdown, GET /barge ({text:'', open}), POST /held ({text}, taken once), POST /notify[?watch=<workflow state file>],
-// GET /earcon/:name.ogg, POST /voice/clip ({text, voice, rate} -> audio/wav from Piper; the page's
-// speech source, kept so the page needs one origin), and the WebSocket /ws.
+// GET /earcon/:name.ogg, and the WebSocket /ws.
 // /request answers plain text: 200 is the reply, any other status is the error text.
 export const DEFAULT_PORT = 15986;
 export const DEFAULT_IDLE_SEC = 200;
@@ -253,7 +252,7 @@ export const PageMessage = z.discriminatedUnion('type', [
         sentence: z.number().int().min(1),
         started: z.boolean().optional(),
         // The word of that sentence the user cut in on, from the voice's word boundary events (1-based);
-        // absent when the voice gives no word timings (Piper): the cut is then the sentence.
+        // absent when the voice gives no word timings (a browser voice with no word events): the cut is then the sentence.
         word: z.number().int().min(1).optional(),
       })
       .optional(),

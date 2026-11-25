@@ -45,7 +45,7 @@ describe('toParts', () => {
   });
 });
 
-// The first clip is short so Piper renders it at once (Mark 2026-10-10: "could it be instantaneous?").
+// The first clip is short so the voice starts at once (Mark 2026-10-10: "could it be instantaneous?").
 describe('toClips', () => {
   const joined = (c: string[]) => squash(c.join(''));
   it('empty input gives no clips', () => {

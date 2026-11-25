@@ -54,6 +54,53 @@ export const test = base.extend<{ voice: Page }>({
         }
       }
       g['__sttsRecognition'] = FakeRecognition;
+      // The fake browser voice: utterances after the first holdAfter wait for __ttsRelease().
+      type Utt = { text: string; rate: number; onend: Handler };
+      const tts = {
+        spoken: [] as { text: string; rate: number }[],
+        held: [] as Utt[],
+        holdAfter: Infinity,
+        paused: false,
+        pauses: 0,
+        resumes: 0,
+      };
+      g['__tts'] = tts;
+      g['__ttsRelease'] = (): void => {
+        for (const u of tts.held.splice(0)) u.onend?.();
+      };
+      g['SpeechSynthesisUtterance'] = class {
+        rate = 1;
+        volume = 1;
+        voice = null;
+        onend: Handler = null;
+        onerror: Handler = null;
+        onboundary: Handler = null;
+        constructor(public text: string) {}
+      };
+      Object.defineProperty(globalThis, 'speechSynthesis', {
+        value: {
+          getVoices: () => [],
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          cancel: () => {
+            tts.held.length = 0;
+            tts.paused = false;
+          },
+          pause: () => {
+            tts.paused = true;
+            tts.pauses++;
+          },
+          resume: () => {
+            if (tts.paused) tts.resumes++;
+            tts.paused = false;
+          },
+          speak: (u: Utt) => {
+            tts.spoken.push({ text: u.text, rate: u.rate });
+            if (tts.spoken.length > tts.holdAfter) tts.held.push(u);
+            else void Promise.resolve().then(() => u.onend?.());
+          },
+        },
+      });
       // The mic level the page reads: silence unless a test sets __level (the fake device beeps).
       g['__level'] = 0;
       AnalyserNode.prototype.getFloatTimeDomainData = (buf: Float32Array) => {
@@ -82,3 +129,16 @@ export const test = base.extend<{ voice: Page }>({
   },
 });
 export { expect };
+
+type Tts = { spoken: { text: string; rate: number }[]; holdAfter: number; pauses: number; resumes: number };
+const tts = (p: Page) => p.evaluate(() => (globalThis as unknown as { __tts: Tts }).__tts);
+export const spokenTexts = async (p: Page): Promise<string[]> => (await tts(p)).spoken.map((x) => x.text);
+export const spokenRates = async (p: Page): Promise<number[]> => (await tts(p)).spoken.map((x) => x.rate);
+export const voiceCount = async (p: Page, k: 'pauses' | 'resumes'): Promise<number> => (await tts(p))[k];
+/** Utterances after the first `n` wait until releaseSpeech: the speech is still playing. */
+export const holdSpeech = (p: Page, n = 0) =>
+  p.evaluate((x) => {
+    (globalThis as unknown as { __tts: Tts }).__tts.holdAfter = x;
+  }, n);
+export const releaseSpeech = (p: Page) =>
+  p.evaluate(() => (globalThis as unknown as { __ttsRelease: () => void }).__ttsRelease());

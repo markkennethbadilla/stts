@@ -20,15 +20,9 @@ Each line is an ISO timestamp then the event. Lines from the page start with the
 | `chrome launch failed ...` | the window could not open |
 | `window gone mid-call: reopening the window in MSms` | the page disconnected while a call was open; the window reopens after MS (spec 003, self-heal) |
 | `window did not open: reopening the window in MSms` | a launch failed or no page connected in 15 s while a call was open; it is tried again after MS |
-| `piper start failed ...` | Piper could not start |
-| `piper clip ok VOICE BYTESB MSms "first 30 chars"` | a clip was made |
-| `piper clip failed VOICE MSms "first 30 chars"` | a clip failed |
-| `page first audio MSms after the tts, clip of N chars` | the first clip of a tts started playing, MS after the page got the tts |
 | `page mic switched to default` / `page mic switched to a new device` | the mic picked changed (or fell back to the default after an unplug) while the mic was open; the recogniser restarts on it |
 | `page mic device gone` | the open mic stream's device was unplugged; the mic restarts on the chosen device or the default |
-| `piper clip refused: bad body or voice name` | a clip request with no text or a voice name that is not a file name (an old Windows voice) |
-| `page voice play interrupted, no fallback: REASON` | a pause (barge hold, Stop) aborted a clip's `play()`; the clip resumes or is dropped and the browser voice never speaks (it used to speak over the resumed clip) |
-| `page voice fallback REASON` | the page could not play a Piper clip (`clip STATUS VOICE`, `clip unreachable`, `play ERROR`) and spoke it with the browser voice |
+| `page voice error REASON` | the browser voice failed a clip; the clip counts as ended |
 | `live update: handing off to DIR` | the daemon is moving to a newer install (spec 013) |
 | `page live update: reloading for the new version` | the window reloads onto the new code |
 | `page mic start` | mic opened |

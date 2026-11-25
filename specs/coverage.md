@@ -1,6 +1,6 @@
 # Coverage
 
-Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-lifecycle` (rule 114, spec 134). This repo is a local voice-window plugin: a daemon on 127.0.0.1, one Chrome app window page, Piper TTS and a local speech engine. It has no hosted deploy, no database, no accounts and no analytics. Lines marked `gap:` are real holes, not decided as n/a.
+Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-lifecycle` (rule 114, spec 134). This repo is a local voice-window plugin: a daemon on 127.0.0.1, one Chrome app window page that listens and speaks with Chrome's own speech. It has no hosted deploy, no database, no accounts and no analytics. Lines marked `gap:` are real holes, not decided as n/a.
 
 ## Build
 
@@ -55,7 +55,7 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] I02 n/a: no payment, ads or CRM vendor
 - [x] I03 n/a: no site, no analytics
 - [x] I04 n/a: sends no email
-- [x] I05 n/a: no paid API; Piper and the speech engine run locally from the blessed models folder (spec 009)
+- [x] I05 n/a: no paid API; speech is Chrome's own, no model or download (spec 014)
 - [x] I06 n/a: no public form or AI endpoint
 
 ## Deploy
