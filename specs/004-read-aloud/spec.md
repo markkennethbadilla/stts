@@ -34,6 +34,24 @@ flowchart TD
 - Every judgement on his voice over the agent's speech is logged: `page voice over speech, clip N` at his first sound, `page final over speech: barge|short|echo, W words, Tms into the clip` per final, so a barge that did not cut the speech off shows why.
 - Barge-in is the text path's: every part is an ordinary tts in the slot, so his words over a part cut it off at once and the call returns his turn, the `interrupted ... at part P sentence S` line and the unspoken rest of that part (Mark 2026-11-05). Covered by the daemon test "a spoken barge cuts a file read-aloud off" and the e2e "speaking over a file read cuts it off like a text tts".
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | File or url text cut into parts of at most 1000 characters and spoken in order, with a resume point: `sentences.test.ts` 16/16; floor 0 failing | sentence-boundary cutting; alternative: fixed-size cuts (broke words) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | A 5 MB file is cut inside the 30 s test limit (`sentences.test.ts` 2.9 s for all 16 cases) | streamed cutting | `sentences.test.ts` |
+| Compatibility | Windows paths and urls both load | path cases in the test | `sentences.test.ts` |
+| Interaction capability | Stopping early says where to resume | resume-point pattern from audiobook players | daemon tests |
+| Reliability | Empty input and text with no sentence end handled without error | edge cases first (test catalog) | `sentences.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | Any text file or web text, no format limit beyond text | n/a: one input kind | n/a |
+| Safety | Read-only: the file is read, never written | least privilege | code review in spec |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Reads the named local file, or fetches the URL with a 10 second limit. Writes nothing.

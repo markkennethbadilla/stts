@@ -37,10 +37,28 @@ Every change to stts, by any agent, is checked against these before it is pushed
 1. Works with no setup of ours: the defaults (data folder, Chrome's own speech) must give a working voice window on a clean machine. Nothing in `src/`, `web/` or `scripts/` may need `A:\`, mkb-agentops, mkb-winops, a vault or any account of ours.
 2. House-only behaviour is opt-in through a setting (env, `config.json`) that our setup writes, never a default in code. Our machines' extras live in mkb-agentops `setup-stts.ps1`.
 3. User-facing text (README, errors, page messages, logs) tells a stranger what to do with stts alone, never "run setup-stts.ps1".
-4. A new part the daemon needs (a package, model or file) is bundled into `dist/` or fetched by the daemon itself in the same commit; a local speech model is never added (Mark 2026-11-25, spec 014).
+4. A new part the daemon needs (a package, model or file) is bundled into `dist/` or fetched by the daemon itself in the same commit. No local model is added for listening (Mark 2026-11-25); the one local model is the Piper voice, installed only when the user runs `node scripts/install.mjs` (Mark 2026-11-26, spec 014).
 5. No secret, personal path, account name or private host in the repository; comments and specs that name our setup say it is ours.
 6. Data a user already has (profile, settings, `config.json`) survives an upgrade; a moved folder is migrated in place.
 7. Before the push: the unit tests, and a start of the built `node dist/daemon.js` with `STTS_DATA_DIR` pointed at an empty temp folder that logs `daemon start` and nothing else (nothing assumed present).
+
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | Build output present: `build.test.ts` 1/1 (7.1 s); `dist` committed and equal to a fresh build (`git diff --exit-code -- dist`); floor 0 diff | commit `dist` so a plugin install needs no `npm install`; alternative: build on install (fails without node tooling) | `npm run gate` last step |
+| Performance efficiency and optimisation | Upgrade reaches the open window in about 6 s (spec 013 check) | live hand-off | `live-update.test.ts` |
+| Compatibility | Runs for a user with none of our setup (no mkb-agentops, no `A:\models`, no `config.json`): `git archive main` into an empty folder, `node dist/mcp.js` starts | public repo rules in this spec | manual archive check per release |
+| Interaction capability | One plugin install gives voice; no restart on update | Claude Code plugin marketplace | spec 013 log lines |
+| Reliability | The commit is the version (no version field to forget) | single source of version | `build.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | Plugin, gateway and stdio installs from the same `dist` | one artefact | spec 010 gateway check |
+| Safety | An upgrade never drops an open listen (spec 013) | graceful hand-off | `live-update.test.ts` |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
 
 ## What it reads and writes
 

@@ -48,15 +48,20 @@ import {
 
 type Turn = 'notListening' | 'speakNow' | 'working' | 'heard' | 'background' | 'agentSpeaking';
 
-const TINT: Record<Turn, [string, string]> = {
-  notListening: ['#9ca3af', '#4b5563'],
-  speakNow: ['#4ade80', '#15803d'],
+// Turn hues live in the token file (web/index.css --state-*), read once the stylesheet is loaded.
+const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const KEBAB: Record<Turn, string> = {
+  notListening: 'not-listening',
+  speakNow: 'speak-now',
   // The agent is working: no listen open, his words are held for the next one (Mark 2026-10-30).
-  working: ['#c084fc', '#7e22ce'],
-  heard: ['#fbbf24', '#b45309'],
-  background: ['#f59e0b', '#7c2d12'],
-  agentSpeaking: ['#60a5fa', '#1d4ed8'],
+  working: 'working',
+  heard: 'heard',
+  background: 'background',
+  agentSpeaking: 'agent-speaking',
 };
+const TINT = Object.fromEntries(
+  Object.entries(KEBAB).map(([t, k]) => [t, [cssVar(`--state-${k}-1`), cssVar(`--state-${k}-2`)]]),
+) as Record<Turn, [string, string]>;
 const ORB_STATE: Record<Turn, AgentState> = {
   notListening: null,
   speakNow: 'listening',
@@ -1151,7 +1156,7 @@ export function App() {
     >
       <header className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 p-[clamp(0.25rem,2cqw,1rem)]">
         <span
-          className="rounded-full px-3 py-1 font-mono text-sm font-semibold text-neutral-950"
+          className="rounded-full px-3 py-1 font-mono text-sm font-semibold text-(--state-ink)"
           style={{ background: TINT[turn][0] }}
         >
           {turnNo}
@@ -1159,7 +1164,7 @@ export function App() {
         <StatusIcon
           aria-label={micFailed ? 'mic error' : paused ? 'muted' : turn}
           className="size-6"
-          style={{ color: micFailed ? '#ef4444' : TINT[turn][0] }}
+          style={{ color: micFailed ? cssVar('--state-mic-error') : TINT[turn][0] }}
         />
         <div className="ml-auto flex flex-wrap justify-end gap-1">
           <Button

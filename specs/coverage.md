@@ -24,6 +24,7 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] R16 gap: the plugin install is checked by mkb-agentops `setup-stts.ps1`, not by a live check here
 - [x] R17 n/a: no automation sends or reports events
 - [x] R18 n/a: sends no email
+- [x] R19 `README.md` "Changes that remove or rename something": a removed or renamed tool, argument, sentinel or setting is listed there in the same commit (installs update on their own), the contract fixture and the callbot move together, settings and data are migrated in place (spec 009 public repo rule 6)
 
 ## Test
 
@@ -97,8 +98,9 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] V03 rule 5 and hook `guard-irreversible`; nothing stateful here to back up
 - [x] V04 n/a: not a server
 - [x] B18 gap: cases are the e2e and unit suites by flow (listen, typed, barge, mute, restart); no full input-matrix table yet
-- [x] B19 gap: spec 014 states the speech limits; no per-characteristic quality table yet
+- [x] B19 `## Quality bar` in every `specs/*/spec.md` (001 to 014): eleven rows each (nine ISO 25010 aspects, business outcome, cost), baselines measured 2026-11-26 (unit 204/204, e2e 31/31, `npm run maint` clean), each floor held by a gate step; mkb-agentops `guard-spec-sync` refuses a pushed spec without a complete table
 - [x] T23 n/a: no search or retrieval
-- [x] B20 one token file `web/index.css`; Stylelint with stylelint-declaration-strict-value (Trunk) refuses raw colour or font elsewhere; not yet mapped to brand.md
+- [x] B20 one token file `web/index.css` mapped to the Mark personal brand (skill design-ui-and-visuals brand.md: the mkb-site oklch palette at tint hue 158, Instrument Sans body, Bricolage Grotesque headings); turn hues are `--state-*` tokens there; Stylelint with stylelint-declaration-strict-value (Trunk) refuses raw colour or font in CSS and `test/unit/brand-tokens.test.ts` refuses a raw colour or palette class in `web/*.tsx`; screenshots looked at by eye 2026-11-26
 - [x] B21 Trunk pre-push action runs `npm run gate` (vitest, e2e smoke, build)
 - [x] B22 index.html: the daemon serves the stts page at / on 127.0.0.1 (port `STTS_PORT`, default 15986), spec 001
+- [x] B23 `README.md` "Design decisions": Chrome recognition over a local recogniser, Piper over the online voice, one daemon slot with a 240 s budget, committed `dist/`, MCP over stdio, live hand-off, local push gate, each with the option rejected; details in specs 003, 008 to 014

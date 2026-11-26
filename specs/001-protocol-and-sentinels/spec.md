@@ -49,6 +49,24 @@ The tool descriptions carry fixed notes (`ENDED_NOTE`, `NO_SPEECH_NOTE`, `CONTIN
 
 `readsUnfinished(text)` says whether speech ends on a connector, filler or lead-in word ("and", "um", "the", "thinking" and so on). The same word list lives in the callbot (spec 010).
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | Round trips, the five sentinels and every reply format match `test/fixtures/old-contract.json`: `protocol.test.ts` 48/48 in 52 ms; floor 0 failing | one schema file as single source (consumer contract fixture, Pact style); alternative: wording copied per caller (drifted from the callbot) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | n/a: plain JSON messages built once per request, no hot path; the whole suite runs in 52 ms | n/a | n/a |
+| Compatibility | Old contract and the callbot read the same wording: fixture diff 0; floor 0 | contract fixture captured from the old repo | `protocol.test.ts` |
+| Interaction capability | Agent-facing notes appear in every tool description: `mcp.test.ts` 4/4 | write for the reader (the agent) in the tool text | `mcp.test.ts` |
+| Reliability | `readsUnfinished` word list cases pass; an unknown sentinel never reaches the agent as speech; floor 0 failing | explicit sentinels instead of free text | `protocol.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | Wording changes in one file (`src/protocol.ts`) reach stts and the callbot | one owner per fact (house rule 37) | callbot parity test (spec 010) |
+| Safety | n/a: messages carry no action that changes data | n/a | n/a |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Nothing on disk. It is pure definitions imported by the daemon, the MCP server, the client and the page.

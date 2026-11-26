@@ -45,6 +45,24 @@ flowchart LR
   D --> L[daemon.log]
 ```
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | One line per notable event from daemon and page in `daemon.log`: `page-log.test.ts` 1/1; floor 0 failing | structured one-line events; alternative: console only (lost on close) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | Append-only line writes, no flush wait on the request path | async append | n/a: not timed separately |
+| Compatibility | Plain text lines any tail or search reads | plain text logs | n/a: no reader to break |
+| Interaction capability | Each line names the stage (`page mic start timed out at STAGE`) | actionable log messages | spec table of log lines |
+| Reliability | Failures log the real error text (house rule 43a) | log every outcome | `page-log.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | n/a: one log file per data folder | n/a | n/a |
+| Safety | No audio and no secrets in the log; words heard are Mark's own text on his PC | data minimisation | code review |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Appends to `%LOCALAPPDATA%\stts\daemon.log` (on Linux `~/.local/share/stts/daemon.log`). There is no rotation.

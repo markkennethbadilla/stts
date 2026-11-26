@@ -48,6 +48,24 @@ Muting sends what he said before it and drops only what he says while muted (Mar
 
 **Idle end** (Mark 2026-10-19: "stts should auto end on some time of silence because it's wasteful", after an agent listened through 2.5 hours of silence). The Settings popover has an `Idle end` slider, 0 to 60 minutes in steps of 5, default 15, 0 is never (localStorage `__stts__idle_end_min`). The page stamps activity when it posts a non-empty `complete` (spoken or typed) and when the daemon releases a listen for a background result; the stamp also resets at load and on a setting change. Every 15 s, unless the agent is speaking, a page idle for the set minutes logs `idle end after N min`, speaks "Ending voice after N minutes of silence." with the browser voice, then posts `ended`, the End button's own path (the next call returns `__STTS_CONVERSATION_ENDED__` and the window closes); the post is bounded at 8 s if the voice never reports its end. The callbot keeps no idle end (spec 010). The page posts `ended` with `idle: true`; the daemon answers an open call `__STTS_IDLE_ENDED__` (not `__STTS_CONVERSATION_ENDED__`), closes the window and remembers nothing, so the agent's next tts reopens voice (Mark 2026-10-19: idle silence usually means the agent was busy, so it reopens with its update; only End stops).
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | Mute is absolute: PAUSE then MIC_ERROR, WATCHDOG, a listen and QUEUE_EMPTY leave `mic.paused`; `machine.test.ts` 36/36; floor 0 failing | explicit state machine; alternative: flag soup in the page (mic came back on by itself) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | Auto-send after 0.8 s (1.2 s unfinished, at least 1.5 s for 1 to 3 words); watchdog every 2 s, restart after 6 s not running | end-of-turn hold tuned on live logs 2026-10-06 and 2026-11-16 | `machine.test.ts` |
+| Compatibility | Chrome continuous recognition, cloud or on-device | Web Speech API | e2e on Chromium |
+| Interaction capability | A barge is a hard stop; a pause of 3 s with no words resumes the clip | Mark 2026-10-30 report | `machine.test.ts`, e2e regressions (31 e2e cases, 2026-11-25) |
+| Reliability | A running recogniser is never aborted for silence; echo finals within 30 s dropped (`isEcho`): `echo-regression.test.ts` 2/2 | upstream 1.0.0 lost speech on 8 s and 15 s restarts (removed) | vitest and e2e |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | Barge-in on or off in settings | user setting | `machine.test.ts` |
+| Safety | Nothing turns the mic on after mute except Mark's own click or key | privacy by default | mute case in `machine.test.ts` |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Events from the browser's speech recognition and audio, and the daemon's messages. It writes nothing itself; the page (spec 006) carries out its actions.

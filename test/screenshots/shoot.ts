@@ -20,6 +20,8 @@ for (const [name, width, height, theme = 'dark'] of [
   ['strip-240x700', 240, 700],
   ['light-462x689', 462, 689, 'light'],
 ] as [string, number, number, string?][]) {
+  // argv[3] shoots only the sizes whose name starts with it, so one set fits a 60 s run.
+  if (process.argv[3] && !name.startsWith(process.argv[3])) continue;
   const page = await browser.newPage({ viewport: { width, height } });
   await page.addInitScript((t) => localStorage.setItem('__stts__theme', t), theme);
   page.on('pageerror', (e) => errors.push(`${name} pageerror ${e.message}`));

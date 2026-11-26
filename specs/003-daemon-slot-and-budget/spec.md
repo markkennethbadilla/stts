@@ -41,6 +41,24 @@ sequenceDiagram
 - **Page.** The page (`/`) is served with `Cache-Control: no-cache`. The daemon sets itself to normal priority when it starts: an agent spawned it below normal, the window inherited that, and on a busy machine the first word waited seconds (live log p99 12 s per clip; bench with every CPU busy: 470 ms at normal, 650 to 790 ms below normal).
 - **Single instance.** Binding the port is the lock. If the port is taken, the new process pings it and exits 0 when a live daemon answers `ok`, otherwise 1.
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | One slot, supersede and `released`, budget, `/notify`, `/barge`: `daemon.test.ts` 55/55 and `integration.test.ts` 11/11; floor 0 failing | hono `app.request()` with no socket; alternative: real sockets in unit tests (slow, flaky) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | Request budget 240 s (`STTS_REQUEST_TIMEOUT_MS`), under the 280 s gateway cap; first-word wait on a busy machine 470 ms at normal priority vs 650 to 790 ms below normal; floor budget under 280 s | MCPJungle drops calls near 300 s (house rule 68) | `daemon.test.ts` budget case |
+| Compatibility | A second instance exits 0 and leaves the first one serving | single-instance by port | `daemon.test.ts` |
+| Interaction capability | Window opens on demand; no page in 15 s logs `window open timed out` and retries with 2 s doubling to 60 s | exponential backoff | `daemon.test.ts` |
+| Reliability | A crash loop never spins (backoff cap 60 s); a request already sent is never replayed; floor 0 replays | backoff with reset after 30 s up | `daemon.test.ts`, `integration.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | Port and budget set by environment (`STTS_PORT`, `STTS_REQUEST_TIMEOUT_MS`) | 12-factor config | `daemon.test.ts` |
+| Safety | An agent close never ends Mark's open window: case passes | user owns the window | `daemon.test.ts` |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Reads environment `STTS_PORT`, `STTS_REQUEST_TIMEOUT_MS`, `STTS_JOIN_SEC`. Writes the Chrome profile and `daemon.log` (spec 012) under `%LOCALAPPDATA%\stts\` (on Linux `~/.local/share/stts/`). Serves `dist/web/` and `dist/earcon/`.

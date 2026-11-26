@@ -1,13 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/bricolage-grotesque";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: "Public Sans Variable", sans-serif;
+  --font-heading: "Bricolage Grotesque Variable", var(--font-sans);
+  --font-sans: "Instrument Sans Variable", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -59,24 +60,38 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --state-ink: #0a0a0a;
+  --state-mic-error: #ef4444;
+  --state-not-listening-1: #9ca3af;
+  --state-not-listening-2: #4b5563;
+  --state-speak-now-1: #4ade80;
+  --state-speak-now-2: #15803d;
+  --state-working-1: #c084fc;
+  --state-working-2: #7e22ce;
+  --state-heard-1: #fbbf24;
+  --state-heard-2: #b45309;
+  --state-background-1: #f59e0b;
+  --state-background-2: #7c2d12;
+  --state-agent-speaking-1: #60a5fa;
+  --state-agent-speaking-2: #1d4ed8;
+  --background: oklch(0.945 0.028 158);
+  --foreground: oklch(0.2 0.035 158);
+  --card: oklch(0.992 0.008 158);
+  --card-foreground: oklch(0.2 0.035 158);
+  --popover: oklch(0.992 0.008 158);
+  --popover-foreground: oklch(0.2 0.035 158);
+  --primary: oklch(0.36 0.085 158);
+  --primary-foreground: oklch(0.985 0.01 158);
+  --secondary: oklch(0.9 0.04 158);
+  --secondary-foreground: oklch(0.24 0.05 158);
+  --muted: oklch(0.915 0.032 158);
+  --muted-foreground: oklch(0.42 0.04 158);
+  --accent: oklch(0.88 0.05 158);
+  --accent-foreground: oklch(0.24 0.05 158);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.84 0.035 158);
+  --input: oklch(0.84 0.035 158);
+  --ring: oklch(0.52 0.14 70);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -94,24 +109,24 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.165 0.024 158);
+  --foreground: oklch(0.965 0.012 158);
+  --card: oklch(0.235 0.034 158);
+  --card-foreground: oklch(0.965 0.012 158);
+  --popover: oklch(0.235 0.034 158);
+  --popover-foreground: oklch(0.965 0.012 158);
+  --primary: oklch(0.88 0.075 158);
+  --primary-foreground: oklch(0.18 0.035 158);
+  --secondary: oklch(0.3 0.045 158);
+  --secondary-foreground: oklch(0.965 0.012 158);
+  --muted: oklch(0.275 0.036 158);
+  --muted-foreground: oklch(0.78 0.035 158);
+  --accent: oklch(0.33 0.055 158);
+  --accent-foreground: oklch(0.965 0.012 158);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.8 0.06 158 / 16%);
+  --input: oklch(0.8 0.06 158 / 20%);
+  --ring: oklch(0.82 0.15 80);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

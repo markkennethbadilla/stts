@@ -34,6 +34,24 @@ stateDiagram-v2
 - **Silence never ends a listen while he is speaking (Mark 2026-11-08 22:03).** The page's idle timer can fire with interim words but no final; the daemon ignores that `nospeech` while the talking light is on, so his turn is returned by the same listen instead of being held for the next. Parity: the callbot has no page idle timer.
 - If the listen went away while a turn was joining, its words are kept and put in front of the next listen's speech.
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | Rising ids, dedupe, stale drop, joins and the 409 with `ack`: `turns.test.ts` 10/10; floor 0 failing | monotonic ids with idempotent dedupe; alternative: timestamps only (repeats got through) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | `turns.test.ts` 24 ms for 10 cases; turn building adds no network hop | in-memory join in the daemon | vitest timing |
+| Compatibility | Heard and typed turns share one header shape `[turn N, ...]` | one header format for every agent CLI | `turns.test.ts` |
+| Interaction capability | Stop words (stop, wait, no, pause, enough) always cut in, even over the agent's own word: `bargeVerdict` case | Mark's live reports 2026-11-16 | `turns.test.ts`, `machine.test.ts` |
+| Reliability | No turn lost or repeated across reconnects: dedupe and stale-drop cases pass; floor 0 failing | at-least-once delivery plus dedupe | `turns.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | n/a: one input shape (speech or typed text) | n/a | n/a |
+| Safety | n/a: a turn is text handed to the agent; it changes nothing by itself | n/a | n/a |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Reads `STTS_JOIN_SEC`. Holds turn state in memory only; a daemon restart starts again at turn 1.

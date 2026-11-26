@@ -36,6 +36,24 @@ sequenceDiagram
 
 To force it now instead of waiting up to 10 s: `curl -s -X POST --max-time 150 http://127.0.0.1:15986/api/update`. It runs the same update, answers `up to date` or `updating to DIR`, then hands off at the first safe moment (checked every second for up to 5 minutes).
 
+## Quality bar
+
+Register B19 (ISO/IEC 25010:2023). Baselines measured 2026-11-26 unless dated.
+
+| Aspect | Metric, baseline and floor | Research and alternative | Gate |
+| --- | --- | --- | --- |
+| Functional suitability | A new version reaches the open window between turns with no restart: hand-off decision `live-update.test.ts` 6/6; one-off check 2026-10-06 hand-off in 6 s with the listen kept; floor 0 failing | daemon hand-off; alternative: restart Claude Code (lost the conversation) | vitest in `npm run gate` (Trunk pre-push) |
+| Performance efficiency and optimisation | Checks `main` every 10 s (`STTS_LIVE_UPDATE_MS`); forced update hands off at the first safe moment, checked every second up to 5 min | polling a local tip, no network push | `live-update.test.ts` |
+| Compatibility | Old and new daemons share the port protocol (spec 001) | versioned contract fixture | `protocol.test.ts` |
+| Interaction capability | Words already heard are kept across the hand-off | no lost input | `live-update.test.ts` |
+| Reliability | The adopted daemon waits 10 s for the port, 8 s reconnect grace, exits like a closed window if no page in 15 to 20 s | grace windows from the 2026-10 logs | `live-update.test.ts` |
+| Security | 0 secrets in repo; the daemon and Piper bind 127.0.0.1 only, nothing listens off the machine; floor 0 gitleaks findings | OWASP ASVS V14 config; alternative: LAN-reachable daemon (rejected: no auth needed when local only) | gitleaks in Trunk (`trunk check` in the gate) |
+| Maintainability | `npm run maint` 2026-11-26: 0 dependency violations (53 modules), 0 jscpd clones, knip clean; spec has the five sections; floor all three clean | dependency-cruiser, knip, jscpd; markdownlint MD043 for sections | `npm run maint`, `markdownlint-cli2` in `npm run gate` (Trunk pre-push) |
+| Flexibility and portability | `STTS_LIVE_UPDATE_MS` sets the interval | env config | n/a: default used |
+| Safety | Never hands off mid-speech or mid-turn | safe-point hand-off | `live-update.test.ts` |
+| Business outcome | n/a: Mark's personal voice tool, no business metric | n/a | n/a |
+| Cost | USD 0: Chrome speech recognition and local Piper, no paid API; floor no paid call added | free platform APIs first (rule 1) | n/a: no paid dependency to cap (rule 97) |
+
 ## What it reads and writes
 
 Reads `installed_plugins.json`. Runs the `claude` CLI, which writes the plugin cache. Writes `daemon.log` lines (spec 012). Environment: `STTS_LIVE_UPDATE` (`0` off, used by the e2e tests; `check` skips the CLI), `STTS_LIVE_UPDATE_MS`, `STTS_INSTALLS`, `STTS_ADOPT` (set by the hand-off only).
