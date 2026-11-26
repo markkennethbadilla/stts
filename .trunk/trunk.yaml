@@ -64,6 +64,18 @@ actions:
       run: >-
         sh -c 't=$(command -v timeout) && t="$t 60"; o="scan --experimental --disable-version-check --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules ."; for n in 1 2; do $t opengrep $o; rc=$?; case $rc in 0|1) exit $rc;; 2|124) ;; *) echo "opengrep setup error (exit $rc): push blocked" >&2; exit $rc;; esac; echo "opengrep crashed (exit $rc, not a finding), try $n of 2" >&2; done; echo "opengrep crashed twice (exit $rc): push not blocked, run it by hand" >&2'
     - id: maintainability-on-push
+      # The safe-chain shims call the mise safe-chain shim, which needs these; Trunk passes none.
+      environment:
+        - name: PATH
+          value: ${env.PATH}
+        - name: PATHEXT
+          value: ${env.PATHEXT}
+        - name: MISE_GLOBAL_CONFIG_FILE
+          value: ${env.MISE_GLOBAL_CONFIG_FILE}
+        - name: LOCALAPPDATA
+          value: ${env.LOCALAPPDATA}
+        - name: USERPROFILE
+          value: ${env.USERPROFILE}
       run: npm run --silent maint
       triggers: [{git_hooks: [pre-push]}]
       notify_on_error: false
