@@ -13,6 +13,8 @@ lint:
   enabled:
     - gitleaks@8.30.1
     - git-diff-check
+    - stylelint@17.6.0:
+        packages: [stylelint-declaration-strict-value@1.13.0]
   ignore:
     - linters: [ALL]
       paths: [node_modules/**, dist/**, test-results/**, playwright-report/**]

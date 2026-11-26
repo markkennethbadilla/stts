@@ -1,0 +1,10 @@
+{
+  "plugins": ["stylelint-declaration-strict-value"],
+  "ignoreFiles": ["web/index.css", "dist/**", "node_modules/**"],
+  "rules": {
+    "scale-unlimited/declaration-strict-value": [
+      ["/color/", "font-family", "fill", "stroke"],
+      { "ignoreValues": ["currentColor", "transparent", "inherit"] }
+    ]
+  }
+}
