@@ -1,6 +1,7 @@
 // Screenshots of the orb screen at 1600x600 and 390 wide against `vite preview`, with /ws
 // mocked. Fails on any page error or console error. Run: node test/screenshots/shoot.ts <url>
 import { chromium } from '@playwright/test';
+import { fakeVoice } from '../fake-voice.ts';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:4173/';
 const out = new URL('.', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
@@ -23,6 +24,7 @@ for (const [name, width, height, theme = 'dark'] of [
   // argv[3] shoots only the sizes whose name starts with it, so one set fits a 60 s run.
   if (process.argv[3] && !name.startsWith(process.argv[3])) continue;
   const page = await browser.newPage({ viewport: { width, height } });
+  await page.addInitScript(fakeVoice, 2500);
   await page.addInitScript((t) => localStorage.setItem('__stts__theme', t), theme);
   page.on('pageerror', (e) => errors.push(`${name} pageerror ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && errors.push(`${name} console ${m.text()}`));
