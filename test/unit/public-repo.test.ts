@@ -30,6 +30,8 @@ it('the daemon and Piper bind 127.0.0.1 only', () => {
 
 it('every dependency is pinned to an exact version', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-  const loose = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).filter(([, v]) => !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(String(v)));
+  const loose = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).filter(
+    ([, v]) => !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(String(v)),
+  );
   expect(loose).toEqual([]);
 });
