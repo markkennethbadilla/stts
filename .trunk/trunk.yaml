@@ -20,6 +20,32 @@ lint:
       paths: [node_modules/**, dist/**, test-results/**, playwright-report/**]
 actions:
   definitions:
+    - id: gate-clock-start
+      # agentops spec 107: first and last pre-push actions time the whole gate against gate-budgets.json
+      triggers: [{git_hooks: [pre-push]}]
+      environment:
+        - name: LOCALAPPDATA
+          value: ${env.LOCALAPPDATA}
+        - name: USERPROFILE
+          value: ${env.USERPROFILE}
+        - name: PATHEXT
+          value: ${env.PATHEXT}
+        - name: PATH
+          value: ${env.PATH}
+      run: node A:/personal-markkennethbadilla/mkb-agentops/scripts/speed-gate.mjs --clock-start markkennethbadilla/stts
+    - id: gate-clock-end
+      # queues SpeedFix when over budget; never blocks a push
+      triggers: [{git_hooks: [pre-push]}]
+      environment:
+        - name: LOCALAPPDATA
+          value: ${env.LOCALAPPDATA}
+        - name: USERPROFILE
+          value: ${env.USERPROFILE}
+        - name: PATHEXT
+          value: ${env.PATHEXT}
+        - name: PATH
+          value: ${env.PATH}
+      run: node A:/personal-markkennethbadilla/mkb-agentops/scripts/speed-gate.mjs --clock-end markkennethbadilla/stts
     - id: block-commit-on-findings
       run: trunk check --ci --no-fix -t git-commit --index-file '${env.GIT_INDEX_FILE}' --upstream=HEAD
       triggers: [{git_hooks: [pre-commit]}]
@@ -35,9 +61,10 @@ actions:
           value: ${env.MISE_GLOBAL_CONFIG_FILE}
         - name: PATHEXT
           value: ${env.PATHEXT}
-      run: sh -c 't=$(command -v timeout) && t="$t 60"; o="scan --experimental --disable-version-check --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules ."; for n in 1 2; do $t opengrep $o; rc=$?; case $rc in 0|1) exit $rc;; 2|124) ;; *) echo "opengrep setup error (exit $rc): push blocked" >&2; exit $rc;; esac; echo "opengrep crashed (exit $rc, not a finding), try $n of 2" >&2; done; echo "opengrep crashed twice (exit $rc): push not blocked, run it by hand" >&2'
+      run: >-
+        sh -c 't=$(command -v timeout) && t="$t 60"; o="scan --experimental --disable-version-check --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules ."; for n in 1 2; do $t opengrep $o; rc=$?; case $rc in 0|1) exit $rc;; 2|124) ;; *) echo "opengrep setup error (exit $rc): push blocked" >&2; exit $rc;; esac; echo "opengrep crashed (exit $rc, not a finding), try $n of 2" >&2; done; echo "opengrep crashed twice (exit $rc): push not blocked, run it by hand" >&2'
     - id: maintainability-on-push
       run: npm run --silent maint
       triggers: [{git_hooks: [pre-push]}]
       notify_on_error: false
-  enabled: [block-commit-on-findings, block-push-on-findings, block-push-on-opengrep, maintainability-on-push]
+  enabled: [gate-clock-start, block-commit-on-findings, block-push-on-findings, block-push-on-opengrep, maintainability-on-push, gate-clock-end]
