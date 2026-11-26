@@ -913,6 +913,72 @@ app.post('/request', async (c) => {
   return c.text(`${heard.text}\n\n${note}`);
 });
 
+// Piper (spec 014): started with the daemon so the model is warm before the first reply.
+const configModelsDir = (): string | undefined => {
+  try {
+    return (JSON.parse(readFileSync(join(dataDir, 'config.json'), 'utf8')) as { modelsDir?: string }).modelsDir;
+  } catch {
+    // SILENT-OK: no config.json means the default models folder
+    return undefined;
+  }
+};
+const modelsDir = process.env['STTS_MODELS_DIR'] ?? configModelsDir() ?? join(dataDir, 'models');
+const PIPER_PORT = Number(process.env['STTS_PIPER_PORT'] ?? 15987);
+const PIPER_HOME = process.env['STTS_PIPER_HOME'] ?? join(dataDir, 'piper');
+const VOICES = join(modelsDir, 'piper');
+const PIPER_VOICE = join(VOICES, 'en_GB-jenny_dioco-medium.onnx');
+let piper: ReturnType<typeof spawn> | null = null;
+
+export function startPiper(): void {
+  const py = join(PIPER_HOME, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  if (piper || process.env['STTS_NO_PIPER'] === '1') return;
+  if (!existsSync(py) || !existsSync(PIPER_VOICE)) {
+    deps.log(`piper not installed (${py}, ${PIPER_VOICE}): browser voice; run node scripts/install.mjs`);
+    return;
+  }
+  const args = ['-m', 'piper.http_server', '--host', '127.0.0.1', '--port', String(PIPER_PORT)];
+  const p = spawn(py, [...args, '-m', PIPER_VOICE, '--data-dir', VOICES, '--sentence-silence', '0.2'], {
+    stdio: 'ignore', // SILENT-OK: every clip result is logged by /voice/clip
+    windowsHide: true,
+  });
+  piper = p;
+  deps.log(`piper start pid ${p.pid} ${PIPER_VOICE}`);
+  p.on('error', (e) => deps.log(`FAIL piper start ${String(e)}`));
+  p.on('exit', (code) => {
+    deps.log(`piper exit code ${code}`);
+    if (piper === p) piper = null;
+  });
+}
+process.on('exit', () => piper?.kill());
+
+app.get('/voice/status', (c) => c.json({ piper: piper !== null }));
+
+app.post('/voice/clip', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { text?: unknown; rate?: unknown } | null; // SILENT-OK: a bad body is refused below
+  const text = typeof body?.text === 'string' ? body.text : '';
+  const rate = typeof body?.rate === 'number' && body.rate >= 0.5 && body.rate <= 2 ? body.rate : 1;
+  if (!text.trim()) return c.text('text required', 400);
+  const t0 = Date.now();
+  const r = await fetch(`http://127.0.0.1:${PIPER_PORT}/synthesize`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text, length_scale: 1 / rate }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch((e: unknown) => {
+    deps.log(`piper clip unreachable ${String(e)}`);
+    return null;
+  });
+  const wav = r?.ok ? await r.arrayBuffer() : null;
+  const head = JSON.stringify(text.slice(0, 30));
+  if (!wav) {
+    if (!piper) startPiper();
+    deps.log(`FAIL piper clip ${r?.status ?? 'down'} ${Date.now() - t0}ms ${head}`);
+    return c.text('piper failed', 502);
+  }
+  deps.log(`OK piper clip ${wav.byteLength}B ${Date.now() - t0}ms ${head}`);
+  return c.body(wav, 200, { 'content-type': 'audio/wav' });
+});
+
 app.get(
   '/ws',
   upgradeWebSocket(() => {
@@ -951,6 +1017,7 @@ export function start(p: number = port): void {
   } catch {}
   const server = serve({ fetch: app.fetch, port: p, hostname: '127.0.0.1' }, () => {
     deps.log(`daemon start pid ${process.pid}`);
+    startPiper();
   });
   injectWebSocket(server as Parameters<typeof injectWebSocket>[0]);
   httpServer = server;

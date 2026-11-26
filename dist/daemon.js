@@ -9,14 +9,14 @@ import { STATUS_CODES, ServerResponse, createServer } from "node:http";
 import { Http2ServerRequest, constants as constants$1 } from "node:http2";
 import { Readable } from "node:stream";
 import { versions } from "node:process";
-import { EventEmitter } from "events";
+import * as fs from "fs";
+import fs$1, { mkdtempSync } from "fs";
 import * as net from "net";
-import * as fs$1 from "fs";
-import fs, { mkdtempSync } from "fs";
 import path, { join as join$1 } from "path";
 import { homedir as homedir$1 } from "os";
-import childProcess, { execFileSync, execSync, spawn, spawnSync } from "child_process";
+import childProcess, { execFileSync, execSync, spawn as spawn$1, spawnSync } from "child_process";
 import process$1 from "process";
+import { EventEmitter } from "events";
 // \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -25,14 +25,14 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod, mod.exports), cb = null), mod.exports);
-var __exportAll = (all, no_symbols) => {
-	let target = {};
+var __exportAll = (all, flags) => {
+	let target = Object.setPrototypeOf({}, null);
 	for (var name in all) __defProp(target, name, {
 		get: all[name],
 		enumerable: true
 	});
-	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
-	return target;
+	if (!(flags & 1)) __defProp(target, Symbol.toStringTag, { value: "Module" });
+	return flags & 2 ? target : Object.preventExtensions(target);
 };
 var __copyProps = (to, from, except, desc) => {
 	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
@@ -1714,7 +1714,7 @@ var require_limiter = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 				this.pending--;
 				this[kRun]();
 			};
-			this.concurrency = concurrency || Infinity;
+			this.concurrency = concurrency || 1e400;
 			this.jobs = [];
 			this.pending = 0;
 		}
@@ -4146,7 +4146,7 @@ var require_websocket = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 			protocolVersion: protocolVersions[1],
 			maxBufferedChunks: 262144,
 			maxFragments: 16384,
-			maxPayload: 104857600,
+			maxPayload: 0x6400000,
 			skipUTF8Validation: false,
 			perMessageDeflate: true,
 			followRedirects: false,
@@ -4825,7 +4825,7 @@ var require_websocket_server = /* @__PURE__ */ __commonJSMin(((exports, module) 
 				autoPong: true,
 				maxBufferedChunks: 262144,
 				maxFragments: 16384,
-				maxPayload: 104857600,
+				maxPayload: 0x6400000,
 				skipUTF8Validation: false,
 				perMessageDeflate: false,
 				handleProtocols: null,
@@ -6258,12 +6258,12 @@ var require_marky_cjs = /* @__PURE__ */ __commonJSMin(((exports) => {
 	}
 }));
 // ../stts/node_modules/lighthouse-logger/index.js
-var import_escape_string_regexp = /* @__PURE__ */ __toESM(require_escape_string_regexp(), 1);
 /**
 * @license
 * Copyright 2016 Google LLC
 * SPDX-License-Identifier: Apache-2.0
 */
+var import_escape_string_regexp = /* @__PURE__ */ __toESM(require_escape_string_regexp(), 1);
 var import_src = /* @__PURE__ */ __toESM(require_src(), 1);
 var import_marky_cjs = /* @__PURE__ */ __toESM(require_marky_cjs(), 1);
 const isWindows$1 = process$1.platform === "win32";
@@ -6354,7 +6354,7 @@ var Log = class Log {
 	* @param {string=} level Optional logging level. Defaults to 'log'.
 	*/
 	static formatProtocol(prefix, data, level) {
-		const columns = !process$1 || process$1.browser ? Infinity : process$1.stdout.columns;
+		const columns = !process$1 || process$1.browser ? 1e400 : process$1.stdout.columns;
 		const method = data.method || "?????";
 		const maxLength = columns - method.length - prefix.length - loggingBufferColumns;
 		const snippet = data.params && method !== "IO.read" ? JSON.stringify(data.params).substr(0, maxLength) : "";
@@ -6815,7 +6815,7 @@ function sort(installations, priorities) {
 function canAccess(file) {
 	if (!file) return false;
 	try {
-		fs.accessSync(file);
+		fs$1.accessSync(file);
 		return true;
 	} catch (e) {
 		return false;
@@ -6911,8 +6911,8 @@ var Launcher = class Launcher {
 		this.tmpDirandPidFileReady = false;
 		this.remoteDebuggingPipes = null;
 		this.opts = opts;
-		this.fs = moduleOverrides.fs || fs$1;
-		this.spawn = moduleOverrides.spawn || spawn;
+		this.fs = moduleOverrides.fs || fs;
+		this.spawn = moduleOverrides.spawn || spawn$1;
 		Log.setLevel(defaults(this.opts.logLevel, "silent"));
 		this.startingUrl = defaults(this.opts.startingUrl, "about:blank");
 		this.chromeFlags = defaults(this.opts.chromeFlags, []);
@@ -6965,8 +6965,8 @@ var Launcher = class Launcher {
 		if (!_SUPPORTED_PLATFORMS.has(platform)) throw new UnsupportedPlatformError();
 		this.userDataDir = this.userDataDir || this.makeTmpDir();
 		try {
-			this.outFile = fs$1.openSync(`${this.userDataDir}/chrome-out.log`, "a");
-			this.errFile = fs$1.openSync(`${this.userDataDir}/chrome-err.log`, "a");
+			this.outFile = fs.openSync(`${this.userDataDir}/chrome-out.log`, "a");
+			this.errFile = fs.openSync(`${this.userDataDir}/chrome-err.log`, "a");
 		} catch (_) {}
 		this.setBrowserPrefs();
 		this.pidFile = `${this.userDataDir}/chrome.pid`;
@@ -7079,7 +7079,7 @@ var Launcher = class Launcher {
 				Log.log("ChromeLauncher", waitStatus);
 				const checkReady = () => {
 					if (launcher.port === 0) try {
-						const match = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
+						const match = fs.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" }).match(/DevTools listening on ws:\/\/.*?:(\d+)\//);
 						if (match) {
 							launcher.port = parseInt(match[1], 10);
 							Log.verbose("ChromeLauncher", `Discovered Chrome listening on port ${launcher.port}.`);
@@ -7096,7 +7096,7 @@ var Launcher = class Launcher {
 						Log.error("ChromeLauncher", err.message);
 						let stderr = "";
 						try {
-							stderr = fs$1.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
+							stderr = fs.readFileSync(`${this.userDataDir}/chrome-err.log`, { encoding: "utf-8" });
 						} catch (readErr) {
 							stderr = `Failed to read log: ${readErr.message}`;
 						}
@@ -7134,13 +7134,13 @@ var Launcher = class Launcher {
 	destroyTmp() {
 		if (this.outFile) {
 			try {
-				fs$1.closeSync(this.outFile);
+				fs.closeSync(this.outFile);
 			} catch (_) {}
 			delete this.outFile;
 		}
 		if (this.errFile) {
 			try {
-				fs$1.closeSync(this.errFile);
+				fs.closeSync(this.errFile);
 			} catch (_) {}
 			delete this.errFile;
 		}
@@ -11385,7 +11385,7 @@ function macrostep(snapshot, event, actorScope, internalQueue) {
 		addMicrostep(step, currentEvent, transitions);
 	}
 	let shouldSelectEventlessTransitions = true;
-	const maxIterations = snapshot.machine.options?.maxIterations ?? Infinity;
+	const maxIterations = snapshot.machine.options?.maxIterations ?? 1e400;
 	let iterationCount = 0;
 	while (nextSnapshot.status === "active") {
 		iterationCount++;
@@ -11959,7 +11959,7 @@ var StateMachine = class StateMachine {
 		this.version = this.config.version;
 		this.schemas = this.config.schemas;
 		this.options = {
-			maxIterations: Infinity,
+			maxIterations: 1e400,
 			...this.config.options
 		};
 		this.transition = this.transition.bind(this);
@@ -12750,8 +12750,8 @@ function optionalKeys(shape) {
 }
 const NUMBER_FORMAT_RANGES = /*@__PURE__*/ (() => ({
 	safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-	int32: [-2147483648, 2147483647],
-	uint32: [0, 4294967295],
+	int32: [-0x80000000, 0x7fffffff],
+	uint32: [0, 0xffffffff],
 	float32: [-34028234663852886e22, 34028234663852886e22],
 	float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
 }))();
@@ -14924,9 +14924,7 @@ function mergeValues(a, b) {
 		};
 		const newArray = [];
 		for (let index = 0; index < a.length; index++) {
-			const itemA = a[index];
-			const itemB = b[index];
-			const sharedValue = mergeValues(itemA, itemB);
+			const sharedValue = mergeValues(a[index], b[index]);
 			if (!sharedValue.valid) return {
 				valid: false,
 				mergeErrorPath: [index, ...sharedValue.mergeErrorPath]
@@ -16870,8 +16868,7 @@ const neverProcessor = (_schema, _ctx, json, _params) => {
 	json.not = {};
 };
 const enumProcessor = (schema, _ctx, json, _params) => {
-	const def = schema._zod.def;
-	const values = getEnumValues(def.entries);
+	const values = getEnumValues(schema._zod.def.entries);
 	if (values.length === 0) {
 		json.not = {};
 		return;
@@ -19137,6 +19134,83 @@ app.post("/request", async (c) => {
 	if (heard.status !== 200 || SENTINELS.includes(heard.text)) return out(heard);
 	return c.text(`${heard.text}\n\n${note}`);
 });
+const configModelsDir = () => {
+	try {
+		return JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")).modelsDir;
+	} catch {
+		return;
+	}
+};
+const modelsDir = process.env["STTS_MODELS_DIR"] ?? configModelsDir() ?? join(dataDir, "models");
+const PIPER_PORT = Number(process.env["STTS_PIPER_PORT"] ?? 15987);
+const PIPER_HOME = process.env["STTS_PIPER_HOME"] ?? join(dataDir, "piper");
+const VOICES = join(modelsDir, "piper");
+const PIPER_VOICE = join(VOICES, "en_GB-jenny_dioco-medium.onnx");
+let piper = null;
+function startPiper() {
+	const py = join(PIPER_HOME, "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+	if (piper || process.env["STTS_NO_PIPER"] === "1") return;
+	if (!existsSync(py) || !existsSync(PIPER_VOICE)) {
+		deps.log(`piper not installed (${py}, ${PIPER_VOICE}): browser voice; run node scripts/install.mjs`);
+		return;
+	}
+	const p = (0, import_cross_spawn.default)(py, [
+		...[
+			"-m",
+			"piper.http_server",
+			"--host",
+			"127.0.0.1",
+			"--port",
+			String(PIPER_PORT)
+		],
+		"-m",
+		PIPER_VOICE,
+		"--data-dir",
+		VOICES,
+		"--sentence-silence",
+		"0.2"
+	], {
+		stdio: "ignore",
+		windowsHide: true
+	});
+	piper = p;
+	deps.log(`piper start pid ${p.pid} ${PIPER_VOICE}`);
+	p.on("error", (e) => deps.log(`FAIL piper start ${String(e)}`));
+	p.on("exit", (code) => {
+		deps.log(`piper exit code ${code}`);
+		if (piper === p) piper = null;
+	});
+}
+process.on("exit", () => piper?.kill());
+app.get("/voice/status", (c) => c.json({ piper: piper !== null }));
+app.post("/voice/clip", async (c) => {
+	const body = await c.req.json().catch(() => null);
+	const text = typeof body?.text === "string" ? body.text : "";
+	const rate = typeof body?.rate === "number" && body.rate >= .5 && body.rate <= 2 ? body.rate : 1;
+	if (!text.trim()) return c.text("text required", 400);
+	const t0 = Date.now();
+	const r = await fetch(`http://127.0.0.1:${PIPER_PORT}/synthesize`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({
+			text,
+			length_scale: 1 / rate
+		}),
+		signal: AbortSignal.timeout(1e4)
+	}).catch((e) => {
+		deps.log(`piper clip unreachable ${String(e)}`);
+		return null;
+	});
+	const wav = r?.ok ? await r.arrayBuffer() : null;
+	const head = JSON.stringify(text.slice(0, 30));
+	if (!wav) {
+		if (!piper) startPiper();
+		deps.log(`FAIL piper clip ${r?.status ?? "down"} ${Date.now() - t0}ms ${head}`);
+		return c.text("piper failed", 502);
+	}
+	deps.log(`OK piper clip ${wav.byteLength}B ${Date.now() - t0}ms ${head}`);
+	return c.body(wav, 200, { "content-type": "audio/wav" });
+});
 app.get("/ws", upgradeWebSocket(() => {
 	let link = null;
 	return {
@@ -19171,6 +19245,7 @@ function start(p = port) {
 		hostname: "127.0.0.1"
 	}, () => {
 		deps.log(`daemon start pid ${process.pid}`);
+		startPiper();
 	});
 	injectWebSocket(server);
 	httpServer = server;
@@ -19234,4 +19309,4 @@ async function boot() {
 	start();
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) boot();
-export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, joinHeld, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, takeEnded };
+export { REOPEN_FIRST_MS, WINDOW_OPEN_MS, app, attachPage, boot, checkForUpdate, dataDir, deps, ended, exitCodeWhenTaken, giveUpSlot, installedDir, isLatest, joinHeld, liveUpdate, loadText, newer, port, resetTurns, setEnded, slotId, start, startPiper, takeEnded };

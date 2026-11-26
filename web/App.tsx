@@ -231,12 +231,19 @@ export function App() {
   const reqId = useRef(0);
   // 1-based word of the clip now playing, from the voice's word boundary events; 0 when unknown.
   const wordAt = useRef(0);
+  // The Piper clip playing now; null while the browser voice speaks.
+  const audio = useRef<HTMLAudioElement | null>(null);
+  // shortcut: clips a Stop dropped stay cached until a reload (a few KB), fine for one window.
+  const clipCache = useRef(new Map<string, Promise<Blob | null>>());
+  const piperOn = useRef(false);
   const cutSpeech = (): void => {
     speechGen.current++;
     confirmed.current = false;
     pending.current = false;
     bargeWords.current = '';
     clearTimeout(duckTimer.current);
+    audio.current?.pause();
+    audio.current = null;
     speechSynthesis.cancel();
     // Chrome keeps a cancelled queue paused: resume clears it so the next speech plays.
     speechSynthesis.resume();
@@ -244,7 +251,13 @@ export function App() {
   const unduck = (): void => {
     clearTimeout(duckTimer.current);
     pending.current = false;
-    if (actor.getSnapshot().matches({ speech: 'playing' })) speechSynthesis.resume();
+    if (!actor.getSnapshot().matches({ speech: 'playing' })) return;
+    if (audio.current) audio.current.play().catch((e: unknown) => log(`piper resume ${String(e)}`));
+    else speechSynthesis.resume();
+  };
+  const pauseVoice = (): void => {
+    audio.current?.pause();
+    speechSynthesis.pause();
   };
   const [interim, setInterim] = useState('');
   const [said, setSaid] = useState('');
@@ -399,7 +412,12 @@ export function App() {
           });
         },
         stopAudio: () => cutSpeech(),
-        playClip: (_, { clip }) => speak(clip),
+        playClip: ({ context }, { clip }) => {
+          void playClip(clip);
+          // The next clip synthesises while this one plays, so it starts with no gap.
+          const next = context.queue[1];
+          if (next) void fetchClip(next);
+        },
         log: (_, { line }) => log(line === 'mic start timed out' ? `${line} at ${startStage.current}` : line),
       },
     }),
@@ -407,6 +425,66 @@ export function App() {
   const turn = (state.value as { turn: Turn }).turn;
   const paused = state.matches({ mic: 'paused' });
   const armed = state.matches({ autosend: 'armed' });
+
+  // Local Piper through the daemon (spec 014); null means Piper is down and the browser voice speaks.
+  function fetchClip(clip: string): Promise<Blob | null> {
+    if (!piperOn.current) return Promise.resolve(null);
+    let p = clipCache.current.get(clip);
+    if (!p) {
+      const t0 = performance.now();
+      p = fetch('/voice/clip', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: clip, rate: speed() }),
+      })
+        .then(async (r) => {
+          if (r.ok) return r.blob();
+          log(`piper clip ${r.status} after ${Math.round(performance.now() - t0)}ms`);
+          return null;
+        })
+        .catch((e: unknown) => {
+          log(`piper clip unreachable ${String(e)}`);
+          return null;
+        });
+      clipCache.current.set(clip, p);
+    }
+    return p;
+  }
+
+  async function playClip(clip: string): Promise<void> {
+    // No Piper: speak in the same tick, exactly as before Piper came back.
+    if (!piperOn.current) return speak(clip);
+    const gen = speechGen.current;
+    const blob = await fetchClip(clip);
+    clipCache.current.delete(clip);
+    // Cut off while it synthesised: it must not play over the next speech.
+    if (gen !== speechGen.current) return;
+    if (!blob) {
+      log('voice fallback: browser voice');
+      speak(clip);
+      return;
+    }
+    const a = new Audio(URL.createObjectURL(blob));
+    a.volume = callVolume.current ?? 1;
+    audio.current = a;
+    audioStarted.current = true;
+    wordAt.current = 0;
+    if (ttsAt.current) {
+      const at = ttsAt.current;
+      ttsAt.current = 0;
+      a.onplaying = () => log(`first audio ${Math.round(performance.now() - at)}ms after the tts (piper)`);
+    }
+    a.onended = () => {
+      URL.revokeObjectURL(a.src);
+      if (audio.current === a) audio.current = null;
+      setSpoken((s) => ({ ...s, done: s.done + 1 }));
+      send({ type: 'CLIP_ENDED' });
+    };
+    spokenLog.current.push({ text: clip, at: Date.now() });
+    if (confirmed.current) return;
+    // A barge pause aborts play(); the clip then resumes or is cut, so no fallback here.
+    a.play().catch((e: unknown) => log(`piper play ${String(e)}`));
+  }
 
   // One clip through the browser's voice; an error ends the clip so the speech never stalls.
   function speak(clip: string): void {
@@ -561,7 +639,7 @@ export function App() {
         if (!pending.current) log(`voice over speech, clip ${actor.getSnapshot().context.sentence}`);
         pending.current = true;
         clearTimeout(duckTimer.current);
-        speechSynthesis.pause();
+        pauseVoice();
         duckTimer.current = setTimeout(unduck, BARGE_HOLD_MS);
       }
     };
@@ -602,7 +680,7 @@ export function App() {
         ) {
           confirmed.current = true;
           setInterim(words);
-          speechSynthesis.pause();
+          pauseVoice();
           clearTimeout(duckTimer.current);
           duckTimer.current = setTimeout(
             () => {
@@ -940,6 +1018,13 @@ export function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once.
   useEffect(() => {
     refreshMics();
+    fetch('/voice/status')
+      .then((r) => r.json() as Promise<{ piper: boolean }>)
+      .then((s) => {
+        piperOn.current = s.piper;
+        log(`voice ${s.piper ? 'piper' : 'browser (piper not running)'}`);
+      })
+      .catch((e: unknown) => log(`voice status failed ${String(e)}`));
     const fill = () =>
       setVoices(
         speechSynthesis

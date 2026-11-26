@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["hooks/*.mjs", "test/screenshots/*.ts"],
+  "entry": ["hooks/*.mjs", "scripts/*.mjs", "test/screenshots/*.ts"],
   "ignore": ["dist/**"],
   "ignoreDependencies": ["@swc/core"],
   "ignoreIssues": {

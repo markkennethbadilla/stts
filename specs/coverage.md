@@ -99,3 +99,5 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] B18 gap: cases are the e2e and unit suites by flow (listen, typed, barge, mute, restart); no full input-matrix table yet
 - [x] B19 gap: spec 014 states the speech limits; no per-characteristic quality table yet
 - [x] T23 n/a: no search or retrieval
+- [x] B20 gap: one token file `web/index.css` (shadcn theme); not yet mapped to the house brand in design-ui-and-visuals brand.md
+- [x] B21 Trunk pre-push action runs `npm run gate` (vitest, e2e smoke, build)

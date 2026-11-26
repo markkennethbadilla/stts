@@ -1,0 +1,15 @@
+{
+  "$comment": "Pinned parts that scripts/install.mjs fetches (stts spec 009, 014). Renovate bumps the package version (renovate.json); a voice change updates its source, files and SHA256 together.",
+  "python": {
+    "piper-tts[http]": "1.8.0"
+  },
+  "voice": {
+    "dir": "piper",
+    "name": "en_GB-jenny_dioco-medium",
+    "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium",
+    "files": {
+      "en_GB-jenny_dioco-medium.onnx": "469c630d209e139dd392a66bf4abde4ab86390a0269c1e47b4e5d7ce81526b01",
+      "en_GB-jenny_dioco-medium.onnx.json": "a9a7a93a317c9a3cb6563e37eb057df9ef09c06188a8a4341b0fcb58cba54dd4"
+    }
+  }
+}

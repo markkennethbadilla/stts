@@ -734,8 +734,7 @@ var ZodType$1 = class {
 		});
 	}
 	describe(description) {
-		const This = this.constructor;
-		return new This({
+		return new this.constructor({
 			...this._def,
 			description
 		});
@@ -2562,9 +2561,7 @@ function mergeValues$1(a, b) {
 		if (a.length !== b.length) return { valid: false };
 		const newArray = [];
 		for (let index = 0; index < a.length; index++) {
-			const itemA = a[index];
-			const itemB = b[index];
-			const sharedValue = mergeValues$1(itemA, itemB);
+			const sharedValue = mergeValues$1(a[index], b[index]);
 			if (!sharedValue.valid) return { valid: false };
 			newArray.push(sharedValue.data);
 		}
@@ -3769,8 +3766,8 @@ function optionalKeys(shape) {
 }
 const NUMBER_FORMAT_RANGES = /*@__PURE__*/ (() => ({
 	safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-	int32: [-2147483648, 2147483647],
-	uint32: [0, 4294967295],
+	int32: [-0x80000000, 0x7fffffff],
+	uint32: [0, 0xffffffff],
 	float32: [-34028234663852886e22, 34028234663852886e22],
 	float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
 }))();
@@ -5965,9 +5962,7 @@ function mergeValues(a, b) {
 		};
 		const newArray = [];
 		for (let index = 0; index < a.length; index++) {
-			const itemA = a[index];
-			const itemB = b[index];
-			const sharedValue = mergeValues(itemA, itemB);
+			const sharedValue = mergeValues(a[index], b[index]);
 			if (!sharedValue.valid) return {
 				valid: false,
 				mergeErrorPath: [index, ...sharedValue.mergeErrorPath]
@@ -7956,8 +7951,7 @@ const dateProcessor = (schema, ctx, json, params) => {
 	handleUnrepresentable(schema, ctx, json, params, "Date cannot be represented in JSON Schema");
 };
 const enumProcessor = (schema, _ctx, json, _params) => {
-	const def = schema._zod.def;
-	const values = getEnumValues(def.entries);
+	const values = getEnumValues(schema._zod.def.entries);
 	if (values.length === 0) {
 		json.not = {};
 		return;
@@ -15404,11 +15398,11 @@ var require_resolve = /* @__PURE__ */ __commonJSMin(((exports) => {
 	function countKeys(schema) {
 		let count = 0;
 		for (const key in schema) {
-			if (key === "$ref") return Infinity;
+			if (key === "$ref") return 1e400;
 			count++;
 			if (SIMPLE_INLINED.has(key)) continue;
 			if (typeof schema[key] == "object") (0, util_1.eachItem)(schema[key], (sch) => count += countKeys(sch));
-			if (count === Infinity) return Infinity;
+			if (count === 1e400) return 1e400;
 		}
 		return count;
 	}
@@ -20836,7 +20830,7 @@ function toolInputElementCount(value, max) {
 	return count;
 }
 function resolveMaxToolInputElements(value) {
-	if (value === void 0 || value === Infinity) return void 0;
+	if (value === void 0 || value === 1e400) return void 0;
 	if (typeof value !== "number" || Number.isNaN(value) || value < 1) throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
 	return value;
 }
@@ -20857,6 +20851,9 @@ var McpServer = class {
 		this._promptHandlersInitialized = false;
 		this.server = new Server(serverInfo, options);
 		this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
+		if (options?.capabilities?.tools) this.setToolRequestHandlers();
+		if (options?.capabilities?.resources) this.setResourceRequestHandlers();
+		if (options?.capabilities?.prompts) this.setPromptRequestHandlers();
 	}
 	/**
 	* Access experimental features.
@@ -21471,7 +21468,7 @@ const EMPTY_COMPLETION_RESULT = { completion: {
 */
 var ReadBuffer = class {
 	constructor(options) {
-		this._maxBufferSize = options?.maxBufferSize ?? 10485760;
+		this._maxBufferSize = options?.maxBufferSize ?? 0xa00000;
 	}
 	append(chunk) {
 		if ((this._buffer?.length ?? 0) + chunk.length > this._maxBufferSize) {
