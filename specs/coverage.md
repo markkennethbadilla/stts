@@ -101,3 +101,4 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] T23 n/a: no search or retrieval
 - [x] B20 one token file `web/index.css`; Stylelint with stylelint-declaration-strict-value (Trunk) refuses raw colour or font elsewhere; not yet mapped to brand.md
 - [x] B21 Trunk pre-push action runs `npm run gate` (vitest, e2e smoke, build)
+- [x] B22 index.html: the daemon serves the stts page at / on 127.0.0.1 (port `STTS_PORT`, default 15986), spec 001
