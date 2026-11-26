@@ -28,7 +28,10 @@ const venvPy = join(piperHome, 'venv', win ? 'Scripts/python.exe' : 'bin/python'
 const voiceDir = join(modelsDir, pins.voice.dir);
 
 const say = (step, msg) => console.log(`${step} install ${msg}`);
-const run = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true });
+const opts = { encoding: 'utf8', windowsHide: true };
+const PY = win ? 'py' : 'python3';
+const PY_PRE = win ? ['-3'] : [];
+const venvRun = (args) => spawnSync(venvPy, args, opts);
 
 export function missing() {
   const out = [];
@@ -37,21 +40,9 @@ export function missing() {
   return out;
 }
 
-function findPython() {
-  const tries = win
-    ? [
-        ['py', ['-3']],
-        ['python', []],
-      ]
-    : [
-        ['python3', []],
-        ['python', []],
-      ];
-  for (const [cmd, pre] of tries) {
-    const r = run(cmd, [...pre, '-c', 'import sys; print(sys.version_info >= (3, 10))']);
-    if (r.status === 0 && r.stdout.trim() === 'True') return [cmd, pre];
-  }
-  return null;
+function hasPython() {
+  const r = spawnSync(PY, [...PY_PRE, '-c', 'import sys; print(sys.version_info >= (3, 10))'], opts);
+  return r.status === 0 && r.stdout.trim() === 'True';
 }
 
 async function fetchFile(url, dest, sha) {
@@ -82,16 +73,15 @@ export async function install() {
   await step('python venv', () => {
     const want = Object.entries(pins.python).map(([p, v]) => `${p}==${v}`);
     if (!existsSync(venvPy)) {
-      const py = findPython();
-      if (!py) throw new Error('Python 3.10 or newer is needed on PATH (python.org), then restart the agent');
-      const r = run(py[0], [...py[1], '-m', 'venv', join(piperHome, 'venv')]);
+      if (!hasPython()) throw new Error(`Python 3.10 or newer is needed (${PY} on PATH), then restart the agent`);
+      const r = spawnSync(PY, [...PY_PRE, '-m', 'venv', join(piperHome, 'venv')], opts);
       if (r.status !== 0) throw new Error(`venv: ${r.stderr.trim()}`);
     }
-    const have = run(venvPy, ['-m', 'pip', 'list', '--format=freeze']).stdout ?? '';
+    const have = venvRun(['-m', 'pip', 'list', '--format=freeze']).stdout ?? '';
     const need = want.filter((w) => !have.includes(w.replace('[http]', '')));
     if (need.length) {
       say('START', `pip install ${need.join(' ')}`);
-      const r = run(venvPy, ['-m', 'pip', 'install', '-q', ...need]);
+      const r = venvRun(['-m', 'pip', 'install', '-q', ...need]);
       if (r.status !== 0) throw new Error(`pip: ${r.stderr.trim().split('\n').pop()}`);
     }
     say('OK', want.join(' '));
