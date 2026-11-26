@@ -8,7 +8,7 @@ stts is a voice window for coding agents: an MCP server (`stts-mcp`, tools `stt`
 2. `/plugin install stts@stts-marketplace`
 3. Run `/stts` to start a voice conversation.
 
-Needs Node 20+ and Chrome. Speech recognition is Chrome's own (it uses Google's service, so it needs a network); the voice is Piper after `node scripts/install.mjs` (a Python venv and one pinned voice under `%LOCALAPPDATA%stts`), otherwise the best English voice the browser offers, changeable in settings.
+Needs Node 20+ and Chrome. Speech recognition is Chrome's own (it uses Google's service, so it needs a network); the voice is Piper after `node scripts/install.mjs` (a Python venv and one pinned voice under `%LOCALAPPDATA%\stts`), otherwise the best English voice the browser offers, changeable in settings.
 
 No `npm install` or build happens on install: the bundled `dist/` (self-contained `dist/mcp.js` and `dist/daemon.js`, plus the page) is committed to the repository. After changing `src/`, `web/` or `public/`, run `npm run build` and commit `dist/` with the change; the push gate fails on a stale `dist/`.
 

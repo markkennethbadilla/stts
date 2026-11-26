@@ -38,7 +38,7 @@ stateDiagram-v2
   }
 ```
 
-Recognition is the daemon's local speech engine (spec 014). The cloud and on-device Chrome recognisers and their setting are gone: both lost his words (2026-10-07).
+Recognition is Chrome's built-in recogniser behind a wrapper that restarts its sessions without losing words (spec 014).
 
 Every listen (an stt, or the listen after a tts with `listen=true`) starts with no heard words: the page clears what it heard before the listen opened and the turn's start time, then arms the `idleSec` timer. Words left over from before the listen made the timer skip `nospeech`, so the listen hung until the daemon's budget (seen through the gateway, 2026-10-05).
 

@@ -66,4 +66,4 @@ Reads `config.json` and env `STTS_DATA_DIR`, `STTS_PORT`. Writes the plugin fold
 
 ## How to run, check and hand over
 
-`npm ci`, then `npm run check`, then `npm run build`. `test/unit/build.test.ts` checks the build output exists. To prove the plugin runs as installed: `git archive main | tar -x` into an empty folder, and run `node dist/mcp.js` there with no `npm install`. After an update, call any tool and look for `daemon start pid` in `daemon.log`.
+`npm ci`, then `npm run check`, then `npm run build`. `test/unit/build.test.ts` checks the build output exists. `test/unit/public-repo.test.ts` holds public repo rule 1 and the pins in the push gate: no code line in `src/`, `web/` or `scripts/` names a drive path, our ops repos or account folders, the daemon and Piper bind `127.0.0.1`, and every dependency is an exact version. To prove the plugin runs as installed: `git archive main | tar -x` into an empty folder, and run `node dist/mcp.js` there with no `npm install`. After an update, call any tool and look for `daemon start pid` in `daemon.log`.

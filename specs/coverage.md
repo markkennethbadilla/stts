@@ -100,6 +100,7 @@ Against the coverage register in the mkb-agentops repo, skill `cover-the-whole-l
 - [x] B18 gap: cases are the e2e and unit suites by flow (listen, typed, barge, mute, restart); no full input-matrix table yet
 - [x] B19 `## Quality bar` in every `specs/*/spec.md` (001 to 014): eleven rows each (nine ISO 25010 aspects, business outcome, cost), baselines measured 2026-11-26 (unit 204/204, e2e 31/31, `npm run maint` clean), each floor held by a gate step; mkb-agentops `guard-spec-sync` refuses a pushed spec without a complete table
 - [x] T23 n/a: no search or retrieval
+- [x] T24 `specs/requirements.md` (OpenFastTrace): every promise and known limit of specs 001 to 014 and the README with the unit or `@smoke` test that holds it, run by Trunk action `trace-on-push`; `test/unit/public-repo.test.ts` added for public repo rule 1, the 127.0.0.1 bind and exact pins
 - [x] B20 one token file `web/index.css` mapped to the Mark personal brand (skill design-ui-and-visuals brand.md: the mkb-site oklch palette at tint hue 158, Instrument Sans body, Bricolage Grotesque headings); turn hues are `--state-*` tokens there; Stylelint with stylelint-declaration-strict-value (Trunk) refuses raw colour or font in CSS and `test/unit/brand-tokens.test.ts` refuses a raw colour or palette class in `web/*.tsx`; screenshots looked at by eye 2026-11-26
 - [x] B21 Trunk pre-push action runs `npm run gate` (vitest, e2e smoke, build)
 - [x] B22 index.html: the daemon serves the stts page at / on 127.0.0.1 (port `STTS_PORT`, default 15986), spec 001

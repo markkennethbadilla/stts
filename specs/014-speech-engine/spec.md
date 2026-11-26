@@ -31,7 +31,7 @@ The local engine was built because Chrome's recogniser lost words: sessions that
 | Functional suitability | words heard come back as text; turn rules unchanged | Web Speech API continuous + interim results, restart on `end` | e2e 31/31 with the fake recogniser; unit 204/204 | local Parakeet via onnx-asr (dropped: Mark wants no local model) | `npm test` all pass |
 | Performance efficiency | clip synth time, warm | local Piper, warm at daemon start, next clip prefetched | Piper 0.17-0.30 s per 48-char clip (2026-11-26) | MS Online voice (network lag, Mark 2026-11-26) | `OK piper clip` lines in daemon.log |
 | Compatibility | Chrome and Chromium only | feature-detect `SpeechRecognition` / `webkitSpeechRecognition` | Chrome on this PC: recognizer present, 19 voices with online neural ones | none | e2e on Chromium |
-| Interaction capability | natural voice picked by default | rank Natural or Online neural, then Google, then any English | Microsoft Aria/Andrew/Ava Online available | robotic SAPI David/Zira (ranked last) | `pickVoice` unit cases |
+| Interaction capability | natural voice picked by default | rank Natural or Online neural, then Google, then any English | Microsoft Aria/Andrew/Ava Online available | robotic SAPI David/Zira (ranked last) | none yet: `pickVoice` in `web/App.tsx` has no unit case (known gap, specs/requirements.md) |
 | Reliability | no words lost across recogniser restarts | restart at once on `end`, keep interim text | covered by e2e restart cases | daemon ASR with audio pipe (removed) | e2e restart cases pass |
 | Security | audio never stored | no local recording | nothing written | n/a | n/a: no data at rest |
 | Maintainability | engine code size | use the platform API | asr.ts, asr_worker.py, Piper code removed | n/a | knip/depcruise clean (`npm run maint`) |
@@ -42,7 +42,7 @@ The local engine was built because Chrome's recogniser lost words: sessions that
 
 ## What it reads and writes
 
-Reads the microphone through Chrome and uses Chrome's speech services (recognition goes to Google's service, so it needs a network). Writes nothing; audio is never stored; the daemon has no `/asr` or `/voice` route, no child process and no models folder.
+Reads the microphone through Chrome and uses Chrome's speech services (recognition goes to Google's service, so it needs a network). Audio is never stored. The daemon runs one child process, Piper's HTTP server on `127.0.0.1:15987` (`STTS_PIPER_PORT`), serves `POST /voice/clip`, and reads the voice from the models folder (`config.json` `modelsDir`, or `STTS_MODELS_DIR`) that `node scripts/install.mjs` fills; it has no `/asr` route.
 
 ## How to run, check and hand over
 

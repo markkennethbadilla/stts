@@ -67,4 +67,10 @@ actions:
       run: npm run --silent maint
       triggers: [{git_hooks: [pre-push]}]
       notify_on_error: false
-  enabled: [gate-clock-start, block-commit-on-findings, block-push-on-findings, block-push-on-opengrep, maintainability-on-push, gate-clock-end]
+    # Coverage register T24: every spec promise is a traced OpenFastTrace item (mkb-agentops spec 145).
+    # The tracer is the maintainer's shared copy; a clone without it skips this action (public repo rule 1).
+    - id: trace-on-push
+      triggers: [{git_hooks: [pre-push]}]
+      run: sh -c 't=A:/personal-markkennethbadilla/mkb-agentops/scripts/trace.mjs; [ -f "$t" ] || exit 0; node "$t" specs/requirements.md'
+      notify_on_error: false
+  enabled: [gate-clock-start, block-commit-on-findings, block-push-on-findings, block-push-on-opengrep, maintainability-on-push, trace-on-push, gate-clock-end]
