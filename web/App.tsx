@@ -235,7 +235,9 @@ export function App() {
   const audio = useRef<HTMLAudioElement | null>(null);
   // shortcut: clips a Stop dropped stay cached until a reload (a few KB), fine for one window.
   const clipCache = useRef(new Map<string, Promise<Blob | null>>());
-  const piperOn = useRef(false);
+  // null until /voice/status answers: the first clip of a fresh window waits for it.
+  const piperOn = useRef<boolean | null>(null);
+  const piperKnown = useRef<Promise<void>>(Promise.resolve());
   const cutSpeech = (): void => {
     speechGen.current++;
     confirmed.current = false;
@@ -453,6 +455,7 @@ export function App() {
 
   async function playClip(clip: string): Promise<void> {
     // No Piper: speak in the same tick, exactly as before Piper came back.
+    if (piperOn.current === null) await piperKnown.current;
     if (!piperOn.current) return speak(clip);
     const gen = speechGen.current;
     const blob = await fetchClip(clip);
@@ -1018,13 +1021,16 @@ export function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once.
   useEffect(() => {
     refreshMics();
-    fetch('/voice/status')
+    piperKnown.current = fetch('/voice/status')
       .then((r) => r.json() as Promise<{ piper: boolean }>)
       .then((s) => {
         piperOn.current = s.piper;
         log(`voice ${s.piper ? 'piper' : 'browser (piper not running)'}`);
       })
-      .catch((e: unknown) => log(`voice status failed ${String(e)}`));
+      .catch((e: unknown) => {
+        piperOn.current = false;
+        log(`voice status failed ${String(e)}`);
+      });
     const fill = () =>
       setVoices(
         speechSynthesis
