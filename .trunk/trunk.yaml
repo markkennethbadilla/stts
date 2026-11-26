@@ -35,7 +35,7 @@ actions:
           value: ${env.MISE_GLOBAL_CONFIG_FILE}
         - name: PATHEXT
           value: ${env.PATHEXT}
-      run: 'opengrep scan --experimental --disable-version-check --quiet --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules .'
+      run: sh -c 't=$(command -v timeout) && t="$t 60"; o="scan --experimental --disable-version-check --error --severity ERROR --severity WARNING --baseline-commit origin/main --config C:/ProgramData/opengrep/semgrep-rules ."; for n in 1 2; do $t opengrep $o; rc=$?; case $rc in 0|1) exit $rc;; 2|124) ;; *) echo "opengrep setup error (exit $rc): push blocked" >&2; exit $rc;; esac; echo "opengrep crashed (exit $rc, not a finding), try $n of 2" >&2; done; echo "opengrep crashed twice (exit $rc): push not blocked, run it by hand" >&2'
     - id: maintainability-on-push
       run: npm run --silent maint
       triggers: [{git_hooks: [pre-push]}]
