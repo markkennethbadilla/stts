@@ -51,6 +51,17 @@ actions:
       triggers: [{git_hooks: [pre-commit]}]
       notify_on_error: false
     - id: block-push-on-findings
+      environment:
+        - name: PATH
+          value: ${env.PATH}
+        - name: PATHEXT
+          value: ${env.PATHEXT}
+        - name: MISE_GLOBAL_CONFIG_FILE
+          value: ${env.MISE_GLOBAL_CONFIG_FILE}
+        - name: LOCALAPPDATA
+          value: ${env.LOCALAPPDATA}
+        - name: USERPROFILE
+          value: ${env.USERPROFILE}
       run: npm run gate
       triggers: [{git_hooks: [pre-push]}]
       notify_on_error: false
